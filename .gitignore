@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+env/
+
+# Build artifacts
+build/
+dist/
+*.spec
+*.exe
+*.pkg
+
+# App runtime state
+tasks.json
+*.log
+
+# Local/OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/

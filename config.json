@@ -1,0 +1,17 @@
+{
+  "model": "qwen2.5:7b-instruct-q3_K_L",
+  "ollama_url": "http://127.0.0.1:11434/api/chat",
+  "host": "127.0.0.1",
+  "port": 8765,
+  "workspace": ".",
+  "temperature": 0.4,
+  "num_ctx": 4096,
+  "model_enabled": true,
+  "allow_shell": false,
+  "allowed_commands": [
+    "dir",
+    "Get-ChildItem",
+    "rg",
+    "python --version"
+  ]
+}
