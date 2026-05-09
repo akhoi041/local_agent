@@ -1,9 +1,9 @@
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $appName = "LocalAgentDesktop"
-$source = Join-Path $root "dist\$appName"
+$sourceExe = Join-Path $root "dist\$appName.exe"
 $installDir = Join-Path $env:LOCALAPPDATA "Programs\$appName"
 
-if (-not (Test-Path -LiteralPath (Join-Path $source "$appName.exe"))) {
+if (-not (Test-Path -LiteralPath $sourceExe)) {
   Write-Host "Build output not found. Run .\build_app.ps1 first."
   exit 1
 }
@@ -13,7 +13,14 @@ if (Test-Path -LiteralPath $installDir) {
 }
 
 New-Item -ItemType Directory -Path $installDir -Force | Out-Null
-Copy-Item -Path (Join-Path $source "*") -Destination $installDir -Recurse -Force
+Copy-Item -LiteralPath $sourceExe -Destination (Join-Path $installDir "$appName.exe") -Force
+Copy-Item -LiteralPath (Join-Path $root "config.json") -Destination (Join-Path $installDir "config.json") -Force
+Copy-Item -LiteralPath (Join-Path $root "README.md") -Destination (Join-Path $installDir "README.md") -Force
+if (Test-Path -LiteralPath (Join-Path $root "tasks.json")) {
+  Copy-Item -LiteralPath (Join-Path $root "tasks.json") -Destination (Join-Path $installDir "tasks.json") -Force
+} else {
+  Copy-Item -LiteralPath (Join-Path $root "tasks.example.json") -Destination (Join-Path $installDir "tasks.json") -Force
+}
 
 $desktop = [Environment]::GetFolderPath("Desktop")
 $shortcutPath = Join-Path $desktop "$appName.lnk"

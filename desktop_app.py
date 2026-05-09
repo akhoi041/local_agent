@@ -41,6 +41,59 @@ CYBER = {
     "fail": "#ff5c8a",
 }
 
+LANGUAGES = {
+    "auto": {"label": "Auto", "instruction": "the same language as the user's command; if unsure, use English", "time": "Current local time", "date": "Current local date", "prototype": "Prototype mode"},
+    "vi": {"label": "Tiếng Việt", "instruction": "Vietnamese", "time": "Giờ địa phương", "date": "Ngày địa phương", "prototype": "Chế độ prototype"},
+    "en": {"label": "English", "instruction": "English", "time": "Current local time", "date": "Current local date", "prototype": "Prototype mode"},
+    "fr": {"label": "Français", "instruction": "French", "time": "Heure locale", "date": "Date locale", "prototype": "Mode prototype"},
+    "ja": {"label": "日本語", "instruction": "Japanese", "time": "現地時刻", "date": "現地日付", "prototype": "プロトタイプモード"},
+    "zh": {"label": "中文", "instruction": "Chinese", "time": "本地时间", "date": "本地日期", "prototype": "原型模式"},
+}
+
+
+def language_code(config: dict[str, Any]) -> str:
+    code = str(config.get("language", "vi"))
+    return code if code in LANGUAGES else "vi"
+
+
+def language_label(config: dict[str, Any]) -> str:
+    return LANGUAGES[language_code(config)]["label"]
+
+
+def detect_language(prompt: str) -> str:
+    text = prompt.strip().lower()
+    if not text:
+        return "en"
+    if re.search(r"[\u3040-\u30ff]", prompt):
+        return "ja"
+    if re.search(r"[\u4e00-\u9fff]", prompt):
+        return "zh"
+    vietnamese_marks = "ăâđêôơưáàảãạấầẩẫậắằẳẵặéèẻẽẹếềểễệíìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵ"
+    if any(char in text for char in vietnamese_marks):
+        return "vi"
+    french_marks = "àâæçéèêëîïôœùûüÿ"
+    if any(char in text for char in french_marks):
+        return "fr"
+
+    tokens = set(re.findall(r"[a-z']+", text))
+    vi_words = {"toi", "tôi", "ban", "bạn", "hay", "hãy", "ngon", "ngữ", "tinh", "tính", "mo", "mở", "ngay", "hôm", "gio"}
+    fr_words = {"bonjour", "salut", "merci", "calcule", "calculer", "ouvre", "ouvrir", "aujourd", "heure", "date", "resultat", "résultat"}
+    en_words = {"the", "what", "please", "open", "calculate", "compute", "result", "time", "date", "today", "run"}
+    scores = {
+        "vi": len(tokens & vi_words),
+        "fr": len(tokens & fr_words),
+        "en": len(tokens & en_words),
+    }
+    best = max(scores, key=scores.get)
+    return best if scores[best] > 0 else "en"
+
+
+def response_language(config: dict[str, Any], prompt: str) -> str:
+    code = language_code(config)
+    if code == "auto":
+        return detect_language(prompt)
+    return code
+
 def load_config() -> dict[str, Any]:
     with CONFIG_PATH.open("r", encoding="utf-8-sig") as f:
         return json.load(f)
@@ -218,10 +271,11 @@ class LocalTaskEngine:
 
     def handle_time(self, prompt: str) -> str | None:
         lower = prompt.lower()
+        lang = LANGUAGES[response_language(self.config, prompt)]
         if lower in {"time", "what time is it", "current time", "now", "gio hien tai", "mấy giờ rồi"}:
-            return datetime.now().strftime("Current local time: %H:%M:%S")
+            return f"{lang['time']}: {datetime.now().strftime('%H:%M:%S')}"
         if lower in {"date", "today", "current date", "ngay hom nay", "hôm nay"}:
-            return datetime.now().strftime("Current local date: %Y-%m-%d")
+            return f"{lang['date']}: {datetime.now().strftime('%Y-%m-%d')}"
         return None
 
     def handle_math(self, prompt: str) -> str | None:
@@ -288,17 +342,23 @@ class LocalTaskEngine:
 
 def call_model(prompt: str, config: dict[str, Any]) -> str:
     if not config.get("model_enabled", False):
+        lang = LANGUAGES[response_language(config, prompt)]
         return (
-            "Prototype mode\n\n"
+            f"{lang['prototype']}\n\n"
             "The desktop app worker received this task. Model calls are disabled.\n\n"
             f"Task:\n{prompt}"
         )
+    lang = LANGUAGES[response_language(config, prompt)]
     body = {
         "model": config["model"],
         "messages": [
             {
                 "role": "system",
-                "content": "You are a local desktop assistant. Answer in Vietnamese. Be concise and practical.",
+                "content": (
+                    "You are a local desktop assistant. "
+                    f"Answer in {lang['instruction']}. "
+                    "Be concise, practical, and action-oriented."
+                ),
             },
             {"role": "user", "content": prompt},
         ],
@@ -539,6 +599,7 @@ class LocalAgentDesktop(tk.Tk):
         self.temp_var = tk.StringVar(value=str(self.config_data.get("temperature", 0.4)))
         self.model_enabled_var = tk.BooleanVar(value=bool(self.config_data.get("model_enabled", False)))
         self.shell_var = tk.BooleanVar(value=bool(self.config_data.get("allow_shell", False)))
+        self.language_var = tk.StringVar(value=language_code(self.config_data))
         self.model_status_var = tk.StringVar(value="Model status has not been checked.")
 
         rows = [
@@ -550,11 +611,25 @@ class LocalAgentDesktop(tk.Tk):
         for row, (label, var) in enumerate(rows):
             ttk.Label(self.settings_tab, text=label, style="Panel.TLabel").grid(row=row, column=0, sticky="w", pady=6)
             ttk.Entry(self.settings_tab, textvariable=var).grid(row=row, column=1, sticky="ew", pady=6)
-        ttk.Checkbutton(self.settings_tab, text="Enable model calls", variable=self.model_enabled_var).grid(row=4, column=1, sticky="w", pady=6)
-        ttk.Checkbutton(self.settings_tab, text="Allow shell commands from allowlist", variable=self.shell_var).grid(row=5, column=1, sticky="w", pady=6)
-        ttk.Label(self.settings_tab, textvariable=self.model_status_var, style="Muted.TLabel", wraplength=720).grid(row=6, column=1, sticky="ew", pady=8)
+        ttk.Label(self.settings_tab, text="Language", style="Panel.TLabel").grid(row=4, column=0, sticky="w", pady=6)
+        language_select = ttk.Combobox(
+            self.settings_tab,
+            textvariable=self.language_var,
+            values=list(LANGUAGES.keys()),
+            state="readonly",
+            width=20,
+        )
+        language_select.grid(row=4, column=1, sticky="w", pady=6)
+        ttk.Label(
+            self.settings_tab,
+            text="auto: detect command language, fallback English | vi | en | fr | ja | zh",
+            style="Muted.TLabel",
+        ).grid(row=5, column=1, sticky="w", pady=(0, 6))
+        ttk.Checkbutton(self.settings_tab, text="Enable model calls", variable=self.model_enabled_var).grid(row=6, column=1, sticky="w", pady=6)
+        ttk.Checkbutton(self.settings_tab, text="Allow shell commands from allowlist", variable=self.shell_var).grid(row=7, column=1, sticky="w", pady=6)
+        ttk.Label(self.settings_tab, textvariable=self.model_status_var, style="Muted.TLabel", wraplength=720).grid(row=8, column=1, sticky="ew", pady=8)
         action_row = ttk.Frame(self.settings_tab, style="Panel.TFrame")
-        action_row.grid(row=7, column=1, sticky="e", pady=12)
+        action_row.grid(row=9, column=1, sticky="e", pady=12)
         ttk.Button(action_row, text="Test AI Model", command=self.test_model_status).pack(side="left", padx=(0, 8))
         ttk.Button(action_row, text="Save Settings", style="Accent.TButton", command=self.save_settings).pack(side="left")
 
@@ -589,7 +664,7 @@ class LocalAgentDesktop(tk.Tk):
         self.config_data = load_config()
         mode = "Prototype mode" if not self.config_data.get("model_enabled", False) else self.config_data.get("model", "")
         shell = "shell allowlist" if self.config_data.get("allow_shell", False) else "shell locked"
-        self.mode_label.configure(text=f"{mode} | {shell} | {ROOT}")
+        self.mode_label.configure(text=f"{mode} | {language_label(self.config_data)} | {shell} | {ROOT}")
 
         tasks = sorted(self.store.read(), key=lambda item: item["id"], reverse=True)
         current_ids = {task["id"] for task in tasks}
@@ -700,6 +775,7 @@ class LocalAgentDesktop(tk.Tk):
         config["num_ctx"] = int(self.ctx_var.get())
         config["temperature"] = float(self.temp_var.get())
         config["model_enabled"] = bool(self.model_enabled_var.get())
+        config["language"] = self.language_var.get()
         config["allow_shell"] = bool(self.shell_var.get())
         save_config(config)
         self.events.put(f"{now()} saved settings")

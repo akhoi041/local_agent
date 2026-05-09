@@ -2,7 +2,7 @@
 
 Native Windows desktop assistant prototype built with Python and Tkinter.
 
-The app runs as a real desktop window, keeps a local task queue, executes lightweight local tasks, and can optionally connect to a local Ollama model.
+The app runs as a real desktop window, keeps a local task queue, executes lightweight local tasks, and can optionally connect to a local Ollama model. After packaging, normal use does not require launching Python manually.
 
 ## Features
 
@@ -20,7 +20,14 @@ The app runs as a real desktop window, keeps a local task queue, executes lightw
   - desktop open: `open notepad`, `open C:\path`
   - allowlisted shell: `run python --version`
 - Optional Ollama backend for open-ended language tasks
-- PyInstaller build scripts for Windows `.exe`
+- Language setting for responses:
+  - Auto detect command language, fallback English
+  - Vietnamese
+  - English
+  - French
+  - Japanese
+  - Chinese
+- PyInstaller build scripts for a one-file Windows `.exe`
 
 ## Project Files
 
@@ -28,8 +35,8 @@ The app runs as a real desktop window, keeps a local task queue, executes lightw
 desktop_app.py        Main desktop app
 config.json           Runtime config
 tasks.example.json    Empty task queue example
-launch_desktop.ps1    Run app from source
-build_app.ps1         Build Windows executable
+launch_desktop.ps1    Open installed app, fallback to source mode
+build_app.ps1         Build one-file Windows executable
 install_app.ps1       Install built app to LocalAppData and create desktop shortcut
 install_ollama.ps1    Helper to install Ollama when network allows
 setup_model.ps1       Pull the configured Ollama model
@@ -37,6 +44,22 @@ requirements.txt      Build dependency list
 ```
 
 `tasks.json` is runtime state and is intentionally ignored by Git.
+
+## Normal Use
+
+After install, open the Desktop shortcut:
+
+```text
+LocalAgentDesktop
+```
+
+Installed app path:
+
+```text
+%LOCALAPPDATA%\Programs\LocalAgentDesktop\LocalAgentDesktop.exe
+```
+
+Python is not needed for normal installed usage.
 
 ## Run From Source
 
@@ -51,6 +74,8 @@ Or:
 ```
 
 ## Build And Install
+
+Python is only required for development/building the `.exe`.
 
 Install build dependencies:
 
@@ -68,12 +93,6 @@ Install locally and create a desktop shortcut:
 
 ```powershell
 .\install_app.ps1
-```
-
-Installed app path:
-
-```text
-%LOCALAPPDATA%\Programs\LocalAgentDesktop\LocalAgentDesktop.exe
 ```
 
 ## Optional Ollama Model

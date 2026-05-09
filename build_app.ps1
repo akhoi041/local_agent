@@ -7,6 +7,7 @@ $appName = "LocalAgentDesktop"
 python -m PyInstaller `
   --noconfirm `
   --windowed `
+  --onefile `
   --name $appName `
   --clean `
   desktop_app.py
@@ -15,14 +16,11 @@ if ($LASTEXITCODE -ne 0) {
   throw "PyInstaller build failed with exit code $LASTEXITCODE"
 }
 
-$distDir = Join-Path $root "dist\$appName"
-if (-not (Test-Path -LiteralPath $distDir)) {
-  throw "Build output was not created: $distDir"
+$distDir = Join-Path $root "dist"
+$exePath = Join-Path $distDir "$appName.exe"
+if (-not (Test-Path -LiteralPath $exePath)) {
+  throw "Build output was not created: $exePath"
 }
 
-Copy-Item -LiteralPath (Join-Path $root "config.json") -Destination (Join-Path $distDir "config.json") -Force
-Copy-Item -LiteralPath (Join-Path $root "tasks.json") -Destination (Join-Path $distDir "tasks.json") -Force
-Copy-Item -LiteralPath (Join-Path $root "README.md") -Destination (Join-Path $distDir "README.md") -Force
-
 Write-Host "Built app:"
-Write-Host (Join-Path $distDir "$appName.exe")
+Write-Host $exePath
