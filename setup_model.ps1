@@ -3,13 +3,20 @@ Set-Location $root
 
 $ollama = Get-Command ollama -ErrorAction SilentlyContinue
 if (-not $ollama) {
+  $fallback = Join-Path $env:LOCALAPPDATA "Programs\Ollama\ollama.exe"
+  if (Test-Path -LiteralPath $fallback) {
+    $ollama = @{ Source = $fallback }
+  }
+}
+
+if (-not $ollama) {
   Write-Host "Ollama is not installed or not in PATH."
   Write-Host "Install Ollama first, then run this script again."
   exit 1
 }
 
 $model = "qwen2.5:7b-instruct-q3_K_L"
-ollama pull $model
+& $ollama.Source pull $model
 
 $configPath = Join-Path $root "config.json"
 $config = Get-Content $configPath -Raw | ConvertFrom-Json

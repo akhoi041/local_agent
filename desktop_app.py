@@ -42,7 +42,7 @@ CYBER = {
 }
 
 def load_config() -> dict[str, Any]:
-    with CONFIG_PATH.open("r", encoding="utf-8") as f:
+    with CONFIG_PATH.open("r", encoding="utf-8-sig") as f:
         return json.load(f)
 
 def save_config(config: dict[str, Any]) -> None:
@@ -109,6 +109,11 @@ class TaskStore:
     def clear_done(self) -> None:
         with self.lock:
             tasks = [task for task in self._read_unlocked() if task["status"] != "done"]
+            self._write_unlocked(tasks)
+
+    def clear_ids(self, task_ids: set[int]) -> None:
+        with self.lock:
+            tasks = [task for task in self._read_unlocked() if task["id"] not in task_ids]
             self._write_unlocked(tasks)
 
     def _read_unlocked(self) -> list[dict[str, Any]]:
@@ -363,6 +368,8 @@ class LocalAgentDesktop(tk.Tk):
         self.store = TaskStore(TASKS_PATH)
         self.events: queue.Queue[str] = queue.Queue()
         self.stop_event = threading.Event()
+        self.selected_task_ids: set[int] = set()
+        self.all_tasks_selected = False
 
         self.style = ttk.Style(self)
         self.style.theme_use("clam")
@@ -471,19 +478,31 @@ class LocalAgentDesktop(tk.Tk):
 
     def build_queue(self) -> None:
         self.queue_tab.columnconfigure(0, weight=1)
-        self.queue_tab.rowconfigure(0, weight=1)
-        self.task_tree = ttk.Treeview(self.queue_tab, columns=("status", "created", "prompt"), show="headings")
+        self.queue_tab.rowconfigure(1, weight=1)
+
+        toolbar = ttk.Frame(self.queue_tab, style="Panel.TFrame")
+        toolbar.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 10))
+        self.select_all_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(toolbar, text="Select all", variable=self.select_all_var, command=self.toggle_select_all).pack(side="left")
+        self.selection_label = ttk.Label(toolbar, text="0 selected", style="Muted.TLabel")
+        self.selection_label.pack(side="left", padx=12)
+        ttk.Button(toolbar, text="Clear Selected", command=self.clear_selected).pack(side="left")
+
+        self.task_tree = ttk.Treeview(self.queue_tab, columns=("select", "status", "created", "prompt"), show="headings")
+        self.task_tree.heading("select", text="")
         self.task_tree.heading("status", text="Status")
         self.task_tree.heading("created", text="Created")
         self.task_tree.heading("prompt", text="Prompt")
+        self.task_tree.column("select", width=48, stretch=False, anchor="center")
         self.task_tree.column("status", width=90, stretch=False)
         self.task_tree.column("created", width=150, stretch=False)
         self.task_tree.column("prompt", width=620)
-        self.task_tree.grid(row=0, column=0, sticky="nsew")
+        self.task_tree.grid(row=1, column=0, sticky="nsew")
         self.task_tree.bind("<<TreeviewSelect>>", self.show_selected_task)
+        self.task_tree.bind("<Button-1>", self.on_task_tree_click)
 
         side = ttk.Frame(self.queue_tab, style="Panel.TFrame")
-        side.grid(row=0, column=1, sticky="ns", padx=(12, 0))
+        side.grid(row=1, column=1, sticky="ns", padx=(12, 0))
         ttk.Button(side, text="Clear Done", command=self.clear_done).pack(fill="x", pady=(0, 8))
         ttk.Button(side, text="Refresh", command=self.refresh_all).pack(fill="x")
         self.task_detail = tk.Text(
@@ -496,7 +515,7 @@ class LocalAgentDesktop(tk.Tk):
             relief="flat",
             wrap="word",
         )
-        self.task_detail.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(12, 0))
+        self.task_detail.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(12, 0))
 
     def build_logs(self) -> None:
         self.logs_tab.columnconfigure(0, weight=1)
@@ -573,6 +592,8 @@ class LocalAgentDesktop(tk.Tk):
         self.mode_label.configure(text=f"{mode} | {shell} | {ROOT}")
 
         tasks = sorted(self.store.read(), key=lambda item: item["id"], reverse=True)
+        current_ids = {task["id"] for task in tasks}
+        self.selected_task_ids.intersection_update(current_ids)
         counts = {"queued": 0, "running": 0, "done": 0, "failed": 0}
         for task in tasks:
             counts[task["status"]] = counts.get(task["status"], 0) + 1
@@ -587,12 +608,14 @@ class LocalAgentDesktop(tk.Tk):
             prompt = task["prompt"]
             if len(prompt) > 120:
                 prompt = prompt[:117] + "..."
-            self.task_tree.insert("", "end", iid=str(task["id"]), values=(task["status"], task["created_at"], prompt))
+            check = "[x]" if task["id"] in self.selected_task_ids else "[ ]"
+            self.task_tree.insert("", "end", iid=str(task["id"]), values=(check, task["status"], task["created_at"], prompt))
         if selected:
             for item in selected:
                 if self.task_tree.exists(item):
                     self.task_tree.selection_set(item)
                     break
+        self.update_selection_state()
 
     def show_selected_task(self, _event: object | None = None) -> None:
         selected = self.task_tree.selection()
@@ -610,6 +633,53 @@ class LocalAgentDesktop(tk.Tk):
         )
         self.task_detail.delete("1.0", "end")
         self.task_detail.insert("1.0", text)
+
+    def on_task_tree_click(self, event: tk.Event) -> str | None:
+        region = self.task_tree.identify("region", event.x, event.y)
+        if region != "cell":
+            return None
+        row_id = self.task_tree.identify_row(event.y)
+        column = self.task_tree.identify_column(event.x)
+        if not row_id:
+            return None
+        if column == "#1":
+            self.toggle_task_selection(int(row_id))
+            return "break"
+        return None
+
+    def toggle_task_selection(self, task_id: int) -> None:
+        if task_id in self.selected_task_ids:
+            self.selected_task_ids.remove(task_id)
+        else:
+            self.selected_task_ids.add(task_id)
+        self.refresh_all()
+
+    def toggle_select_all(self) -> None:
+        tasks = self.store.read()
+        if self.select_all_var.get():
+            self.selected_task_ids = {task["id"] for task in tasks}
+        else:
+            self.selected_task_ids.clear()
+        self.refresh_all()
+
+    def update_selection_state(self) -> None:
+        tasks = self.store.read()
+        total = len(tasks)
+        selected = len(self.selected_task_ids)
+        self.selection_label.configure(text=f"{selected} selected")
+        self.select_all_var.set(total > 0 and selected == total)
+
+    def clear_selected(self) -> None:
+        if not self.selected_task_ids:
+            return
+        count = len(self.selected_task_ids)
+        if not messagebox.askyesno("Clear selected tasks", f"Clear {count} selected task(s)?"):
+            return
+        self.store.clear_ids(set(self.selected_task_ids))
+        self.selected_task_ids.clear()
+        self.task_detail.delete("1.0", "end")
+        self.events.put(f"{now()} cleared {count} selected task(s)")
+        self.refresh_all()
 
     def show_dashboard(self) -> None:
         self.notebook.select(self.dashboard_tab)

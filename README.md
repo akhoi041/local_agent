@@ -10,6 +10,10 @@ The app runs as a real desktop window, keeps a local task queue, executes lightw
 - Blue cyber theme
 - Background worker inside the app process
 - Local task queue stored in `tasks.json`
+- Gmail-like queue selection:
+  - select one task from the checkbox column
+  - select all tasks from the toolbar
+  - clear selected tasks in one action
 - Lightweight local task engine:
   - math: `print the result of 1+2`, `calculate sqrt(16) + 2`
   - date/time: `date`, `time`
