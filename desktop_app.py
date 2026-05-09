@@ -25,20 +25,22 @@ CONFIG_PATH = ROOT / "config.json"
 TASKS_PATH = ROOT / "tasks.json"
 
 CYBER = {
-    "bg": "#050b18",
-    "panel": "#071527",
-    "panel_2": "#0b1f35",
-    "field": "#06101f",
-    "rail": "#020713",
-    "line": "#12385d",
-    "text": "#d8f3ff",
-    "muted": "#7fb7d8",
-    "cyan": "#00d9ff",
-    "blue": "#1677ff",
+    "bg": "#020817",
+    "panel": "#06172d",
+    "panel_2": "#09213d",
+    "field": "#030d1d",
+    "rail": "#010511",
+    "line": "#0f4c81",
+    "text": "#dff8ff",
+    "muted": "#7cc7f2",
+    "cyan": "#00e5ff",
+    "blue": "#1683ff",
     "deep_blue": "#0b3d91",
-    "green": "#2af5a8",
+    "green": "#29ffc6",
     "warn": "#ffd166",
     "fail": "#ff5c8a",
+    "glow": "#14f1ff",
+    "violet": "#7a5cff",
 }
 
 LANGUAGES = {
@@ -420,9 +422,15 @@ class LocalAgentDesktop(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self.title("Local Agent Desktop")
+        self.overrideredirect(True)
         self.geometry("1120x720")
         self.minsize(920, 620)
         self.configure(bg=CYBER["bg"])
+        self.is_maximized = False
+        self.is_minimized = False
+        self.normal_geometry = "1120x720"
+        self.drag_start_x = 0
+        self.drag_start_y = 0
 
         self.config_data = load_config()
         self.store = TaskStore(TASKS_PATH)
@@ -441,20 +449,37 @@ class LocalAgentDesktop(tk.Tk):
         self.worker.start()
         self.after(1000, self.tick)
         self.protocol("WM_DELETE_WINDOW", self.on_close)
+        self.bind("<Map>", self.restore_window_chrome)
 
     def configure_style(self) -> None:
         self.style.configure("TFrame", background=CYBER["bg"])
         self.style.configure("Rail.TFrame", background=CYBER["rail"])
         self.style.configure("Panel.TFrame", background=CYBER["panel"], relief="flat")
-        self.style.configure("TLabel", background=CYBER["bg"], foreground=CYBER["text"])
-        self.style.configure("Muted.TLabel", background=CYBER["panel"], foreground=CYBER["muted"])
-        self.style.configure("Panel.TLabel", background=CYBER["panel"], foreground=CYBER["text"])
-        self.style.configure("TButton", padding=8, background=CYBER["panel_2"], foreground=CYBER["text"])
-        self.style.configure("Accent.TButton", padding=8, background=CYBER["cyan"], foreground=CYBER["bg"])
+        self.style.configure("TLabel", background=CYBER["bg"], foreground=CYBER["text"], font=("Segoe UI", 10))
+        self.style.configure("Muted.TLabel", background=CYBER["panel"], foreground=CYBER["muted"], font=("Cascadia Mono", 9))
+        self.style.configure("Panel.TLabel", background=CYBER["panel"], foreground=CYBER["text"], font=("Cascadia Mono", 10, "bold"))
+        self.style.configure(
+            "TButton",
+            padding=8,
+            background=CYBER["panel_2"],
+            foreground=CYBER["text"],
+            bordercolor=CYBER["line"],
+            focuscolor=CYBER["cyan"],
+            font=("Cascadia Mono", 9),
+        )
+        self.style.configure(
+            "Accent.TButton",
+            padding=8,
+            background=CYBER["cyan"],
+            foreground=CYBER["bg"],
+            bordercolor=CYBER["glow"],
+            focuscolor=CYBER["glow"],
+            font=("Cascadia Mono", 9, "bold"),
+        )
         self.style.map("TButton", background=[("active", CYBER["deep_blue"])], foreground=[("active", CYBER["text"])])
         self.style.map("Accent.TButton", background=[("active", CYBER["blue"])], foreground=[("active", CYBER["text"])])
         self.style.configure("TNotebook", background=CYBER["bg"], bordercolor=CYBER["line"])
-        self.style.configure("TNotebook.Tab", padding=(12, 7), background=CYBER["panel_2"], foreground=CYBER["muted"])
+        self.style.configure("TNotebook.Tab", padding=(14, 8), background=CYBER["panel_2"], foreground=CYBER["muted"], font=("Cascadia Mono", 9))
         self.style.map("TNotebook.Tab", background=[("selected", CYBER["deep_blue"])], foreground=[("selected", CYBER["text"])])
         self.style.configure(
             "Treeview",
@@ -462,19 +487,65 @@ class LocalAgentDesktop(tk.Tk):
             background=CYBER["field"],
             fieldbackground=CYBER["field"],
             foreground=CYBER["text"],
+            bordercolor=CYBER["line"],
+            font=("Cascadia Mono", 9),
         )
-        self.style.configure("Treeview.Heading", background=CYBER["panel_2"], foreground=CYBER["cyan"])
+        self.style.configure("Treeview.Heading", background=CYBER["panel_2"], foreground=CYBER["cyan"], font=("Cascadia Mono", 9, "bold"))
         self.style.map("Treeview", background=[("selected", CYBER["deep_blue"])], foreground=[("selected", CYBER["text"])])
 
     def build_ui(self) -> None:
-        self.columnconfigure(1, weight=1)
-        self.rowconfigure(0, weight=1)
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(1, weight=1)
 
-        rail = ttk.Frame(self, width=84, style="Rail.TFrame")
+        outer = tk.Frame(self, bg=CYBER["glow"], padx=1, pady=1)
+        outer.grid(row=0, column=0, rowspan=2, sticky="nsew")
+        outer.columnconfigure(0, weight=1)
+        outer.rowconfigure(1, weight=1)
+
+        titlebar = tk.Frame(outer, bg=CYBER["rail"], height=42)
+        titlebar.grid(row=0, column=0, sticky="ew")
+        titlebar.grid_propagate(False)
+        titlebar.columnconfigure(1, weight=1)
+        titlebar.bind("<ButtonPress-1>", self.start_window_drag)
+        titlebar.bind("<B1-Motion>", self.drag_window)
+        titlebar.bind("<Double-Button-1>", lambda _event: self.toggle_maximize())
+
+        tk.Label(
+            titlebar,
+            text="LA",
+            bg=CYBER["blue"],
+            fg=CYBER["text"],
+            font=("Cascadia Mono", 10, "bold"),
+            width=4,
+        ).grid(row=0, column=0, sticky="ns", padx=(10, 8), pady=7)
+        title_label = tk.Label(
+            titlebar,
+            text="LOCAL_AGENT_DESKTOP :: ONLINE",
+            bg=CYBER["rail"],
+            fg=CYBER["cyan"],
+            font=("Cascadia Mono", 10, "bold"),
+        )
+        title_label.grid(row=0, column=1, sticky="w")
+        title_label.bind("<ButtonPress-1>", self.start_window_drag)
+        title_label.bind("<B1-Motion>", self.drag_window)
+        title_label.bind("<Double-Button-1>", lambda _event: self.toggle_maximize())
+
+        window_buttons = tk.Frame(titlebar, bg=CYBER["rail"])
+        window_buttons.grid(row=0, column=2, sticky="e")
+        self.make_window_button(window_buttons, "-", self.minimize_window).pack(side="left")
+        self.make_window_button(window_buttons, "[]", self.toggle_maximize).pack(side="left")
+        self.make_window_button(window_buttons, "X", self.on_close, danger=True).pack(side="left")
+
+        app_frame = ttk.Frame(outer, style="TFrame")
+        app_frame.grid(row=1, column=0, sticky="nsew")
+        app_frame.columnconfigure(1, weight=1)
+        app_frame.rowconfigure(0, weight=1)
+
+        rail = ttk.Frame(app_frame, width=84, style="Rail.TFrame")
         rail.grid(row=0, column=0, sticky="ns")
         rail.grid_propagate(False)
 
-        mark = tk.Label(rail, text="LA", bg=CYBER["blue"], fg=CYBER["text"], font=("Segoe UI", 14, "bold"), width=4, height=2)
+        mark = tk.Label(rail, text="LA", bg=CYBER["blue"], fg=CYBER["text"], font=("Cascadia Mono", 14, "bold"), width=4, height=2)
         mark.pack(pady=(18, 20))
         for label, command in [
             ("Dash", self.show_dashboard),
@@ -484,7 +555,7 @@ class LocalAgentDesktop(tk.Tk):
         ]:
             ttk.Button(rail, text=label, command=command).pack(fill="x", padx=10, pady=5)
 
-        self.content = ttk.Frame(self, padding=18, style="TFrame")
+        self.content = ttk.Frame(app_frame, padding=18, style="TFrame")
         self.content.grid(row=0, column=1, sticky="nsew")
         self.content.columnconfigure(0, weight=1)
         self.content.rowconfigure(1, weight=1)
@@ -492,7 +563,7 @@ class LocalAgentDesktop(tk.Tk):
         header = ttk.Frame(self.content, style="TFrame")
         header.grid(row=0, column=0, sticky="ew", pady=(0, 14))
         header.columnconfigure(0, weight=1)
-        ttk.Label(header, text="Local Agent Desktop", font=("Segoe UI", 20, "bold")).grid(row=0, column=0, sticky="w")
+        ttk.Label(header, text="Local Agent Desktop", font=("Cascadia Mono", 22, "bold"), foreground=CYBER["cyan"]).grid(row=0, column=0, sticky="w")
         self.mode_label = ttk.Label(header, text="", foreground=CYBER["muted"])
         self.mode_label.grid(row=1, column=0, sticky="w")
         ttk.Button(header, text="Refresh", command=self.refresh_all).grid(row=0, column=1, rowspan=2, padx=(10, 0))
@@ -514,12 +585,69 @@ class LocalAgentDesktop(tk.Tk):
         self.build_logs()
         self.build_settings()
 
+    def make_window_button(self, parent: tk.Widget, text: str, command: Any, danger: bool = False) -> tk.Button:
+        bg = CYBER["rail"]
+        active = CYBER["fail"] if danger else CYBER["deep_blue"]
+        return tk.Button(
+            parent,
+            text=text,
+            command=command,
+            bg=bg,
+            fg=CYBER["text"],
+            activebackground=active,
+            activeforeground=CYBER["text"],
+            bd=0,
+            width=5,
+            height=2,
+            font=("Segoe UI", 10),
+        )
+
+    def start_window_drag(self, event: tk.Event) -> None:
+        if self.is_maximized:
+            return
+        self.drag_start_x = event.x_root - self.winfo_x()
+        self.drag_start_y = event.y_root - self.winfo_y()
+
+    def drag_window(self, event: tk.Event) -> None:
+        if self.is_maximized:
+            return
+        x = event.x_root - self.drag_start_x
+        y = event.y_root - self.drag_start_y
+        self.geometry(f"+{x}+{y}")
+
+    def minimize_window(self) -> None:
+        self.is_minimized = True
+        self.overrideredirect(False)
+        self.update_idletasks()
+        self.iconify()
+
+    def restore_window_chrome(self, _event: tk.Event | None = None) -> None:
+        if not self.is_minimized or self.state() == "iconic":
+            return
+        self.is_minimized = False
+        self.after(10, lambda: self.overrideredirect(True))
+
+    def toggle_maximize(self) -> None:
+        if self.is_maximized:
+            self.geometry(self.normal_geometry)
+            self.is_maximized = False
+            return
+        self.normal_geometry = self.geometry()
+        self.geometry(
+            f"{self.winfo_screenwidth()}x{self.winfo_screenheight()}+0+0"
+        )
+        self.is_maximized = True
+
     def build_dashboard(self) -> None:
         self.dashboard_tab.columnconfigure(0, weight=1)
-        self.dashboard_tab.rowconfigure(2, weight=1)
-        self.stats_label = ttk.Label(self.dashboard_tab, text="", style="Panel.TLabel", font=("Segoe UI", 12, "bold"))
-        self.stats_label.grid(row=0, column=0, sticky="w", pady=(0, 12))
-        ttk.Label(self.dashboard_tab, text="Command Deck", style="Panel.TLabel", font=("Segoe UI", 13, "bold")).grid(row=1, column=0, sticky="w")
+        self.dashboard_tab.rowconfigure(3, weight=1)
+        self.scanline = tk.Canvas(self.dashboard_tab, height=16, bg=CYBER["panel"], highlightthickness=0)
+        self.scanline.grid(row=0, column=0, sticky="ew", pady=(0, 10))
+        self.scanline.bind("<Configure>", self.draw_scanline)
+
+        self.stats_label = ttk.Label(self.dashboard_tab, text="", style="Panel.TLabel", font=("Cascadia Mono", 12, "bold"), foreground=CYBER["green"])
+        self.stats_label.grid(row=1, column=0, sticky="w", pady=(0, 12))
+        ttk.Label(self.dashboard_tab, text="COMMAND_DECK", style="Panel.TLabel", font=("Cascadia Mono", 13, "bold"), foreground=CYBER["cyan"]).grid(row=2, column=0, sticky="w")
         self.prompt_text = tk.Text(
             self.dashboard_tab,
             height=7,
@@ -527,14 +655,25 @@ class LocalAgentDesktop(tk.Tk):
             fg=CYBER["text"],
             insertbackground=CYBER["cyan"],
             selectbackground=CYBER["deep_blue"],
+            highlightthickness=1,
+            highlightbackground=CYBER["line"],
+            highlightcolor=CYBER["glow"],
             relief="flat",
             wrap="word",
+            font=("Cascadia Mono", 10),
         )
-        self.prompt_text.grid(row=2, column=0, sticky="nsew", pady=8)
+        self.prompt_text.grid(row=3, column=0, sticky="nsew", pady=8)
         actions = ttk.Frame(self.dashboard_tab, style="Panel.TFrame")
-        actions.grid(row=3, column=0, sticky="ew")
+        actions.grid(row=4, column=0, sticky="ew")
         ttk.Button(actions, text="Queue Task", style="Accent.TButton", command=self.queue_prompt).pack(side="right")
         ttk.Label(actions, text="Use: open notepad | open C:\\path | run python --version", style="Muted.TLabel").pack(side="left")
+
+    def draw_scanline(self, _event: tk.Event | None = None) -> None:
+        self.scanline.delete("all")
+        width = self.scanline.winfo_width()
+        for x in range(0, width, 34):
+            self.scanline.create_line(x, 8, min(x + 18, width), 8, fill=CYBER["glow"], width=2)
+        self.scanline.create_line(0, 14, width, 14, fill=CYBER["line"], width=1)
 
     def build_queue(self) -> None:
         self.queue_tab.columnconfigure(0, weight=1)
@@ -572,8 +711,12 @@ class LocalAgentDesktop(tk.Tk):
             fg=CYBER["text"],
             insertbackground=CYBER["cyan"],
             selectbackground=CYBER["deep_blue"],
+            highlightthickness=1,
+            highlightbackground=CYBER["line"],
+            highlightcolor=CYBER["glow"],
             relief="flat",
             wrap="word",
+            font=("Cascadia Mono", 10),
         )
         self.task_detail.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(12, 0))
 
@@ -586,8 +729,12 @@ class LocalAgentDesktop(tk.Tk):
             fg=CYBER["text"],
             insertbackground=CYBER["cyan"],
             selectbackground=CYBER["deep_blue"],
+            highlightthickness=1,
+            highlightbackground=CYBER["line"],
+            highlightcolor=CYBER["glow"],
             relief="flat",
             wrap="word",
+            font=("Cascadia Mono", 10),
         )
         self.log_text.grid(row=0, column=0, sticky="nsew")
 
