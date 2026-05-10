@@ -11,6 +11,7 @@ import threading
 import tkinter as tk
 import urllib.error
 import urllib.request
+from collections import Counter
 from datetime import datetime
 from pathlib import Path
 from tkinter import messagebox, ttk
@@ -23,6 +24,8 @@ else:
     ROOT = Path(__file__).resolve().parent
 CONFIG_PATH = ROOT / "config.json"
 TASKS_PATH = ROOT / "tasks.json"
+TASK_STATUSES = ("queued", "running", "done", "failed")
+PROMPT_PREVIEW_LIMIT = 120
 
 CYBER = {
     "bg": "#020817",
@@ -50,6 +53,20 @@ LANGUAGES = {
     "fr": {"label": "Français", "instruction": "French", "time": "Heure locale", "date": "Date locale", "prototype": "Mode prototype"},
     "ja": {"label": "日本語", "instruction": "Japanese", "time": "現地時刻", "date": "現地日付", "prototype": "プロトタイプモード"},
     "zh": {"label": "中文", "instruction": "Chinese", "time": "本地时间", "date": "本地日期", "prototype": "原型模式"},
+}
+
+DEFAULT_CONFIG: dict[str, Any] = {
+    "model": "qwen2.5:7b-instruct-q3_K_L",
+    "ollama_url": "http://127.0.0.1:11434/api/chat",
+    "host": "127.0.0.1",
+    "port": 8765,
+    "workspace": ".",
+    "temperature": 0.4,
+    "num_ctx": 4096,
+    "model_enabled": False,
+    "language": "vi",
+    "allow_shell": False,
+    "allowed_commands": [],
 }
 
 
@@ -96,15 +113,39 @@ def response_language(config: dict[str, Any], prompt: str) -> str:
         return detect_language(prompt)
     return code
 
+
+def read_json_file(path: Path, fallback: Any, encoding: str = "utf-8") -> Any:
+    if not path.exists():
+        return fallback
+    try:
+        with path.open("r", encoding=encoding) as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return fallback
+
+
+def write_json_file(path: Path, data: Any) -> None:
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
 def load_config() -> dict[str, Any]:
-    with CONFIG_PATH.open("r", encoding="utf-8-sig") as f:
-        return json.load(f)
+    data = read_json_file(CONFIG_PATH, {}, encoding="utf-8-sig")
+    config = DEFAULT_CONFIG | data if isinstance(data, dict) else DEFAULT_CONFIG.copy()
+    if language_code(config) != config.get("language"):
+        config["language"] = "vi"
+    return config
+
 
 def save_config(config: dict[str, Any]) -> None:
-    CONFIG_PATH.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
+    write_json_file(CONFIG_PATH, DEFAULT_CONFIG | config)
+
 
 def now() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def preview_text(text: str, limit: int = PROMPT_PREVIEW_LIMIT) -> str:
+    return text if len(text) <= limit else text[: limit - 3] + "..."
 
 class TaskStore:
     def __init__(self, path: Path) -> None:
@@ -172,14 +213,11 @@ class TaskStore:
             self._write_unlocked(tasks)
 
     def _read_unlocked(self) -> list[dict[str, Any]]:
-        if not self.path.exists():
-            return []
-        with self.path.open("r", encoding="utf-8") as f:
-            data = json.load(f)
+        data = read_json_file(self.path, [])
         return data if isinstance(data, list) else []
 
     def _write_unlocked(self, tasks: list[dict[str, Any]]) -> None:
-        self.path.write_text(json.dumps(tasks, ensure_ascii=False, indent=2), encoding="utf-8")
+        write_json_file(self.path, tasks)
 
 class ComputerTools:
     def __init__(self, config: dict[str, Any]) -> None:
@@ -602,6 +640,22 @@ class LocalAgentDesktop(tk.Tk):
             font=("Segoe UI", 10),
         )
 
+    def make_text_box(self, parent: tk.Widget, **options: Any) -> tk.Text:
+        defaults = {
+            "bg": CYBER["field"],
+            "fg": CYBER["text"],
+            "insertbackground": CYBER["cyan"],
+            "selectbackground": CYBER["deep_blue"],
+            "highlightthickness": 1,
+            "highlightbackground": CYBER["line"],
+            "highlightcolor": CYBER["glow"],
+            "relief": "flat",
+            "wrap": "word",
+            "font": ("Cascadia Mono", 10),
+        }
+        defaults.update(options)
+        return tk.Text(parent, **defaults)
+
     def start_window_drag(self, event: tk.Event) -> None:
         if self.is_maximized:
             return
@@ -648,20 +702,7 @@ class LocalAgentDesktop(tk.Tk):
         self.stats_label = ttk.Label(self.dashboard_tab, text="", style="Panel.TLabel", font=("Cascadia Mono", 12, "bold"), foreground=CYBER["green"])
         self.stats_label.grid(row=1, column=0, sticky="w", pady=(0, 12))
         ttk.Label(self.dashboard_tab, text="COMMAND_DECK", style="Panel.TLabel", font=("Cascadia Mono", 13, "bold"), foreground=CYBER["cyan"]).grid(row=2, column=0, sticky="w")
-        self.prompt_text = tk.Text(
-            self.dashboard_tab,
-            height=7,
-            bg=CYBER["field"],
-            fg=CYBER["text"],
-            insertbackground=CYBER["cyan"],
-            selectbackground=CYBER["deep_blue"],
-            highlightthickness=1,
-            highlightbackground=CYBER["line"],
-            highlightcolor=CYBER["glow"],
-            relief="flat",
-            wrap="word",
-            font=("Cascadia Mono", 10),
-        )
+        self.prompt_text = self.make_text_box(self.dashboard_tab, height=7)
         self.prompt_text.grid(row=3, column=0, sticky="nsew", pady=8)
         actions = ttk.Frame(self.dashboard_tab, style="Panel.TFrame")
         actions.grid(row=4, column=0, sticky="ew")
@@ -704,38 +745,13 @@ class LocalAgentDesktop(tk.Tk):
         side.grid(row=1, column=1, sticky="ns", padx=(12, 0))
         ttk.Button(side, text="Clear Done", command=self.clear_done).pack(fill="x", pady=(0, 8))
         ttk.Button(side, text="Refresh", command=self.refresh_all).pack(fill="x")
-        self.task_detail = tk.Text(
-            self.queue_tab,
-            height=9,
-            bg=CYBER["field"],
-            fg=CYBER["text"],
-            insertbackground=CYBER["cyan"],
-            selectbackground=CYBER["deep_blue"],
-            highlightthickness=1,
-            highlightbackground=CYBER["line"],
-            highlightcolor=CYBER["glow"],
-            relief="flat",
-            wrap="word",
-            font=("Cascadia Mono", 10),
-        )
+        self.task_detail = self.make_text_box(self.queue_tab, height=9)
         self.task_detail.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(12, 0))
 
     def build_logs(self) -> None:
         self.logs_tab.columnconfigure(0, weight=1)
         self.logs_tab.rowconfigure(0, weight=1)
-        self.log_text = tk.Text(
-            self.logs_tab,
-            bg=CYBER["field"],
-            fg=CYBER["text"],
-            insertbackground=CYBER["cyan"],
-            selectbackground=CYBER["deep_blue"],
-            highlightthickness=1,
-            highlightbackground=CYBER["line"],
-            highlightcolor=CYBER["glow"],
-            relief="flat",
-            wrap="word",
-            font=("Cascadia Mono", 10),
-        )
+        self.log_text = self.make_text_box(self.logs_tab)
         self.log_text.grid(row=0, column=0, sticky="nsew")
 
     def build_settings(self) -> None:
@@ -816,28 +832,33 @@ class LocalAgentDesktop(tk.Tk):
         tasks = sorted(self.store.read(), key=lambda item: item["id"], reverse=True)
         current_ids = {task["id"] for task in tasks}
         self.selected_task_ids.intersection_update(current_ids)
-        counts = {"queued": 0, "running": 0, "done": 0, "failed": 0}
-        for task in tasks:
-            counts[task["status"]] = counts.get(task["status"], 0) + 1
+        counts = Counter(task.get("status", "") for task in tasks)
         self.stats_label.configure(
-            text=f"Queued {counts['queued']}    Running {counts['running']}    Done {counts['done']}    Failed {counts['failed']}"
+            text="    ".join(f"{status.title()} {counts[status]}" for status in TASK_STATUSES)
         )
 
         selected = self.task_tree.selection()
         for item in self.task_tree.get_children():
             self.task_tree.delete(item)
         for task in tasks:
-            prompt = task["prompt"]
-            if len(prompt) > 120:
-                prompt = prompt[:117] + "..."
             check = "[x]" if task["id"] in self.selected_task_ids else "[ ]"
-            self.task_tree.insert("", "end", iid=str(task["id"]), values=(check, task["status"], task["created_at"], prompt))
+            self.task_tree.insert(
+                "",
+                "end",
+                iid=str(task["id"]),
+                values=(
+                    check,
+                    task.get("status", ""),
+                    task.get("created_at", ""),
+                    preview_text(str(task.get("prompt", ""))),
+                ),
+            )
         if selected:
             for item in selected:
                 if self.task_tree.exists(item):
                     self.task_tree.selection_set(item)
                     break
-        self.update_selection_state()
+        self.update_selection_state(len(tasks))
 
     def show_selected_task(self, _event: object | None = None) -> None:
         selected = self.task_tree.selection()
@@ -884,9 +905,9 @@ class LocalAgentDesktop(tk.Tk):
             self.selected_task_ids.clear()
         self.refresh_all()
 
-    def update_selection_state(self) -> None:
-        tasks = self.store.read()
-        total = len(tasks)
+    def update_selection_state(self, total: int | None = None) -> None:
+        if total is None:
+            total = len(self.store.read())
         selected = len(self.selected_task_ids)
         self.selection_label.configure(text=f"{selected} selected")
         self.select_all_var.set(total > 0 and selected == total)
@@ -917,10 +938,17 @@ class LocalAgentDesktop(tk.Tk):
 
     def save_settings(self) -> None:
         config = load_config()
+        try:
+            num_ctx = int(self.ctx_var.get())
+            temperature = float(self.temp_var.get())
+        except ValueError:
+            messagebox.showerror("Invalid settings", "Context must be an integer and temperature must be a number.")
+            return
+
         config["model"] = self.model_var.get().strip()
         config["ollama_url"] = self.url_var.get().strip()
-        config["num_ctx"] = int(self.ctx_var.get())
-        config["temperature"] = float(self.temp_var.get())
+        config["num_ctx"] = num_ctx
+        config["temperature"] = temperature
         config["model_enabled"] = bool(self.model_enabled_var.get())
         config["language"] = self.language_var.get()
         config["allow_shell"] = bool(self.shell_var.get())
