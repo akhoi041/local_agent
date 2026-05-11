@@ -2,13 +2,14 @@ $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $root
 $ErrorActionPreference = "Stop"
 
-$appName = "LocalAgentDesktop"
+$appName = "Talos"
 
 python -m PyInstaller `
   --noconfirm `
   --windowed `
   --onefile `
   --name $appName `
+  --add-data "web_frontend;web_frontend" `
   --clean `
   desktop_app.py
 

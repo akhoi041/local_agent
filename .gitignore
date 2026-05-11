@@ -17,6 +17,7 @@ dist/
 
 # App runtime state
 tasks.json
+memory.json
 *.log
 
 # Local/OS files

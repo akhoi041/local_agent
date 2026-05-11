@@ -1,5 +1,5 @@
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
-$appName = "LocalAgentDesktop"
+$appName = "Talos"
 $sourceExe = Join-Path $root "dist\$appName.exe"
 $installDir = Join-Path $env:LOCALAPPDATA "Programs\$appName"
 
@@ -28,7 +28,7 @@ $shell = New-Object -ComObject WScript.Shell
 $shortcut = $shell.CreateShortcut($shortcutPath)
 $shortcut.TargetPath = Join-Path $installDir "$appName.exe"
 $shortcut.WorkingDirectory = $installDir
-$shortcut.Description = "Local Agent Desktop"
+$shortcut.Description = "Talos"
 $shortcut.Save()
 
 Write-Host "Installed:"

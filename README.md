@@ -1,6 +1,6 @@
-# Local Agent Desktop
+# Talos
 
-Native Windows desktop assistant prototype built with Python and Tkinter.
+Native Windows desktop assistant prototype.
 
 The app runs as a real desktop window, keeps a local task queue, executes lightweight local tasks, and can optionally connect to a local Ollama model. After packaging, normal use does not require launching Python manually.
 
@@ -50,13 +50,13 @@ requirements.txt      Build dependency list
 After install, open the Desktop shortcut:
 
 ```text
-LocalAgentDesktop
+Talos
 ```
 
 Installed app path:
 
 ```text
-%LOCALAPPDATA%\Programs\LocalAgentDesktop\LocalAgentDesktop.exe
+%LOCALAPPDATA%\Programs\Talos\Talos.exe
 ```
 
 Python is not needed for normal installed usage.

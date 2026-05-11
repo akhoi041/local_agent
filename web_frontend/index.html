@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Talos</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app-chrome pywebview-drag-region">
+      <div class="chrome-title pywebview-drag-region">
+        <span class="chrome-mark">LA</span>
+        <span class="pywebview-drag-region">Talos</span>
+      </div>
+      <div class="chrome-actions">
+        <button id="minimizeBtn" class="chrome-button" title="Minimize">-</button>
+        <button id="maximizeBtn" class="chrome-button" title="Maximize">□</button>
+        <button id="closeBtn" class="chrome-button danger" title="Close">×</button>
+      </div>
+    </div>
+    <div class="scene">
+      <aside class="rail">
+        <div class="brand-core"><span>LA</span></div>
+        <button class="nav active" data-view="dashboard">Dash</button>
+        <button class="nav" data-view="queue">Queue</button>
+        <button class="nav" data-view="logs">Logs</button>
+        <button class="nav" data-view="settings">Set</button>
+      </aside>
+
+      <main class="shell">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">TALOS :: ONLINE</p>
+            <h1>Talos</h1>
+            <p id="modeLine" class="mode-line">Loading local state...</p>
+          </div>
+          <div class="reactor" aria-hidden="true">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+          <button id="refreshBtn" class="button ghost">Refresh</button>
+        </header>
+
+        <section class="view active" id="dashboard">
+          <div class="stats" id="stats"></div>
+          <div class="holo-panel command-panel">
+            <div class="panel-title">COMMAND_DECK</div>
+            <textarea id="promptInput" spellcheck="false" placeholder="Type a local task..."></textarea>
+            <div class="action-row">
+              <p>Use: open notepad | open C:\path | run python --version</p>
+              <button id="queueBtn" class="button primary">Queue Task</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="view" id="queue">
+          <div class="toolbar">
+            <label class="check"><input id="selectAll" type="checkbox" /> Select all</label>
+            <span id="selectionText">0 selected</span>
+            <button id="clearSelectedBtn" class="button ghost">Clear Selected</button>
+            <button id="clearDoneBtn" class="button ghost">Clear Done</button>
+          </div>
+          <div class="queue-grid">
+            <div class="holo-panel table-panel">
+              <table>
+                <thead>
+                  <tr>
+                    <th></th>
+                    <th>Status</th>
+                    <th>Created</th>
+                    <th>Prompt</th>
+                  </tr>
+                </thead>
+                <tbody id="taskRows"></tbody>
+              </table>
+            </div>
+            <div id="queueResizer" class="queue-resizer" title="Drag to resize task detail"></div>
+            <div class="holo-panel detail-panel">
+              <div class="panel-title">TASK_DETAIL</div>
+              <pre id="taskDetail">Select a task to inspect output.</pre>
+            </div>
+          </div>
+        </section>
+
+        <section class="view" id="logs">
+          <div class="holo-panel log-panel">
+            <div class="panel-title">EVENT_STREAM</div>
+            <pre id="logText"></pre>
+          </div>
+        </section>
+
+        <section class="view" id="settings">
+          <div class="holo-panel settings-panel">
+            <div class="panel-title">MODEL_SETTINGS</div>
+            <div class="form-grid">
+              <label>Model<input id="modelInput" /></label>
+              <label>Ollama URL<input id="urlInput" /></label>
+              <label>Context<input id="ctxInput" type="number" /></label>
+              <label>Temperature<input id="tempInput" type="number" step="0.1" /></label>
+              <label>Language<select id="languageInput">
+                <option value="auto">auto</option>
+                <option value="vi">vi</option>
+                <option value="en">en</option>
+                <option value="fr">fr</option>
+                <option value="ja">ja</option>
+                <option value="zh">zh</option>
+              </select></label>
+            </div>
+            <div class="switch-row">
+              <label class="check"><input id="modelEnabledInput" type="checkbox" /> Enable model calls</label>
+              <label class="check"><input id="shellInput" type="checkbox" /> Allow shell commands from allowlist</label>
+            </div>
+            <p id="modelStatus" class="status-text">Model status has not been checked.</p>
+            <div class="action-row">
+              <button id="checkModelBtn" class="button ghost">Test AI Model</button>
+              <button id="saveSettingsBtn" class="button primary">Save Settings</button>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+    <script src="/app.js"></script>
+  </body>
+</html>
