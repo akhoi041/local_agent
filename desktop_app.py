@@ -263,15 +263,69 @@ class ConversationMemory:
 
 
 class ComputerTools:
+    APP_ALIASES = {
+        "notepad": "notepad.exe",
+        "calculator": "calc.exe",
+        "calc": "calc.exe",
+        "paint": "mspaint.exe",
+        "explorer": "explorer.exe",
+        "cmd": "cmd.exe",
+        "powershell": "powershell.exe",
+        "terminal": "wt.exe",
+        "settings": "ms-settings:",
+        "edge": "msedge.exe",
+        "chrome": "chrome.exe",
+        "vscode": "code",
+        "code": "code",
+    }
+
+    KEY_ALIASES = {
+        "enter": "{ENTER}",
+        "return": "{ENTER}",
+        "tab": "{TAB}",
+        "escape": "{ESC}",
+        "esc": "{ESC}",
+        "backspace": "{BACKSPACE}",
+        "delete": "{DELETE}",
+        "del": "{DELETE}",
+        "space": " ",
+        "left": "{LEFT}",
+        "right": "{RIGHT}",
+        "up": "{UP}",
+        "down": "{DOWN}",
+        "home": "{HOME}",
+        "end": "{END}",
+        "pageup": "{PGUP}",
+        "pagedown": "{PGDN}",
+    }
+
     def __init__(self, config: dict[str, Any]) -> None:
         self.config = config
 
     def handle(self, prompt: str) -> str | None:
         text = prompt.strip()
         lower = text.lower()
+        if lower.startswith("launch "):
+            target = text[7:].strip().strip('"')
+            return self.open_target(target)
         if lower.startswith("open "):
             target = text[5:].strip().strip('"')
             return self.open_target(target)
+        if lower.startswith("focus "):
+            title = text[6:].strip().strip('"')
+            return self.focus_window(title)
+        if lower.startswith("type text "):
+            content = text[10:].strip()
+            return self.type_text(content)
+        if lower.startswith("type "):
+            content = text[5:].strip()
+            return self.type_text(content)
+        if lower.startswith("press "):
+            key = text[6:].strip()
+            return self.press_key(key)
+        if lower.startswith("hotkey "):
+            combo = text[7:].strip()
+            return self.hotkey(combo)
         if lower.startswith("run "):
             command = text[4:].strip()
             return self.run_allowlisted(command)
@@ -280,8 +334,91 @@ class ComputerTools:
     def open_target(self, target: str) -> str:
         if not target:
             return "No target provided."
+        target = self.APP_ALIASES.get(target.lower(), target)
         subprocess.Popen(["cmd", "/c", "start", "", target], shell=False)
         return f"Opened: {target}"
+
+    def focus_window(self, title: str) -> str:
+        if not title:
+            return "No window title provided."
+        script = (
+            "$wshell = New-Object -ComObject WScript.Shell; "
+            f"$ok = $wshell.AppActivate({self.ps_quote(title)}); "
+            "if ($ok) { 'focused' } else { 'not found' }"
+        )
+        completed = self.run_powershell(script)
+        if completed.returncode == 0 and "focused" in completed.stdout.lower():
+            return f"Focused window matching: {title}"
+        return f"No active window matched: {title}"
+
+    def type_text(self, content: str) -> str:
+        content = content.strip()
+        if not content:
+            return "No text provided."
+        script = (
+            f"Set-Clipboard -Value {self.ps_quote(content)}; "
+            "$wshell = New-Object -ComObject WScript.Shell; "
+            "Start-Sleep -Milliseconds 80; "
+            "$wshell.SendKeys('^v')"
+        )
+        completed = self.run_powershell(script)
+        if completed.returncode != 0:
+            return completed.stderr.strip() or "Typing failed."
+        return "Typed text into the active window."
+
+    def press_key(self, key: str) -> str:
+        send_key = self.KEY_ALIASES.get(key.strip().lower())
+        if send_key is None:
+            return f"Unsupported key: {key}"
+        completed = self.send_keys(send_key)
+        if completed.returncode != 0:
+            return completed.stderr.strip() or "Key press failed."
+        return f"Pressed: {key}"
+
+    def hotkey(self, combo: str) -> str:
+        send_key = self.hotkey_to_sendkeys(combo)
+        if send_key is None:
+            return f"Unsupported hotkey: {combo}"
+        completed = self.send_keys(send_key)
+        if completed.returncode != 0:
+            return completed.stderr.strip() or "Hotkey failed."
+        return f"Pressed hotkey: {combo}"
+
+    def hotkey_to_sendkeys(self, combo: str) -> str | None:
+        parts = [part.strip().lower() for part in re.split(r"[+ ]+", combo) if part.strip()]
+        if not parts:
+            return None
+        modifiers = ""
+        key = parts[-1]
+        for part in parts[:-1]:
+            if part in {"ctrl", "control"}:
+                modifiers += "^"
+            elif part == "shift":
+                modifiers += "+"
+            elif part in {"alt", "option"}:
+                modifiers += "%"
+            else:
+                return None
+        send_key = self.KEY_ALIASES.get(key, key)
+        if len(send_key) == 1:
+            return modifiers + send_key
+        return modifiers + send_key
+
+    def send_keys(self, keys: str) -> subprocess.CompletedProcess[str]:
+        script = "$wshell = New-Object -ComObject WScript.Shell; " f"$wshell.SendKeys({self.ps_quote(keys)})"
+        return self.run_powershell(script)
+
+    def run_powershell(self, script: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ["powershell", "-NoProfile", "-Command", script],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            cwd=ROOT,
+        )
+
+    def ps_quote(self, value: str) -> str:
+        return "'" + value.replace("'", "''") + "'"
 
     def run_allowlisted(self, command: str) -> str:
         if not self.config.get("allow_shell", False):
@@ -732,6 +869,7 @@ def call_model(prompt: str, config: dict[str, Any], memory: list[dict[str, str]]
                     "If live data is required but unavailable, state the limitation clearly and say what integration is missing. "
                     "Use the conversation history to resolve follow-up requests, pronouns, corrections, and references to previous answers. "
                     "When a task requires an action you cannot perform yet, say exactly what capability is missing and what you can do instead. "
+                    "Available local computer actions include opening apps/files/URLs, focusing windows by title, typing text, pressing keys, and hotkeys when the user explicitly requests them. "
                     "Think internally, but never reveal hidden reasoning, chain-of-thought, or <think> tags."
                 ),
             },
