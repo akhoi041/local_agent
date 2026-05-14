@@ -1472,11 +1472,31 @@ class LocalAgentDesktop(tk.Tk):
         self.selection_label.pack(side="left", padx=12)
         ttk.Button(toolbar, text="Clear Selected", command=self.clear_selected).pack(side="left")
 
-        tree_outer, tree_inner = self.make_glow_frame(self.queue_tab, bg=CYBER["field"], glow=CYBER["glow_soft"], depth=2)
-        tree_outer.grid(row=1, column=0, sticky="nsew")
+        queue_split = tk.PanedWindow(
+            self.queue_tab,
+            orient=tk.VERTICAL,
+            bg=CYBER["line"],
+            bd=0,
+            sashwidth=8,
+            sashrelief="flat",
+            showhandle=True,
+            handlesize=42,
+            opaqueresize=True,
+        )
+        queue_split.grid(row=1, column=0, columnspan=2, sticky="nsew")
+
+        queue_area = tk.Frame(queue_split, bg=CYBER["panel"])
+        queue_area.columnconfigure(0, weight=1)
+        queue_area.rowconfigure(0, weight=1)
+
+        tree_outer, tree_inner = self.make_glow_frame(queue_area, bg=CYBER["field"], glow=CYBER["glow_soft"], depth=2)
+        tree_outer.grid(row=0, column=0, sticky="nsew")
         tree_inner.columnconfigure(0, weight=1)
         tree_inner.rowconfigure(0, weight=1)
         self.task_tree = ttk.Treeview(tree_inner, columns=("select", "status", "created", "prompt"), show="headings")
+        tree_y_scroll = ttk.Scrollbar(tree_inner, orient="vertical", command=self.task_tree.yview)
+        tree_x_scroll = ttk.Scrollbar(tree_inner, orient="horizontal", command=self.task_tree.xview)
+        self.task_tree.configure(yscrollcommand=tree_y_scroll.set, xscrollcommand=tree_x_scroll.set)
         self.task_tree.heading("select", text="")
         self.task_tree.heading("status", text="Status")
         self.task_tree.heading("created", text="Created")
@@ -1484,8 +1504,10 @@ class LocalAgentDesktop(tk.Tk):
         self.task_tree.column("select", width=48, stretch=False, anchor="center")
         self.task_tree.column("status", width=90, stretch=False)
         self.task_tree.column("created", width=150, stretch=False)
-        self.task_tree.column("prompt", width=620)
+        self.task_tree.column("prompt", width=760, minwidth=360, stretch=False)
         self.task_tree.grid(row=0, column=0, sticky="nsew")
+        tree_y_scroll.grid(row=0, column=1, sticky="ns")
+        tree_x_scroll.grid(row=1, column=0, sticky="ew")
         self.task_tree.tag_configure("queued", foreground=CYBER["muted"])
         self.task_tree.tag_configure("running", foreground=CYBER["cyan"])
         self.task_tree.tag_configure("done", foreground=CYBER["green"])
@@ -1493,15 +1515,26 @@ class LocalAgentDesktop(tk.Tk):
         self.task_tree.bind("<<TreeviewSelect>>", self.show_selected_task)
         self.task_tree.bind("<Button-1>", self.on_task_tree_click)
 
-        side = ttk.Frame(self.queue_tab, style="Panel.TFrame")
-        side.grid(row=1, column=1, sticky="ns", padx=(12, 0))
+        side = ttk.Frame(queue_area, style="Panel.TFrame")
+        side.grid(row=0, column=1, sticky="ns", padx=(12, 0))
         ttk.Button(side, text="Clear Done", command=self.clear_done).pack(fill="x", pady=(0, 8))
         ttk.Button(side, text="Refresh", command=self.refresh_all).pack(fill="x")
-        detail_outer, detail_inner = self.make_glow_frame(self.queue_tab, bg=CYBER["field"], glow=CYBER["glow_soft"], depth=2)
-        detail_outer.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(12, 0))
+
+        detail_area = tk.Frame(queue_split, bg=CYBER["panel"])
+        detail_area.columnconfigure(0, weight=1)
+        detail_area.rowconfigure(0, weight=1)
+        detail_outer, detail_inner = self.make_glow_frame(detail_area, bg=CYBER["field"], glow=CYBER["glow_soft"], depth=2)
+        detail_outer.grid(row=0, column=0, sticky="nsew")
         detail_inner.columnconfigure(0, weight=1)
+        detail_inner.rowconfigure(0, weight=1)
         self.task_detail = self.make_text_box(detail_inner, height=9)
-        self.task_detail.grid(row=0, column=0, sticky="ew")
+        detail_y_scroll = ttk.Scrollbar(detail_inner, orient="vertical", command=self.task_detail.yview)
+        self.task_detail.configure(yscrollcommand=detail_y_scroll.set)
+        self.task_detail.grid(row=0, column=0, sticky="nsew")
+        detail_y_scroll.grid(row=0, column=1, sticky="ns")
+
+        queue_split.add(queue_area, minsize=220, stretch="always")
+        queue_split.add(detail_area, minsize=150)
 
     def build_logs(self) -> None:
         self.logs_tab.columnconfigure(0, weight=1)
