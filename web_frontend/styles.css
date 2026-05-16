@@ -404,9 +404,10 @@ textarea {
 
 .queue-grid {
   display: grid;
-  grid-template-rows: minmax(160px, 1fr) 16px minmax(150px, var(--detail-height, 230px));
+  grid-template-rows: minmax(0, 1fr) 16px minmax(96px, var(--detail-height, 230px));
   gap: 8px;
   min-height: 0;
+  overflow: hidden;
 }
 
 .queue-resizer {
@@ -439,12 +440,14 @@ textarea {
 }
 
 .detail-panel {
+  min-height: 0;
   overflow: hidden;
 }
 
 .table-panel {
   min-height: 0;
   overflow: auto;
+  overscroll-behavior: contain;
 }
 
 .table-panel table {
@@ -460,6 +463,12 @@ textarea {
 .detail-panel {
   display: grid;
   grid-template-rows: auto 1fr;
+}
+
+#taskDetail {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
 }
 
 table {

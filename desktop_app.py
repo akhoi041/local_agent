@@ -29,7 +29,7 @@ MEMORY_PATH = ROOT / "memory.json"
 TASK_STATUSES = ("queued", "running", "done", "failed")
 PROMPT_PREVIEW_LIMIT = 120
 MEMORY_TURN_LIMIT = 24
-QUEUE_PANE_MIN_HEIGHT = 160
+QUEUE_PANE_MIN_HEIGHT = 24
 DETAIL_PANE_MIN_HEIGHT = 120
 QUEUE_SPLIT_INITIAL_RATIO = 0.38
 QUEUE_SPLITTER_HEIGHT = 14
@@ -1565,6 +1565,7 @@ class LocalAgentDesktop(tk.Tk):
 
         self.queue_pane_height = QUEUE_PANE_MIN_HEIGHT
         self.queue_split_positioned = False
+        self.queue_split_dragging = False
         self.queue_split.after_idle(self.position_queue_split)
 
     def position_queue_split(self) -> None:
@@ -1606,12 +1607,26 @@ class LocalAgentDesktop(tk.Tk):
 
     def start_queue_split_drag(self, event: tk.Event) -> None:
         self.queue_split_positioned = True
-        self.queue_split_drag_start_y = event.y_root
-        self.queue_split_drag_start_height = self.queue_area.winfo_height()
+        self.queue_split_dragging = True
+        self.queue_sash.grab_set()
+        self.queue_split.bind_all("<Motion>", self.drag_queue_split)
+        self.queue_split.bind_all("<B1-Motion>", self.drag_queue_split)
+        self.queue_split.bind_all("<ButtonRelease-1>", self.stop_queue_split_drag)
+        self.drag_queue_split(event)
 
     def drag_queue_split(self, event: tk.Event) -> None:
-        delta = event.y_root - self.queue_split_drag_start_y
-        self.place_queue_sash(self.queue_split_drag_start_height + delta)
+        if not getattr(self, "queue_split_dragging", False):
+            return
+        y = event.y_root - self.queue_split.winfo_rooty() - (QUEUE_SPLITTER_HEIGHT // 2)
+        self.place_queue_sash(y)
+
+    def stop_queue_split_drag(self, _event: tk.Event) -> None:
+        self.queue_split_dragging = False
+        self.queue_split.unbind_all("<Motion>")
+        self.queue_split.unbind_all("<B1-Motion>")
+        self.queue_split.unbind_all("<ButtonRelease-1>")
+        if self.queue_sash.grab_current() is self.queue_sash:
+            self.queue_sash.grab_release()
 
     def build_logs(self) -> None:
         self.logs_tab.columnconfigure(0, weight=1)

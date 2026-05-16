@@ -191,24 +191,38 @@ function bindQueueResizer() {
 
   resizer.addEventListener("pointerdown", (event) => {
     event.preventDefault();
-    const startY = event.clientY;
-    const startHeight = state.detailHeight;
-    const rect = grid.getBoundingClientRect();
+    const pointerId = event.pointerId;
     document.body.classList.add("queue-resizing");
+    resizer.setPointerCapture?.(pointerId);
 
-    const onMove = (moveEvent) => {
-      const next = Math.max(150, Math.min(rect.height - 190, startHeight - (moveEvent.clientY - startY)));
+    const setDetailHeight = (clientY) => {
+      const rect = grid.getBoundingClientRect();
+      const styles = window.getComputedStyle(grid);
+      const gap = Number.parseFloat(styles.rowGap) || 0;
+      const resizerHeight = resizer.getBoundingClientRect().height;
+      const minQueue = 24;
+      const minDetail = 96;
+      const maxDetail = Math.max(minDetail, rect.height - resizerHeight - gap * 2 - minQueue);
+      const pointerDetail = rect.bottom - clientY - (resizerHeight / 2) - gap;
+      const next = Math.max(minDetail, Math.min(maxDetail, pointerDetail));
       state.detailHeight = next;
       grid.style.setProperty("--detail-height", `${Math.round(next)}px`);
     };
 
-    const onUp = () => {
+    const onMove = (moveEvent) => {
+      moveEvent.preventDefault();
+      setDetailHeight(moveEvent.clientY);
+    };
+
+    const onUp = (upEvent) => {
       document.body.classList.remove("queue-resizing");
+      if (resizer.hasPointerCapture?.(pointerId)) resizer.releasePointerCapture(pointerId);
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onUp);
     };
 
+    setDetailHeight(event.clientY);
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
     window.addEventListener("pointercancel", onUp);
