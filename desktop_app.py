@@ -29,8 +29,12 @@ MEMORY_PATH = ROOT / "memory.json"
 TASK_STATUSES = ("queued", "running", "done", "failed")
 PROMPT_PREVIEW_LIMIT = 120
 MEMORY_TURN_LIMIT = 24
-QUEUE_PANE_MIN_HEIGHT = 24
-DETAIL_PANE_MIN_HEIGHT = 120
+APP_MIN_WIDTH = 920
+APP_MIN_HEIGHT = 620
+WEBVIEW_MIN_WIDTH = 1024
+WEBVIEW_MIN_HEIGHT = 680
+QUEUE_PANE_MIN_HEIGHT = 132
+DETAIL_PANE_MIN_HEIGHT = 140
 QUEUE_SPLIT_INITIAL_RATIO = 0.38
 QUEUE_SPLITTER_HEIGHT = 14
 
@@ -160,6 +164,16 @@ def now() -> str:
 
 def preview_text(text: str, limit: int = PROMPT_PREVIEW_LIMIT) -> str:
     return text if len(text) <= limit else text[: limit - 3] + "..."
+
+
+def clamp_queue_pane_height(total_height: int, desired_height: int) -> int:
+    available = max(1, total_height - QUEUE_SPLITTER_HEIGHT)
+    if available < QUEUE_PANE_MIN_HEIGHT + DETAIL_PANE_MIN_HEIGHT:
+        return max(1, min(available - 1, desired_height))
+    min_y = QUEUE_PANE_MIN_HEIGHT
+    max_y = available - DETAIL_PANE_MIN_HEIGHT
+    return min(max(desired_height, min_y), max_y)
+
 
 class TaskStore:
     def __init__(self, path: Path) -> None:
@@ -1109,7 +1123,7 @@ class LocalAgentDesktop(tk.Tk):
         self.title("Talos")
         self.overrideredirect(True)
         self.geometry("1120x720")
-        self.minsize(920, 620)
+        self.minsize(APP_MIN_WIDTH, APP_MIN_HEIGHT)
         self.configure(bg=CYBER["bg"])
         self.is_maximized = False
         self.is_minimized = False
@@ -1581,6 +1595,8 @@ class LocalAgentDesktop(tk.Tk):
         detail_y_scroll.grid(row=0, column=1, sticky="ns")
 
         self.queue_pane_height = QUEUE_PANE_MIN_HEIGHT
+        self.queue_split_ratio = QUEUE_SPLIT_INITIAL_RATIO
+        self.queue_split_last_height = 0
         self.queue_split_positioned = False
         self.queue_split_dragging = False
         self.queue_split.after_idle(self.position_queue_split)
@@ -1601,14 +1617,9 @@ class LocalAgentDesktop(tk.Tk):
         height = self.queue_split.winfo_height()
         if height <= 1:
             return
-        available = max(1, height - QUEUE_SPLITTER_HEIGHT)
-        if available <= QUEUE_PANE_MIN_HEIGHT + DETAIL_PANE_MIN_HEIGHT:
-            min_y = max(1, min(QUEUE_PANE_MIN_HEIGHT, available // 2))
-            max_y = max(min_y, available - 1)
-        else:
-            min_y = QUEUE_PANE_MIN_HEIGHT
-            max_y = available - DETAIL_PANE_MIN_HEIGHT
-        self.queue_pane_height = min(max(y, min_y), max_y)
+        self.queue_pane_height = clamp_queue_pane_height(height, y)
+        self.queue_split_last_height = height
+        self.queue_split_ratio = self.queue_pane_height / max(1, height - QUEUE_SPLITTER_HEIGHT)
         detail_y = self.queue_pane_height + QUEUE_SPLITTER_HEIGHT
         detail_height = max(1, height - detail_y)
         self.queue_area.place(x=0, y=0, relwidth=1, height=self.queue_pane_height)
@@ -1620,7 +1631,14 @@ class LocalAgentDesktop(tk.Tk):
             return
         if not self.queue_split_positioned:
             return
-        self.place_queue_sash(getattr(self, "queue_pane_height", QUEUE_PANE_MIN_HEIGHT))
+        height = self.queue_split.winfo_height()
+        previous_height = getattr(self, "queue_split_last_height", 0)
+        if not getattr(self, "queue_split_dragging", False) and height > 1 and previous_height > 1 and height != previous_height:
+            available = max(1, height - QUEUE_SPLITTER_HEIGHT)
+            desired = int(available * getattr(self, "queue_split_ratio", QUEUE_SPLIT_INITIAL_RATIO))
+        else:
+            desired = getattr(self, "queue_pane_height", QUEUE_PANE_MIN_HEIGHT)
+        self.place_queue_sash(desired)
 
     def start_queue_split_drag(self, event: tk.Event) -> None:
         self.queue_split_positioned = True
@@ -1953,7 +1971,7 @@ def run_desktop_shell() -> None:
         f"http://{host}:{port}",
         width=1440,
         height=900,
-        min_size=(1024, 680),
+        min_size=(WEBVIEW_MIN_WIDTH, WEBVIEW_MIN_HEIGHT),
         background_color=CYBER["bg"],
         frameless=True,
         easy_drag=False,

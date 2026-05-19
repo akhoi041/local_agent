@@ -1,5 +1,10 @@
 :root {
   color-scheme: dark;
+  --app-min-width: 1024px;
+  --app-min-height: 680px;
+  --queue-min-height: 132px;
+  --detail-min-height: 140px;
+  --queue-resizer-height: 16px;
   --bg: #01040b;
   --panel: rgba(4, 18, 33, 0.82);
   --panel-strong: rgba(7, 29, 52, 0.94);
@@ -53,7 +58,8 @@
 }
 
 body {
-  min-height: 100vh;
+  min-width: var(--app-min-width);
+  min-height: var(--app-min-height);
   margin: 0;
   color: var(--text);
   background:
@@ -139,6 +145,7 @@ body::before {
 .scene {
   display: grid;
   grid-template-columns: 116px 1fr;
+  min-height: calc(var(--app-min-height) - 40px);
   height: calc(100vh - 40px);
   perspective: 1400px;
 }
@@ -404,7 +411,10 @@ textarea {
 
 .queue-grid {
   display: grid;
-  grid-template-rows: minmax(0, 1fr) 16px minmax(96px, var(--detail-height, 230px));
+  grid-template-rows:
+    minmax(var(--queue-min-height), 1fr)
+    var(--queue-resizer-height)
+    minmax(var(--detail-min-height), var(--detail-height, 230px));
   gap: 8px;
   min-height: 0;
   overflow: hidden;
@@ -414,7 +424,7 @@ textarea {
   position: relative;
   z-index: 5;
   cursor: row-resize;
-  min-height: 16px;
+  min-height: var(--queue-resizer-height);
   touch-action: none;
   user-select: none;
 }
@@ -581,6 +591,7 @@ input[type="checkbox"] {
 
 @media (max-width: 900px) {
   body {
+    min-width: 0;
     overflow: auto;
   }
 
