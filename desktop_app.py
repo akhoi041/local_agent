@@ -40,26 +40,26 @@ QUEUE_SPLIT_INITIAL_RATIO = 0.38
 QUEUE_SPLITTER_HEIGHT = 14
 
 CYBER = {
-    "bg": "#01040b",
-    "bg_2": "#031226",
-    "panel": "#061629",
-    "panel_2": "#0a2340",
-    "field": "#020a16",
-    "rail": "#01030a",
-    "line": "#126a9f",
-    "line_soft": "#0a3556",
+    "bg": "#08020f",
+    "bg_2": "#140625",
+    "panel": "#170a2b",
+    "panel_2": "#241047",
+    "field": "#0d0418",
+    "rail": "#07020d",
+    "line": "#8f4dff",
+    "line_soft": "#3a1a68",
     "text": "#e8fbff",
-    "muted": "#86c9e8",
-    "cyan": "#00e5ff",
-    "blue": "#1683ff",
-    "deep_blue": "#0b3d91",
+    "muted": "#c8a8ff",
+    "cyan": "#e15cff",
+    "blue": "#9b5cff",
+    "deep_blue": "#4b1d95",
     "green": "#29ffc6",
-    "amber": "#ff9f43",
+    "amber": "#ff8bd8",
     "warn": "#ffd166",
     "fail": "#ff5c8a",
-    "glow": "#14f1ff",
-    "glow_soft": "#073c5d",
-    "violet": "#7a5cff",
+    "glow": "#f05cff",
+    "glow_soft": "#30105a",
+    "violet": "#b56cff",
 }
 
 LANGUAGES = {
@@ -1095,7 +1095,7 @@ class HoloPanel(tk.Canvas):
             y2 + 7,
             x1 + 8,
             y2 + 7,
-            fill="#00040b",
+            fill=CYBER["bg"],
             outline="",
             tags="surface",
         )
@@ -1138,8 +1138,8 @@ class HoloPanel(tk.Canvas):
         )
         self.create_line(x1 + cut + 2, y1 + 2, x2 - 6, y1 + 2, fill=self.glow_color, width=2, tags="surface")
         self.create_line(x1 + 2, y1 + cut + 2, x1 + 2, y2 - 6, fill=CYBER["line_soft"], width=1, tags="surface")
-        self.create_line(x1 + 20, y2 - 3, x2 - cut - 2, y2 - 3, fill="#02101f", width=3, tags="surface")
-        self.create_line(x2 - 2, y1 + 20, x2 - 2, y2 - cut - 2, fill="#02101f", width=3, tags="surface")
+        self.create_line(x1 + 20, y2 - 3, x2 - cut - 2, y2 - 3, fill=CYBER["bg_2"], width=3, tags="surface")
+        self.create_line(x2 - 2, y1 + 20, x2 - 2, y2 - cut - 2, fill=CYBER["bg_2"], width=3, tags="surface")
         self.create_line(x1 + 10, y1 + 16, x1 + cut, y1 + 2, fill=CYBER["text"], width=1, tags="surface")
         self.create_line(x2 - cut, y2 - 2, x2 - 2, y2 - cut, fill=self.glow_color, width=1, tags="surface")
         self.tag_lower("surface", self.inner_window)

@@ -1,5 +1,7 @@
 # Python
 __pycache__/
+.pytest_cache/
+pytest-cache-files-*/
 *.py[cod]
 *.pyo
 *.pyd
@@ -18,6 +20,7 @@ dist/
 # App runtime state
 tasks.json
 memory.json
+tmp*/
 *.log
 
 # Local/OS files

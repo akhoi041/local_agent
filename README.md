@@ -7,7 +7,7 @@ The app runs as a real desktop window, keeps a local task queue, executes lightw
 ## Features
 
 - Native desktop UI, no browser required
-- Blue cyber theme
+- Cyber neon purple/violet theme
 - Background worker inside the app process
 - Local task queue stored in `tasks.json`
 - Gmail-like queue selection:
