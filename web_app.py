@@ -36,12 +36,10 @@ EVENTS: list[str] = []
 EVENT_LOCK = threading.Lock()
 STOP_EVENT = threading.Event()
 
-
 def log_event(message: str) -> None:
     with EVENT_LOCK:
         EVENTS.append(message)
         del EVENTS[:-200]
-
 
 def worker_loop() -> None:
     while not STOP_EVENT.is_set():
@@ -58,7 +56,6 @@ def worker_loop() -> None:
         except Exception as exc:
             STORE.update(task["id"], status="failed", error=str(exc))
             log_event(f"{now()} failed task #{task['id']}: {exc}")
-
 
 def state_payload() -> dict[str, Any]:
     config = load_config()
@@ -99,7 +96,6 @@ def state_payload() -> dict[str, Any]:
         ],
         "events": list(EVENTS),
     }
-
 
 class LocalAgentWebHandler(BaseHTTPRequestHandler):
     server_version = "LocalAgentWeb/1.0"
@@ -202,7 +198,6 @@ class LocalAgentWebHandler(BaseHTTPRequestHandler):
     def log_message(self, _format: str, *_args: Any) -> None:
         return
 
-
 def find_port(host: str, start_port: int) -> int:
     for port in range(start_port, start_port + 20):
         try:
@@ -212,7 +207,6 @@ def find_port(host: str, start_port: int) -> int:
         server.server_close()
         return port
     raise RuntimeError(f"No available port found from {start_port}.")
-
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run the Local Agent web UI.")
@@ -231,7 +225,6 @@ def main() -> None:
     finally:
         STOP_EVENT.set()
         server.server_close()
-
 
 if __name__ == "__main__":
     main()

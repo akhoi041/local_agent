@@ -83,15 +83,12 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "allowed_commands": [],
 }
 
-
 def language_code(config: dict[str, Any]) -> str:
     code = str(config.get("language", "vi"))
     return code if code in LANGUAGES else "vi"
 
-
 def language_label(config: dict[str, Any]) -> str:
     return LANGUAGES[language_code(config)]["label"]
-
 
 def detect_language(prompt: str) -> str:
     text = prompt.strip().lower()
@@ -120,13 +117,11 @@ def detect_language(prompt: str) -> str:
     best = max(scores, key=scores.get)
     return best if scores[best] > 0 else "en"
 
-
 def response_language(config: dict[str, Any], prompt: str) -> str:
     code = language_code(config)
     if code == "auto":
         return detect_language(prompt)
     return code
-
 
 def read_json_file(path: Path, fallback: Any, encoding: str = "utf-8") -> Any:
     if not path.exists():
@@ -137,7 +132,6 @@ def read_json_file(path: Path, fallback: Any, encoding: str = "utf-8") -> Any:
     except (OSError, json.JSONDecodeError):
         return fallback
 
-
 def write_json_file(path: Path, data: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = path.with_name(f".{path.name}.tmp")
@@ -147,7 +141,6 @@ def write_json_file(path: Path, data: Any) -> None:
         os.fsync(f.fileno())
     os.replace(tmp_path, path)
 
-
 def load_config() -> dict[str, Any]:
     data = read_json_file(CONFIG_PATH, {}, encoding="utf-8-sig")
     config = DEFAULT_CONFIG | data if isinstance(data, dict) else DEFAULT_CONFIG.copy()
@@ -155,18 +148,14 @@ def load_config() -> dict[str, Any]:
         config["language"] = "vi"
     return config
 
-
 def save_config(config: dict[str, Any]) -> None:
     write_json_file(CONFIG_PATH, DEFAULT_CONFIG | config)
-
 
 def now() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-
 def preview_text(text: str, limit: int = PROMPT_PREVIEW_LIMIT) -> str:
     return text if len(text) <= limit else text[: limit - 3] + "..."
-
 
 def queue_split_initial_sash_y(total_height: int) -> int:
     pane_space = max(1, total_height - QUEUE_SPLITTER_HEIGHT)
@@ -177,7 +166,6 @@ def queue_split_initial_sash_y(total_height: int) -> int:
         max(QUEUE_PANE_MIN_HEIGHT, requested),
         pane_space - DETAIL_PANE_MIN_HEIGHT,
     )
-
 
 class TaskStore:
     def __init__(self, path: Path) -> None:
@@ -275,7 +263,6 @@ class TaskStore:
             self._cache_mtime_ns = None
         self._cache = copy.deepcopy(tasks)
 
-
 class ConversationMemory:
     def __init__(self, path: Path, limit: int = MEMORY_TURN_LIMIT) -> None:
         self.path = path
@@ -338,7 +325,6 @@ class ConversationMemory:
         self._cache = copy.deepcopy(items)
         self._cache_mtime_ns = mtime_ns
         return copy.deepcopy(items)
-
 
 class ComputerTools:
     APP_ALIASES = {
@@ -515,7 +501,6 @@ class ComputerTools:
         output = completed.stdout.strip() or completed.stderr.strip()
         return output or f"Command completed with exit code {completed.returncode}."
 
-
 class LocalComputerActionEngine:
     def __init__(self, config: dict[str, Any]) -> None:
         self.config = config
@@ -532,7 +517,6 @@ class LocalComputerActionEngine:
 
         return None
 
-
 def memory_messages(memory: list[dict[str, str]]) -> list[dict[str, str]]:
     messages: list[dict[str, str]] = []
     for item in memory[-MEMORY_TURN_LIMIT:]:
@@ -542,7 +526,6 @@ def memory_messages(memory: list[dict[str, str]]) -> list[dict[str, str]]:
             messages.append({"role": role, "content": content})
     return messages
 
-
 def process_prompt(prompt: str, config: dict[str, Any], memory: ConversationMemory | None = None) -> str:
     action_engine = LocalComputerActionEngine(config)
     local_result = action_engine.handle(prompt)
@@ -550,7 +533,6 @@ def process_prompt(prompt: str, config: dict[str, Any], memory: ConversationMemo
     if memory is not None:
         memory.append_turn(prompt, result)
     return result
-
 
 def call_model(prompt: str, config: dict[str, Any], memory: list[dict[str, str]] | None = None) -> str:
     if not config.get("model_enabled", False):
@@ -652,7 +634,6 @@ def check_ollama(config: dict[str, Any], timeout: float = 2.0) -> tuple[bool, st
         f"Available models: {available}"
     )
 
-
 class HoloPanel(tk.Canvas):
     def __init__(
         self,
@@ -752,7 +733,6 @@ class HoloPanel(tk.Canvas):
         self.create_line(x2 - cut, y2 - 2, x2 - 2, y2 - cut, fill=self.glow_color, width=1, tags="surface")
         self.tag_lower("surface", self.inner_window)
 
-
 class AutoScrollbar(ttk.Scrollbar):
     def __init__(self, parent: tk.Widget, **options: Any) -> None:
         super().__init__(parent, **options)
@@ -767,7 +747,6 @@ class AutoScrollbar(ttk.Scrollbar):
             self.grid()
             self.visible = True
         super().set(first, last)
-
 
 class LocalAgentDesktop(tk.Tk):
     def __init__(self) -> None:
@@ -1514,11 +1493,9 @@ class LocalAgentDesktop(tk.Tk):
         self.stop_event.set()
         self.destroy()
 
-
 def run_legacy_tk_app() -> None:
     app = LocalAgentDesktop()
     app.mainloop()
-
 
 def run_desktop_shell() -> None:
     sys.modules.setdefault("desktop_app", sys.modules[__name__])
@@ -1584,7 +1561,6 @@ def run_desktop_shell() -> None:
     window_ref["window"] = window
     window.events.closed += on_closed
     webview.start(debug="--debug-webview" in sys.argv)
-
 
 if __name__ == "__main__":
     try:

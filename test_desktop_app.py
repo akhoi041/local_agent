@@ -14,7 +14,6 @@ from desktop_app import (
     queue_split_initial_sash_y,
 )
 
-
 class LocalComputerActionEngineTests(unittest.TestCase):
     def setUp(self) -> None:
         self.config = DEFAULT_CONFIG | {"model_enabled": False, "language": "en"}
@@ -78,7 +77,6 @@ class LocalComputerActionEngineTests(unittest.TestCase):
             )
 
             self.assertEqual(store.read()[0]["id"], 7)
-
 
 if __name__ == "__main__":
     unittest.main()
