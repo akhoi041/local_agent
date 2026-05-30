@@ -30,7 +30,7 @@ function setView(viewId) {
 
 function renderStats(counts) {
   $("#stats").innerHTML = ["queued", "running", "done", "failed"]
-    .map((key) => `<div class="stat"><span>${key.toUpperCase()}</span><b>${counts[key] ?? 0}</b></div>`)
+    .map((key) => `<div class="stat"><span>${key[0].toUpperCase()}${key.slice(1)}</span><b>${counts[key] ?? 0}</b></div>`)
     .join("");
 }
 
@@ -130,6 +130,51 @@ function safeStatus(value) {
   return ["queued", "running", "done", "failed"].includes(status) ? status : "queued";
 }
 
+function setMaximizeIcon(maximized) {
+  const button = $("#maximizeBtn");
+  if (!button) return;
+  button.innerHTML = maximized ? "&#10064;" : "&#9633;";
+  button.title = maximized ? "Restore" : "Maximize";
+  button.setAttribute("aria-label", button.title);
+}
+
+async function syncWindowState() {
+  const stateInfo = await window.pywebview?.api?.get_window_state?.();
+  if (stateInfo) setMaximizeIcon(Boolean(stateInfo.maximized));
+}
+
+async function toggleMaximize() {
+  const maximized = await window.pywebview?.api?.toggle_maximize?.();
+  setMaximizeIcon(Boolean(maximized));
+}
+
+function snapTarget(kind) {
+  const screenInfo = window.screen;
+  const left = Number(screenInfo.availLeft ?? 0);
+  const top = Number(screenInfo.availTop ?? 0);
+  const width = Number(screenInfo.availWidth || screenInfo.width || 1200);
+  const height = Number(screenInfo.availHeight || screenInfo.height || 800);
+  const halfW = Math.round(width / 2);
+  const halfH = Math.round(height / 2);
+  const thirdW = Math.round(width / 3);
+  const targets = {
+    left: [left, top, halfW, height],
+    right: [left + width - halfW, top, halfW, height],
+    "third-left": [left, top, thirdW, height],
+    "third-center": [left + thirdW, top, width - thirdW * 2, height],
+    "top-left": [left, top, halfW, halfH],
+    "bottom-right": [left + width - halfW, top + height - halfH, halfW, halfH],
+  };
+  return targets[kind] || targets.left;
+}
+
+async function snapWindow(kind) {
+  const [x, y, width, height] = snapTarget(kind);
+  await window.pywebview?.api?.snap_to?.(x, y, width, height);
+  setMaximizeIcon(false);
+  $("#snapMenu")?.classList.remove("open");
+}
+
 async function queueTask() {
   const prompt = $("#promptInput").value.trim();
   if (!prompt) return;
@@ -204,10 +249,23 @@ function bindEvents() {
     const result = await api("/api/check_model", { method: "POST", body: JSON.stringify({}) });
     $("#modelStatus").textContent = result.message;
   });
+  $(".app-chrome").addEventListener("dblclick", (event) => {
+    if (event.target.closest(".chrome-actions")) return;
+    toggleMaximize();
+  });
   $("#minimizeBtn").addEventListener("click", () => window.pywebview?.api?.minimize?.());
-  $("#maximizeBtn").addEventListener("click", () => window.pywebview?.api?.toggle_maximize?.());
+  $("#maximizeBtn").addEventListener("click", toggleMaximize);
+  $("#maximizeBtn").addEventListener("pointerdown", () => $("#snapMenu")?.classList.add("open"));
+  $$(".snap-option").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      snapWindow(button.dataset.snap);
+    });
+  });
   $("#closeBtn").addEventListener("click", () => window.pywebview?.api?.close?.());
   bindQueueResizer();
+  syncWindowState();
 }
 
 function bindQueueResizer() {

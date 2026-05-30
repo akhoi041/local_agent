@@ -30,8 +30,8 @@ PROMPT_PREVIEW_LIMIT = 120
 MEMORY_TURN_LIMIT = 24
 APP_MIN_WIDTH = 920
 APP_MIN_HEIGHT = 620
-WEBVIEW_MIN_WIDTH = 1024
-WEBVIEW_MIN_HEIGHT = 680
+WEBVIEW_MIN_WIDTH = 520
+WEBVIEW_MIN_HEIGHT = 420
 QUEUE_PANE_MIN_HEIGHT = 132
 DETAIL_PANE_MIN_HEIGHT = 140
 QUEUE_SPLIT_INITIAL_RATIO = 0.38
@@ -1523,16 +1523,35 @@ def run_desktop_shell() -> None:
             if window is not None:
                 window.minimize()
 
-        def toggle_maximize(self) -> None:
+        def toggle_maximize(self) -> bool:
             window = window_ref["window"]
             if window is None:
-                return
-            if window_ref["maximized"]:
+                return False
+            state = str(getattr(window, "state", ""))
+            if window_ref["maximized"] or "maximized" in state.lower():
                 window.restore()
                 window_ref["maximized"] = False
             else:
                 window.maximize()
                 window_ref["maximized"] = True
+            return window_ref["maximized"]
+
+        def get_window_state(self) -> dict[str, Any]:
+            window = window_ref["window"]
+            state = str(getattr(window, "state", "")) if window is not None else ""
+            maximized = window_ref["maximized"] or "maximized" in state.lower()
+            window_ref["maximized"] = maximized
+            return {"maximized": maximized, "state": state}
+
+        def snap_to(self, x: int, y: int, width: int, height: int) -> dict[str, Any]:
+            window = window_ref["window"]
+            if window is None:
+                return {"maximized": False}
+            window.restore()
+            window_ref["maximized"] = False
+            window.move(int(x), int(y))
+            window.resize(max(WEBVIEW_MIN_WIDTH, int(width)), max(WEBVIEW_MIN_HEIGHT, int(height)))
+            return {"maximized": False}
 
         def close(self) -> None:
             window = window_ref["window"]

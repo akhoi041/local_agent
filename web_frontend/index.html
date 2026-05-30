@@ -9,35 +9,55 @@
   <body>
     <div class="app-chrome pywebview-drag-region">
       <div class="chrome-title pywebview-drag-region">
-        <span class="chrome-mark">LA</span>
+        <span class="chrome-mark">T</span>
         <span class="pywebview-drag-region">Talos</span>
       </div>
       <div class="chrome-actions">
         <button id="minimizeBtn" class="chrome-button" title="Minimize">-</button>
-        <button id="maximizeBtn" class="chrome-button" title="Maximize">&#9633;</button>
+        <div class="maximize-wrap">
+          <button id="maximizeBtn" class="chrome-button" title="Maximize" aria-label="Maximize">&#9633;</button>
+          <div id="snapMenu" class="snap-menu" role="menu" aria-label="Snap layouts">
+            <button class="snap-option two-left" data-snap="left" title="Snap left">
+              <span></span><span></span>
+            </button>
+            <button class="snap-option two-right" data-snap="right" title="Snap right">
+              <span></span><span></span>
+            </button>
+            <button class="snap-option three-left" data-snap="third-left" title="Snap left third">
+              <span></span><span></span><span></span>
+            </button>
+            <button class="snap-option three-center" data-snap="third-center" title="Snap center third">
+              <span></span><span></span><span></span>
+            </button>
+            <button class="snap-option quad" data-snap="top-left" title="Snap top left">
+              <span></span><span></span><span></span><span></span>
+            </button>
+            <button class="snap-option quad" data-snap="bottom-right" title="Snap bottom right">
+              <span></span><span></span><span></span><span></span>
+            </button>
+          </div>
+        </div>
         <button id="closeBtn" class="chrome-button danger" title="Close">&times;</button>
       </div>
     </div>
     <div class="scene">
       <aside class="rail">
-        <div class="brand-core"><span>LA</span></div>
-        <button class="nav active" data-view="dashboard">Dash</button>
+        <div class="brand-core">
+          <span class="brand-kicker">Local Agent</span>
+          <span class="brand-name">Talos</span>
+        </div>
+        <button class="nav active" data-view="dashboard">Overview</button>
         <button class="nav" data-view="queue">Queue</button>
         <button class="nav" data-view="logs">Logs</button>
-        <button class="nav" data-view="settings">Set</button>
+        <button class="nav" data-view="settings">Settings</button>
       </aside>
 
       <main class="shell">
         <header class="topbar">
           <div>
-            <p class="eyebrow">TALOS :: ONLINE</p>
+            <p class="eyebrow">Local desktop assistant</p>
             <h1>Talos</h1>
             <p id="modeLine" class="mode-line">Loading local state...</p>
-          </div>
-          <div class="reactor" aria-hidden="true">
-            <span></span>
-            <span></span>
-            <span></span>
           </div>
           <button id="refreshBtn" class="button ghost">Refresh</button>
         </header>
@@ -45,7 +65,7 @@
         <section class="view active" id="dashboard">
           <div class="stats" id="stats"></div>
           <div class="holo-panel command-panel">
-            <div class="panel-title">COMMAND_DECK</div>
+            <div class="panel-title">Command</div>
             <textarea id="promptInput" spellcheck="false" placeholder="Ask Talos or type an explicit computer action..."></textarea>
             <div class="action-row">
               <p>Use: open notepad | focus notepad | type text hello | press enter | hotkey ctrl+s</p>
@@ -77,7 +97,7 @@
             </div>
             <div id="queueResizer" class="queue-resizer" title="Drag to resize task detail"></div>
             <div class="holo-panel detail-panel">
-              <div class="panel-title">TASK_DETAIL</div>
+              <div class="panel-title">Task detail</div>
               <pre id="taskDetail">Select a task to inspect output.</pre>
             </div>
           </div>
@@ -85,14 +105,14 @@
 
         <section class="view" id="logs">
           <div class="holo-panel log-panel">
-            <div class="panel-title">EVENT_STREAM</div>
+            <div class="panel-title">Event stream</div>
             <pre id="logText"></pre>
           </div>
         </section>
 
         <section class="view" id="settings">
           <div class="holo-panel settings-panel">
-            <div class="panel-title">MODEL_SETTINGS</div>
+            <div class="panel-title">Model settings</div>
             <div class="form-grid">
               <label>Model<input id="modelInput" /></label>
               <label>Ollama URL<input id="urlInput" /></label>
