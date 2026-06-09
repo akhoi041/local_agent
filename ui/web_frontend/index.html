@@ -4,6 +4,12 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Talos</title>
+    <script>
+      (() => {
+        const theme = localStorage.getItem("talos-theme");
+        if (["light", "dark", "neutral"].includes(theme)) document.documentElement.dataset.theme = theme;
+      })();
+    </script>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
@@ -37,6 +43,7 @@
         <button class="nav active" data-view="dashboard">Server</button>
         <button class="nav" data-view="workspace">Arduino</button>
         <button class="nav" data-view="logs">Logs</button>
+        <button class="nav" data-view="settings">Settings</button>
       </aside>
 
       <main class="shell">
@@ -101,6 +108,17 @@
           <div class="holo-panel log-panel">
             <div class="panel-title">Event stream</div>
             <pre id="logText"></pre>
+          </div>
+        </section>
+
+        <section class="view" id="settings">
+          <div class="holo-panel settings-panel">
+            <div class="panel-title">Theme</div>
+            <div class="theme-options" role="radiogroup" aria-label="Theme">
+              <label class="theme-option"><input type="radio" name="theme" value="light" /> Light</label>
+              <label class="theme-option"><input type="radio" name="theme" value="dark" /> Dark</label>
+              <label class="theme-option"><input type="radio" name="theme" value="neutral" /> Neutral</label>
+            </div>
           </div>
         </section>
       </main>

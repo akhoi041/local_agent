@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
-from talos_core import (
+from talos.core import (
     ROOT,
     language_code,
     language_label,
@@ -19,7 +19,7 @@ from talos_core import (
     now,
     save_config,
 )
-from talos_arduino import (
+from talos.arduino import (
     delete_workspace_file,
     discover_arduino_projects,
     read_workspace_file,
@@ -28,9 +28,10 @@ from talos_arduino import (
     workspace_summary,
     write_workspace_file,
 )
+from talos.native_bridge import native_available
 
 ASSET_ROOT = Path(getattr(sys, "_MEIPASS", ROOT))
-FRONTEND = ASSET_ROOT / "web_frontend"
+FRONTEND = ASSET_ROOT / "web_frontend" if getattr(sys, "frozen", False) else ROOT / "ui" / "web_frontend"
 EVENTS: list[str] = []
 EVENT_LOCK = threading.Lock()
 STOP_EVENT = threading.Event()
@@ -52,6 +53,7 @@ def state_payload() -> dict[str, Any]:
         "root": str(ROOT),
         "language": language_label(config),
         "language_code": language_code(config),
+        "native_available": native_available(),
         "config": {
             "language": config.get("language", "vi"),
             "arduino_workspace_path": config.get("arduino_workspace_path", ""),

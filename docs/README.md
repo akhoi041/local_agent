@@ -8,6 +8,7 @@ It does not try to replace Codex or run a separate AI model. Codex remains the r
 
 - Native Windows desktop shell via pywebview.
 - Local HTTP API on `127.0.0.1`.
+- Native C window/title discovery for open Arduino sketches.
 - Arduino sketch folder registration.
 - Arduino source file discovery for `.ino`, `.h`, `.hpp`, `.c`, `.cpp`, `.S`, `.txt`, and `.md`.
 - Safe read/write/delete endpoints constrained to the configured sketch folder.
@@ -58,32 +59,36 @@ Example verify request:
 
 ```text
 desktop_app.py          Desktop pywebview shell
-web_app.py              Local HTTP tool server
-talos_client.py         CLI bridge for Codex and terminal use
-talos_core.py           Shared config, paths, utility code, and legacy local actions
-talos_arduino.py        Arduino workspace and sandbox runner
-web_frontend/           Desktop UI assets
-config.json             Runtime configuration
-build_app.ps1           Build one-file Windows executable
-install_app.ps1         Install built app to LocalAppData and create desktop shortcut
-launch_desktop.ps1      Open source app or installed app
-requirements.txt        Build/runtime Python dependencies
+talos/server.py         Local HTTP tool server
+talos/client.py         CLI bridge for Codex and terminal use
+talos/core.py           Thin Python bridge config and path utilities
+talos/arduino.py        Arduino workspace and sandbox runner
+talos/native_bridge.py  ctypes bridge to the native library
+native/talos_native.c   Native Windows app-discovery logic
+ui/web_frontend/        Desktop UI assets
+config/config.json      Runtime configuration
+config/requirements.txt Build/runtime Python dependencies
+scripts/build_app.ps1   Build one-file Windows executable
+scripts/install_app.ps1 Install built app to LocalAppData and create desktop shortcut
+scripts/launch_desktop.ps1 Open source app or installed app
+tests/                  Regression tests
+docs/                   README and license
 ```
 
 Runtime files such as `.talos_sandbox/`, `tasks.json`, and `memory.json` are ignored by Git.
 
 ## Codex Bridge CLI
 
-Codex can call Talos from a VS Code terminal through `talos_client.py`.
+Codex can call Talos from a VS Code terminal through `talos.client`.
 
 ```powershell
-python -B talos_client.py state
-python -B talos_client.py projects
-python -B talos_client.py workspace "C:\Users\You\Documents\Arduino\Blink" --fqbn arduino:avr:uno
-python -B talos_client.py context
-python -B talos_client.py read Blink.ino
-python -B talos_client.py write Blink.ino --from-file edited\Blink.ino
-python -B talos_client.py verify
+python -B -m talos.client state
+python -B -m talos.client projects
+python -B -m talos.client workspace "C:\Users\You\Documents\Arduino\Blink" --fqbn arduino:avr:uno
+python -B -m talos.client context
+python -B -m talos.client read Blink.ino
+python -B -m talos.client write Blink.ino --from-file edited\Blink.ino
+python -B -m talos.client verify
 ```
 
 ## Run From Source
@@ -95,13 +100,13 @@ python -B desktop_app.py
 Or:
 
 ```powershell
-.\launch_desktop.ps1
+.\scripts\launch_desktop.ps1
 ```
 
 To run only the HTTP server:
 
 ```powershell
-python -B web_app.py --port 8787
+python -B -m talos.server --port 8787
 ```
 
 ## Build And Install
@@ -109,19 +114,25 @@ python -B web_app.py --port 8787
 Install dependencies:
 
 ```powershell
-python -m pip install -r requirements.txt
+python -m pip install -r config\requirements.txt
+```
+
+Build the native C helper when a C compiler is available:
+
+```powershell
+.\scripts\build_native.ps1
 ```
 
 Build:
 
 ```powershell
-.\build_app.ps1
+.\scripts\build_app.ps1
 ```
 
 Install locally:
 
 ```powershell
-.\install_app.ps1
+.\scripts\install_app.ps1
 ```
 
 ## Arduino Requirements

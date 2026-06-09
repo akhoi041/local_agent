@@ -4,6 +4,9 @@ const state = {
   refreshPromise: null,
 };
 
+const THEMES = ["light", "dark", "neutral"];
+const THEME_KEY = "talos-theme";
+
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 
@@ -23,6 +26,19 @@ function setView(viewId) {
   $$(".nav").forEach((button) => button.classList.toggle("active", button.dataset.view === viewId));
 }
 
+function currentTheme() {
+  const stored = localStorage.getItem(THEME_KEY);
+  return THEMES.includes(stored) ? stored : "light";
+}
+
+function applyTheme(theme) {
+  const nextTheme = THEMES.includes(theme) ? theme : "light";
+  document.documentElement.dataset.theme = nextTheme;
+  localStorage.setItem(THEME_KEY, nextTheme);
+  const input = document.querySelector(`input[name="theme"][value="${nextTheme}"]`);
+  if (input) input.checked = true;
+}
+
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (char) => ({
     "&": "&amp;",
@@ -38,9 +54,9 @@ function renderStats(payload) {
   const projects = payload.arduino_projects || [];
   const rows = [
     ["Role", payload.role || "Tool server"],
+    ["Native C", payload.native_available ? "Loaded" : "Not built"],
     ["Open sketches", String(projects.length)],
     ["Arduino", arduino.valid ? "Ready" : "Not ready"],
-    ["Files", String((arduino.files || []).length)],
   ];
   $("#stats").innerHTML = rows
     .map(([label, value]) => `<div class="stat"><span>${escapeHtml(label)}</span><b>${escapeHtml(value)}</b></div>`)
@@ -199,6 +215,7 @@ async function snapWindow(kind) {
 }
 
 function bindEvents() {
+  applyTheme(currentTheme());
   $$(".nav").forEach((button) => button.addEventListener("click", () => setView(button.dataset.view)));
   $("#refreshBtn").addEventListener("click", refresh);
   $("#saveArduinoBtn").addEventListener("click", saveArduinoWorkspace);
@@ -207,6 +224,11 @@ function bindEvents() {
     input.addEventListener("input", () => {
       state.arduinoDirty = true;
       $("#verifyArduinoBtn").disabled = false;
+    });
+  });
+  $$('input[name="theme"]').forEach((input) => {
+    input.addEventListener("change", () => {
+      if (input.checked) applyTheme(input.value);
     });
   });
   $(".app-chrome").addEventListener("dblclick", (event) => {
