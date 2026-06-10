@@ -26,6 +26,61 @@ static int ends_with_ino(const wchar_t *text, int start, int end) {
         && towlower(text[end - 1]) == L'o';
 }
 
+static int arduino_marker_at(const wchar_t *title, int index) {
+    const wchar_t *marker = L"Arduino IDE";
+    int i = 0;
+    while (marker[i]) {
+        if (towlower(title[index + i]) != towlower(marker[i])) return 0;
+        i++;
+    }
+    return 1;
+}
+
+static int valid_sketch_char(wchar_t ch) {
+    return iswalnum(ch) || ch == L'_' || ch == L'.' || ch == L'-' || ch == L' ';
+}
+
+static int append_inferred_ino_name(const wchar_t *title, wchar_t *out, int out_len, int *used, int count) {
+    int i = 0;
+    int end = -1;
+    int start = 0;
+    wchar_t name[TALOS_TITLE_LIMIT];
+    int n = 0;
+
+    while (title[i]) {
+        if ((title[i] == L'|' || title[i] == L'-') && iswspace(title[i + 1])) {
+            int marker = i + 1;
+            while (iswspace(title[marker])) marker++;
+            if (arduino_marker_at(title, marker)) {
+                end = i;
+                break;
+            }
+        }
+        i++;
+    }
+    if (end <= 0) return count;
+
+    while (start < end && iswspace(title[start])) start++;
+    while (end > start && (iswspace(title[end - 1]) || title[end - 1] == L'-' || title[end - 1] == L'|')) end--;
+    if (end <= start) return count;
+    for (i = start; i < end; i++) {
+        if (!valid_sketch_char(title[i])) return count;
+    }
+    if (ends_with_ino(title, start, end)) return count;
+
+    for (i = start; i < end && n < TALOS_TITLE_LIMIT - 5; i++) {
+        name[n++] = title[i];
+    }
+    name[n++] = L'.';
+    name[n++] = L'i';
+    name[n++] = L'n';
+    name[n++] = L'o';
+    name[n] = L'\0';
+    if (count > 0) append_text(out, out_len, used, L"\n");
+    append_text(out, out_len, used, name);
+    return count + 1;
+}
+
 __declspec(dllexport)
 int talos_extract_ino_names(const wchar_t *title, wchar_t *out, int out_len) {
     int count = 0;
@@ -61,6 +116,9 @@ int talos_extract_ino_names(const wchar_t *title, wchar_t *out, int out_len) {
             append_text(out, out_len, &used, name);
             count++;
         }
+    }
+    if (count == 0) {
+        count = append_inferred_ino_name(title, out, out_len, &used, count);
     }
     return count;
 }

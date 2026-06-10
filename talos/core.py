@@ -24,9 +24,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
 
 LANGUAGES = {
     "auto": "Auto",
-    "vi": "Tiếng Việt",
+    "vi": "Ti\u1ebfng Vi\u1ec7t",
     "en": "English",
 }
+
 
 def read_json_file(path: Path, fallback: Any, encoding: str = "utf-8") -> Any:
     if not path.exists():
@@ -37,6 +38,7 @@ def read_json_file(path: Path, fallback: Any, encoding: str = "utf-8") -> Any:
     except (OSError, json.JSONDecodeError):
         return fallback
 
+
 def write_json_file(path: Path, data: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = path.with_name(f".{path.name}.tmp")
@@ -46,6 +48,7 @@ def write_json_file(path: Path, data: Any) -> None:
         os.fsync(stream.fileno())
     os.replace(tmp_path, path)
 
+
 def load_config() -> dict[str, Any]:
     data = read_json_file(CONFIG_PATH, {}, encoding="utf-8-sig")
     config = DEFAULT_CONFIG | data if isinstance(data, dict) else DEFAULT_CONFIG.copy()
@@ -53,15 +56,19 @@ def load_config() -> dict[str, Any]:
         config["language"] = "vi"
     return config
 
+
 def save_config(config: dict[str, Any]) -> None:
     write_json_file(CONFIG_PATH, DEFAULT_CONFIG | config)
+
 
 def language_code(config: dict[str, Any]) -> str:
     code = str(config.get("language", "vi"))
     return code if code in LANGUAGES else "vi"
 
+
 def language_label(config: dict[str, Any]) -> str:
     return LANGUAGES[language_code(config)]
+
 
 def now() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")

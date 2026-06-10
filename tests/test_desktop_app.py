@@ -16,9 +16,10 @@ from talos.arduino import (
 from talos.core import language_label
 from talos.native_bridge import native_available
 
+
 class TalosArduinoTests(unittest.TestCase):
     def test_language_label_defaults_to_vietnamese(self) -> None:
-        self.assertEqual(language_label({"language": "vi"}), "Tiếng Việt")
+        self.assertEqual(language_label({"language": "vi"}), "Ti\u1ebfng Vi\u1ec7t")
 
     def test_arduino_workspace_summary_finds_main_sketch_and_tabs(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -37,6 +38,7 @@ class TalosArduinoTests(unittest.TestCase):
     def test_native_bridge_extracts_multiple_open_sketch_titles(self) -> None:
         self.assertEqual(extract_ino_names("1.ino - Arduino IDE"), ["1.ino"])
         self.assertEqual(extract_ino_names("2.ino | Arduino IDE"), ["2.ino"])
+        self.assertEqual(extract_ino_names("test | Arduino IDE 2.3.4"), ["test.ino"])
         self.assertIsInstance(native_available(), bool)
 
     def test_arduino_discovery_maps_open_sketches_to_folders(self) -> None:
@@ -57,6 +59,64 @@ class TalosArduinoTests(unittest.TestCase):
             self.assertEqual([project["sketch"] for project in projects], ["1.ino", "2.ino"])
             self.assertEqual([Path(project["path"]).name for project in projects], ["1", "2"])
             self.assertTrue(all(project["valid"] for project in projects))
+
+    def test_arduino_discovery_maps_ide_2_titles_without_ino_extension(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp) / "Arduino"
+            sketch = root / "test"
+            sketch.mkdir(parents=True)
+            (sketch / "test.ino").write_text("void setup() {}\nvoid loop() {}\n", encoding="utf-8")
+
+            projects = discover_arduino_projects(
+                {"arduino_search_roots": str(root)},
+                titles=["test | Arduino IDE 2.3.4"],
+            )
+
+            self.assertEqual(len(projects), 1)
+            self.assertEqual(projects[0]["sketch"], "test.ino")
+            self.assertEqual(Path(projects[0]["path"]).name, "test")
+            self.assertTrue(projects[0]["valid"])
+
+    def test_arduino_discovery_uses_window_title_when_process_has_no_ino_path(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp) / "Arduino"
+            sketch = root / "test"
+            sketch.mkdir(parents=True)
+            (sketch / "test.ino").write_text("void setup() {}\nvoid loop() {}\n", encoding="utf-8")
+
+            projects = discover_arduino_projects(
+                {"arduino_search_roots": str(root)},
+                titles=["test | Arduino IDE 2.3.4"],
+                ino_paths=[],
+            )
+
+            self.assertEqual(len(projects), 1)
+            self.assertEqual(projects[0]["sketch"], "test.ino")
+            self.assertEqual(projects[0]["source"], "window_title")
+
+    def test_arduino_discovery_does_not_include_configured_folder_without_open_ide_signal(self) -> None:
+        with TemporaryDirectory() as tmp:
+            sketch = Path(tmp) / "test"
+            sketch.mkdir()
+            (sketch / "test.ino").write_text("void setup() {}\nvoid loop() {}\n", encoding="utf-8")
+
+            projects = discover_arduino_projects({"arduino_workspace_path": str(sketch)}, titles=[])
+
+            self.assertEqual(projects, [])
+
+    def test_arduino_discovery_maps_open_process_ino_path_to_folder(self) -> None:
+        with TemporaryDirectory() as tmp:
+            sketch = Path(tmp) / "test"
+            sketch.mkdir()
+            ino = sketch / "test.ino"
+            ino.write_text("void setup() {}\nvoid loop() {}\n", encoding="utf-8")
+
+            projects = discover_arduino_projects({}, titles=[], ino_paths=[str(ino)])
+
+            self.assertEqual(len(projects), 1)
+            self.assertEqual(projects[0]["sketch"], "test.ino")
+            self.assertEqual(Path(projects[0]["path"]).name, "test")
+            self.assertTrue(projects[0]["valid"])
 
     def test_arduino_context_includes_sketch_files(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -119,6 +179,7 @@ class TalosArduinoTests(unittest.TestCase):
 
             self.assertFalse(result["ok"])
             self.assertFalse((Path(tmp) / "outside.ino").exists())
+
 
 if __name__ == "__main__":
     unittest.main()

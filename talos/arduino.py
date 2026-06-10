@@ -7,7 +7,12 @@ from pathlib import Path
 from typing import Any
 
 from talos.core import ROOT
-from talos.native_bridge import extract_ino_names, list_window_titles, native_available
+from talos.native_bridge import (
+    extract_ino_names,
+    list_arduino_ide_processes,
+    list_window_titles,
+    native_available,
+)
 
 ARDUINO_EXTENSIONS = {".ino", ".h", ".hpp", ".c", ".cpp", ".S", ".txt", ".md"}
 IGNORED_DIRS = {
@@ -34,6 +39,24 @@ def is_source_file(path: Path) -> bool:
 
 def open_window_titles() -> list[str]:
     return list_window_titles()
+
+def arduino_ide_status() -> dict[str, Any]:
+    processes = list_arduino_ide_processes()
+    titles = [title for title in open_window_titles() if "arduino" in title.lower() or ".ino" in title.lower()]
+    windows = [
+        {"pid": process["pid"], "title": process["title"]}
+        for process in processes
+        if str(process.get("title") or "").strip()
+    ]
+    known_window_titles = {str(window["title"]) for window in windows}
+    for title in titles:
+        if title not in known_window_titles:
+            windows.append({"pid": 0, "title": title})
+    return {
+        "running": bool(processes or titles),
+        "process_count": len(processes),
+        "windows": windows,
+    }
 
 def arduino_search_roots(config: dict[str, Any]) -> list[Path]:
     roots: list[Path] = []
@@ -81,11 +104,55 @@ def find_sketch_folder(sketch_name: str, roots: list[Path]) -> Path | None:
             continue
     return None
 
-def discover_arduino_projects(config: dict[str, Any], titles: list[str] | None = None) -> list[dict[str, Any]]:
-    window_titles = titles if titles is not None else open_window_titles()
+def sketch_project_from_path(path_text: str, title: str = "") -> dict[str, Any] | None:
+    path = resolve_workspace(path_text)
+    if path is None or not path.exists() or not path.is_file() or path.suffix.lower() != ".ino":
+        return None
+    folder = path.parent.resolve()
+    return {
+        "title": title,
+        "sketch": path.name,
+        "path": str(folder),
+        "valid": True,
+        "native": native_available(),
+        "source": "process",
+        "message": "Open Arduino sketch found from Arduino IDE process.",
+    }
+
+def discover_arduino_projects(
+    config: dict[str, Any],
+    titles: list[str] | None = None,
+    ino_paths: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    processes = [] if titles is not None or ino_paths is not None else list_arduino_ide_processes()
+    window_titles = titles if titles is not None else []
+    if titles is None:
+        window_titles.extend(
+            str(process.get("title") or "")
+            for process in processes
+            if str(process.get("title") or "").strip()
+        )
+        for title in open_window_titles():
+            if title not in window_titles:
+                window_titles.append(title)
+    open_ino_paths = ino_paths if ino_paths is not None else [
+        path
+        for process in processes
+        for path in process.get("ino_paths", [])
+        if isinstance(path, str)
+    ]
     roots = arduino_search_roots(config)
     projects: list[dict[str, Any]] = []
     seen: set[str] = set()
+    for path_text in open_ino_paths:
+        project = sketch_project_from_path(path_text)
+        if project is None:
+            continue
+        key = str(Path(project["path"]).resolve()).lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        projects.append(project)
     for title in window_titles:
         lower = title.lower()
         if "arduino" not in lower and ".ino" not in lower:
@@ -103,6 +170,7 @@ def discover_arduino_projects(config: dict[str, Any], titles: list[str] | None =
                     "path": str(folder) if folder else "",
                     "valid": folder is not None,
                     "native": native_available(),
+                    "source": "window_title",
                     "message": "Sketch folder found." if folder else "Open Arduino sketch detected, but matching folder was not found in search roots.",
                 }
             )

@@ -20,6 +20,7 @@ from talos.core import (
     save_config,
 )
 from talos.arduino import (
+    arduino_ide_status,
     delete_workspace_file,
     discover_arduino_projects,
     read_workspace_file,
@@ -60,6 +61,7 @@ def state_payload() -> dict[str, Any]:
             "arduino_fqbn": config.get("arduino_fqbn", ""),
         },
         "arduino": workspace_summary(config),
+        "arduino_ide": arduino_ide_status(),
         "arduino_projects": discover_arduino_projects(config),
         "tools": [
             "GET /api/state",
