@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -33,6 +34,19 @@ ARDUINO_CLI_CANDIDATES = [
     Path("C:/Program Files/Arduino IDE/resources/app/lib/backend/resources/arduino-cli.exe"),
     Path("C:/Program Files (x86)/Arduino IDE/resources/app/lib/backend/resources/arduino-cli.exe"),
 ]
+ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+PROGRAM_MEMORY_RE = re.compile(
+    r"Sketch uses\s+(?P<used>\d+)\s+bytes\s+\((?P<percent>\d+)%\).*?Maximum is\s+(?P<maximum>\d+)\s+bytes",
+    re.IGNORECASE,
+)
+DYNAMIC_MEMORY_RE = re.compile(
+    r"Global variables use\s+(?P<used>\d+)\s+bytes\s+\((?P<percent>\d+)%\).*?Maximum is\s+(?P<maximum>\d+)\s+bytes",
+    re.IGNORECASE,
+)
+COMPILE_ISSUE_RE = re.compile(
+    r"^(?P<file>[A-Za-z]:\\.*?|[^:\n]+):(?P<line>\d+):(?:(?P<column>\d+):)?\s*(?P<level>error|warning):\s*(?P<message>.+)$",
+    re.IGNORECASE,
+)
 
 def arduino_config(config: dict[str, Any]) -> dict[str, str]:
     return {
@@ -553,6 +567,67 @@ def find_arduino_cli() -> str | None:
             continue
     return None
 
+def strip_ansi(text: str) -> str:
+    return ANSI_ESCAPE_RE.sub("", text)
+
+def parse_memory_line(pattern: re.Pattern[str], output: str) -> dict[str, int] | None:
+    match = pattern.search(output)
+    if match is None:
+        return None
+    return {
+        "used": int(match.group("used")),
+        "percent": int(match.group("percent")),
+        "maximum": int(match.group("maximum")),
+    }
+
+def parse_named_table(output: str, title: str) -> list[dict[str, str]]:
+    lines = output.splitlines()
+    rows: list[dict[str, str]] = []
+    for index, line in enumerate(lines):
+        if not line.strip().lower().startswith(title.lower()):
+            continue
+        for row in lines[index + 1:]:
+            clean = row.strip()
+            if not clean:
+                break
+            if "version" in clean.lower() and "path" in clean.lower():
+                continue
+            parts = re.split(r"\s{2,}", clean, maxsplit=2)
+            if len(parts) >= 3:
+                rows.append({"name": parts[0], "version": parts[1], "path": parts[2]})
+        break
+    return rows
+
+def parse_compile_issues(output: str) -> list[dict[str, object]]:
+    issues: list[dict[str, object]] = []
+    for line in output.splitlines():
+        match = COMPILE_ISSUE_RE.match(line.strip())
+        if match is None:
+            continue
+        issues.append(
+            {
+                "file": match.group("file"),
+                "line": int(match.group("line")),
+                "column": int(match.group("column") or 0),
+                "level": match.group("level").lower(),
+                "message": match.group("message").strip(),
+            }
+        )
+    return issues
+
+def parse_compile_output(output: str) -> dict[str, Any]:
+    clean_output = strip_ansi(output).strip()
+    return {
+        "output": clean_output,
+        "memory": {
+            "program": parse_memory_line(PROGRAM_MEMORY_RE, clean_output),
+            "dynamic": parse_memory_line(DYNAMIC_MEMORY_RE, clean_output),
+        },
+        "libraries": parse_named_table(clean_output, "Used library"),
+        "platforms": parse_named_table(clean_output, "Used platform"),
+        "issues": parse_compile_issues(clean_output),
+    }
+
 def run_arduino_compile(config: dict[str, Any], timeout: int = 120) -> dict[str, Any]:
     summary = workspace_summary(config)
     if not summary["valid"]:
@@ -584,16 +659,21 @@ def run_arduino_compile(config: dict[str, Any], timeout: int = 120) -> dict[str,
             cwd=sandbox,
         )
     except subprocess.TimeoutExpired as exc:
-        output = "\n".join(part for part in (exc.stdout, exc.stderr) if part)
+        parsed = parse_compile_output("\n".join(part for part in (exc.stdout, exc.stderr) if part))
         return {
             "ok": False,
             "status": "timeout",
             "summary": summary,
             "sandbox": str(sandbox),
             "command": " ".join(command),
-            "output": output.strip() or f"arduino-cli compile timed out after {timeout} seconds.",
+            "output": parsed["output"] or f"arduino-cli compile timed out after {timeout} seconds.",
+            "memory": parsed["memory"],
+            "libraries": parsed["libraries"],
+            "platforms": parsed["platforms"],
+            "issues": parsed["issues"],
         }
     output = "\n".join(part.strip() for part in (completed.stdout, completed.stderr) if part and part.strip())
+    parsed = parse_compile_output(output)
     return {
         "ok": completed.returncode == 0,
         "status": "passed" if completed.returncode == 0 else "failed",
@@ -601,5 +681,9 @@ def run_arduino_compile(config: dict[str, Any], timeout: int = 120) -> dict[str,
         "summary": summary,
         "sandbox": str(sandbox),
         "command": " ".join(command),
-        "output": output or f"arduino-cli exited with code {completed.returncode}.",
+        "output": parsed["output"] or f"arduino-cli exited with code {completed.returncode}.",
+        "memory": parsed["memory"],
+        "libraries": parsed["libraries"],
+        "platforms": parsed["platforms"],
+        "issues": parsed["issues"],
     }

@@ -7,6 +7,7 @@ from talos.arduino import (
     delete_workspace_file,
     discover_arduino_projects,
     extract_ino_names,
+    parse_compile_output,
     read_workspace_file,
     run_arduino_compile,
     workspace_context,
@@ -259,6 +260,24 @@ class TalosArduinoTests(unittest.TestCase):
 
             self.assertFalse(result["ok"])
             self.assertEqual(result["status"], "missing_fqbn")
+
+    def test_arduino_compile_output_parser_cleans_ansi_and_extracts_summary(self) -> None:
+        output = (
+            "Sketch uses 322548 bytes (24%) of program storage space. Maximum is 1310720 bytes.\n"
+            "Global variables use 13796 bytes (4%) of dynamic memory, leaving 313884 bytes for local variables. Maximum is 327680 bytes.\n\n"
+            "\x1b[92mUsed library\x1b[0m \x1b[92mVersion\x1b[0m \x1b[90mPath\x1b[0m\n"
+            "\x1b[93mWire\x1b[0m         3.3.6   \x1b[90mC:\\Arduino\\Wire\x1b[0m\n\n"
+            "\x1b[92mUsed platform\x1b[0m \x1b[92mVersion\x1b[0m \x1b[90mPath\x1b[0m\n"
+            "\x1b[93mesp32:esp32\x1b[0m   3.3.6   \x1b[90mC:\\Arduino\\esp32\x1b[0m\n"
+        )
+
+        parsed = parse_compile_output(output)
+
+        self.assertNotIn("\x1b", parsed["output"])
+        self.assertEqual(parsed["memory"]["program"]["percent"], 24)
+        self.assertEqual(parsed["memory"]["dynamic"]["used"], 13796)
+        self.assertEqual(parsed["libraries"][0]["name"], "Wire")
+        self.assertEqual(parsed["platforms"][0]["name"], "esp32:esp32")
 
     def test_arduino_sandbox_copy_ignores_build_artifacts(self) -> None:
         with TemporaryDirectory() as tmp:

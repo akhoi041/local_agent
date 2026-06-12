@@ -103,6 +103,40 @@ function commandBaseName(command = "") {
   return head.split(/[\\/]/).pop() || head;
 }
 
+function formatBytes(value = 0) {
+  const number = Number(value || 0);
+  if (number >= 1024 * 1024) return `${(number / (1024 * 1024)).toFixed(1)} MB`;
+  if (number >= 1024) return `${(number / 1024).toFixed(1)} KB`;
+  return `${number} B`;
+}
+
+function memorySummary(memory = {}) {
+  const rows = [];
+  if (memory.program) {
+    rows.push(["Program", `${formatBytes(memory.program.used)} / ${formatBytes(memory.program.maximum)} (${memory.program.percent}%)`]);
+  }
+  if (memory.dynamic) {
+    rows.push(["Dynamic", `${formatBytes(memory.dynamic.used)} / ${formatBytes(memory.dynamic.maximum)} (${memory.dynamic.percent}%)`]);
+  }
+  return rows;
+}
+
+function verifySummaryHtml(result = {}) {
+  const rows = memorySummary(result.memory || {});
+  const libraries = result.libraries || [];
+  const platforms = result.platforms || [];
+  const issues = result.issues || [];
+  if (!rows.length && !libraries.length && !platforms.length && !issues.length) return "";
+  return `
+    <div class="verify-summary">
+      ${rows.map(([label, value]) => `<div><span>${escapeHtml(label)}</span><b>${escapeHtml(value)}</b></div>`).join("")}
+      ${libraries.length ? `<div><span>Libraries</span><b>${escapeHtml(libraries.map((item) => `${item.name} ${item.version}`.trim()).join(", "))}</b></div>` : ""}
+      ${platforms.length ? `<div><span>Platform</span><b>${escapeHtml(platforms.map((item) => `${item.name} ${item.version}`.trim()).join(", "))}</b></div>` : ""}
+      ${issues.length ? `<div><span>Issues</span><b>${escapeHtml(String(issues.length))}</b></div>` : ""}
+    </div>
+  `;
+}
+
 function renderVerifyOutput(result = null, pendingText = "") {
   const output = $("#arduinoOutput");
   if (!result) {
@@ -130,6 +164,7 @@ function renderVerifyOutput(result = null, pendingText = "") {
     </div>
     ${command ? `<div class="verify-field"><span>Command</span><code>${escapeHtml(command)}</code></div>` : ""}
     ${sandbox ? `<div class="verify-field"><span>Sandbox</span><code>${escapeHtml(sandbox)}</code></div>` : ""}
+    ${verifySummaryHtml(result)}
     <pre class="verify-log">${escapeHtml(result.output || "No compiler output.")}</pre>
   `;
 }
