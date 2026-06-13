@@ -197,6 +197,10 @@ function setBoardField(fqbn = "", boardName = "") {
   $("#boardInfoBtn").disabled = !state.arduinoFqbnFull;
 }
 
+function normalizedWindowsPath(value = "") {
+  return String(value).trim().replaceAll("/", "\\").replace(/\\+$/, "").toLowerCase();
+}
+
 function renderStats(payload) {
   const arduino = payload.arduino || {};
   const projects = payload.arduino_projects || [];
@@ -215,7 +219,15 @@ function renderArduino(arduino, force = false, ide = {}) {
   if (!arduino) return;
   if (!state.arduinoDirty || force) {
     $("#arduinoPathInput").value = arduino.path || "";
-    setBoardField(arduino.fqbn || "", ide.board_name || state.arduinoBoardName || "");
+  }
+  const detectedFqbn = ide.fqbn || arduino.fqbn || "";
+  const detectedBoardName = ide.board_name || (detectedFqbn === arduino.fqbn ? state.arduinoBoardName : "");
+  if (
+    force
+    || detectedFqbn !== state.arduinoFqbnFull
+    || detectedBoardName !== state.arduinoBoardName
+  ) {
+    setBoardField(detectedFqbn, detectedBoardName);
   }
   $("#arduinoStatus").textContent = arduino.message || "No Arduino sketch folder configured.";
   $("#arduinoMeta").textContent = arduino.valid
@@ -237,9 +249,14 @@ function renderArduinoProjects(projects = []) {
     return;
   }
   $("#arduinoProjects").innerHTML = projects.map((project, index) => `
-    <div class="project-row">
+    <div class="project-row ${project.unsaved ? "unsaved" : ""}">
       <div>
-        <div class="project-title">${escapeHtml(project.sketch || "Arduino sketch")} ${project.valid ? "" : "(folder not found)"}</div>
+        <div class="project-title">
+          ${escapeHtml(project.sketch || "Arduino sketch")}
+          ${project.unsaved ? '<span class="project-badge">Unsaved</span>' : ""}
+          ${!project.valid && !project.unsaved ? '<span class="project-badge warning">Folder not found</span>' : ""}
+        </div>
+        ${project.unsaved ? '<div class="project-path">Save this sketch in Arduino IDE to create a selectable workspace.</div>' : ""}
       </div>
       <button class="button ghost select-project" data-index="${index}" ${project.valid ? "" : "disabled"}>Select</button>
     </div>
@@ -260,8 +277,11 @@ function render(payload) {
   hydrateTheme(payload.config || {});
   const projects = payload.arduino_projects || [];
   const arduino = payload.arduino || {};
-  const selectedProject = projects.find((project) => project.path === arduino.path && project.fqbn === arduino.fqbn)
-    || projects.find((project) => project.path === arduino.path)
+  const selectedPath = normalizedWindowsPath(arduino.path);
+  const selectedProject = projects.find((project) => (
+    normalizedWindowsPath(project.path) === selectedPath && project.fqbn === arduino.fqbn
+  ))
+    || projects.find((project) => normalizedWindowsPath(project.path) === selectedPath)
     || {};
   $("#modeLine").textContent = `${payload.role} | ${payload.root}`;
   $("#toolList").textContent = (payload.tools || []).join("\n");

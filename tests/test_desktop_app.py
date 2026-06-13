@@ -1,8 +1,10 @@
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from talos.arduino import (
+    boards_by_window_title,
     copy_workspace_to_sandbox,
     delete_workspace_file,
     discover_arduino_projects,
@@ -18,6 +20,38 @@ from talos.core import language_label
 from talos.native_bridge import extract_board_name, extract_fqbn, native_available
 
 class TalosArduinoTests(unittest.TestCase):
+    def test_board_mapping_uses_window_plugin_host_process_tree(self) -> None:
+        windows = [
+            {"pid": 101, "title": "first | Arduino IDE 2.3.4"},
+            {"pid": 201, "title": "second | Arduino IDE 2.3.4"},
+        ]
+        processes = [
+            {"name": "Arduino IDE.exe", "pid": 101, "created_at": 1000, "command_line": "--type=renderer"},
+            {"name": "Arduino IDE.exe", "pid": 102, "created_at": 2000, "command_line": r"backend\plugin-host"},
+            {"name": "arduino-language-server.exe", "pid": 103, "parent_pid": 102, "fqbn": "vendor:arch:first", "board_name": "First"},
+            {"name": "Arduino IDE.exe", "pid": 201, "created_at": 20000, "command_line": "--type=renderer"},
+            {"name": "Arduino IDE.exe", "pid": 202, "created_at": 21000, "command_line": r"backend\plugin-host"},
+            {"name": "arduino-language-server.exe", "pid": 203, "parent_pid": 202, "fqbn": "vendor:arch:second", "board_name": "Second"},
+        ]
+
+        mapping = boards_by_window_title(windows, processes)
+
+        self.assertEqual(mapping["first | Arduino IDE 2.3.4"]["board_name"], "First")
+        self.assertEqual(mapping["second | Arduino IDE 2.3.4"]["board_name"], "Second")
+
+    def test_board_mapping_rejects_shared_electron_window_pid(self) -> None:
+        windows = [
+            {"pid": 101, "title": "first | Arduino IDE 2.3.4"},
+            {"pid": 101, "title": "second | Arduino IDE 2.3.4"},
+        ]
+        processes = [
+            {"name": "Arduino IDE.exe", "pid": 101, "created_at": 1000, "command_line": ""},
+            {"name": "Arduino IDE.exe", "pid": 102, "created_at": 2000, "command_line": r"backend\plugin-host"},
+            {"name": "arduino-language-server.exe", "pid": 103, "parent_pid": 102, "fqbn": "vendor:arch:first", "board_name": "First"},
+        ]
+
+        self.assertEqual(boards_by_window_title(windows, processes), {})
+
     def test_language_label_defaults_to_vietnamese(self) -> None:
         self.assertEqual(language_label({"language": "vi"}), "Ti\u1ebfng Vi\u1ec7t")
 
@@ -114,6 +148,31 @@ class TalosArduinoTests(unittest.TestCase):
 
             self.assertEqual(projects, [])
 
+    def test_arduino_discovery_ignores_persisted_workspace_after_ide_closes(self) -> None:
+        with TemporaryDirectory() as tmp:
+            sketch = Path(tmp) / "closed_sketch"
+            sketch.mkdir()
+            (sketch / "closed_sketch.ino").write_text("void setup() {}\nvoid loop() {}\n", encoding="utf-8")
+
+            with (
+                patch("talos.arduino.list_arduino_ide_processes", return_value=[]),
+                patch("talos.arduino.list_arduino_tool_processes", return_value=[]),
+                patch("talos.arduino.open_window_titles", return_value=["Talos", "desktop_app.py - Visual Studio Code"]),
+                patch("talos.arduino.list_arduino_open_workspaces", return_value=[{"path": str(sketch), "time": 1}]),
+                patch(
+                    "talos.arduino.list_arduino_workspace_boards",
+                    return_value={
+                        str(sketch.resolve()).lower(): {
+                            "fqbn": "esp32:esp32:esp32",
+                            "name": "ESP32 Dev Module",
+                        }
+                    },
+                ),
+            ):
+                projects = discover_arduino_projects({})
+
+            self.assertEqual(projects, [])
+
     def test_arduino_discovery_maps_open_process_ino_path_to_folder(self) -> None:
         with TemporaryDirectory() as tmp:
             sketch = Path(tmp) / "test"
@@ -185,6 +244,8 @@ class TalosArduinoTests(unittest.TestCase):
             self.assertEqual(projects[0]["path"], "")
             self.assertFalse(projects[0]["valid"])
             self.assertEqual(projects[0]["source"], "window_title")
+            self.assertTrue(projects[0]["unsaved"])
+            self.assertEqual(projects[0]["status"], "unsaved")
 
     def test_arduino_discovery_attaches_detected_board_to_open_project(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -237,6 +298,47 @@ class TalosArduinoTests(unittest.TestCase):
 
             self.assertEqual(projects[0]["board_name"], "ESP32 Dev Module")
             self.assertEqual(projects[1]["board_name"], "ESP32C3 Dev Module")
+
+    def test_arduino_discovery_prefers_exact_workspace_board_state(self) -> None:
+        with TemporaryDirectory() as tmp:
+            first = Path(tmp) / "controller_a"
+            second = Path(tmp) / "controller_b"
+            first.mkdir()
+            second.mkdir()
+            first_ino = first / "controller_a.ino"
+            second_ino = second / "controller_b.ino"
+            first_ino.write_text("void setup() {}\nvoid loop() {}\n", encoding="utf-8")
+            second_ino.write_text("void setup() {}\nvoid loop() {}\n", encoding="utf-8")
+
+            projects = discover_arduino_projects(
+                {},
+                titles=[],
+                ino_paths=[str(first_ino), str(second_ino)],
+                tool_processes=[
+                    {
+                        "fqbn": "esp32:esp32:esp32:UploadSpeed=921600",
+                        "board_name": "ESP32 Dev Module",
+                    },
+                    {
+                        "fqbn": "esp32:esp32:esp32s3:USBMode=hwcdc",
+                        "board_name": "ESP32S3 Dev Module",
+                    },
+                ],
+                workspace_boards={
+                    str(first.resolve()).lower(): {
+                        "fqbn": "esp32:esp32:esp32s3",
+                        "name": "ESP32S3 Dev Module",
+                    },
+                    str(second.resolve()).lower(): {
+                        "fqbn": "esp32:esp32:esp32",
+                        "name": "ESP32 Dev Module",
+                    },
+                },
+            )
+
+            self.assertEqual(projects[0]["board_name"], "ESP32S3 Dev Module")
+            self.assertEqual(projects[0]["board_source"], "workspace_state")
+            self.assertEqual(projects[1]["board_name"], "ESP32 Dev Module")
 
     def test_arduino_context_includes_sketch_files(self) -> None:
         with TemporaryDirectory() as tmp:

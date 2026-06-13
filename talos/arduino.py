@@ -11,7 +11,10 @@ from talos.core import ROOT
 from talos.native_bridge import (
     extract_ino_names,
     list_arduino_ide_processes,
+    list_arduino_open_workspaces,
     list_arduino_tool_processes,
+    list_arduino_workspace_boards,
+    list_window_rows,
     list_window_titles,
     native_available,
 )
@@ -119,6 +122,77 @@ def detected_boards(processes: list[dict[str, object]] | None = None) -> list[di
         )
     return boards
 
+def boards_by_window_title(
+    window_rows: list[dict[str, object]],
+    processes: list[dict[str, object]],
+) -> dict[str, dict[str, str]]:
+    process_by_pid = {
+        int(process.get("pid") or 0): process
+        for process in processes
+        if int(process.get("pid") or 0)
+    }
+    language_servers = [
+        process
+        for process in processes
+        if str(process.get("name") or "").lower() == "arduino-language-server.exe"
+        and str(process.get("fqbn") or "").strip()
+    ]
+    plugin_hosts = [
+        process
+        for process in processes
+        if "backend\\plugin-host" in str(process.get("command_line") or "").lower()
+    ]
+    plugin_boards: list[tuple[dict[str, object], dict[str, str]]] = []
+    for plugin in plugin_hosts:
+        plugin_pid = int(plugin.get("pid") or 0)
+        server = next(
+            (row for row in language_servers if int(row.get("parent_pid") or 0) == plugin_pid),
+            None,
+        )
+        if server is None:
+            continue
+        plugin_boards.append(
+            (
+                plugin,
+                {
+                    "fqbn": str(server.get("fqbn") or "").strip(),
+                    "board_name": str(server.get("board_name") or "").strip(),
+                },
+            )
+        )
+
+    candidates: list[tuple[str, int]] = []
+    arduino_window_pids = [
+        int(window.get("pid") or 0)
+        for window in window_rows
+        if "arduino ide" in str(window.get("title") or "").lower()
+    ]
+    if len(arduino_window_pids) != len(set(arduino_window_pids)):
+        return {}
+    for window in window_rows:
+        title = str(window.get("title") or "").strip()
+        if "arduino ide" not in title.lower():
+            continue
+        process = process_by_pid.get(int(window.get("pid") or 0), {})
+        created_at = int(process.get("created_at") or 0)
+        if created_at:
+            candidates.append((title, created_at))
+
+    results: dict[str, dict[str, str]] = {}
+    unused = list(plugin_boards)
+    for title, window_created_at in sorted(candidates, key=lambda item: item[1]):
+        if not unused:
+            break
+        index, (plugin, board) = min(
+            enumerate(unused),
+            key=lambda item: abs(int(item[1][0].get("created_at") or 0) - window_created_at),
+        )
+        delta = abs(int(plugin.get("created_at") or 0) - window_created_at)
+        if delta <= 15000:
+            results[title] = board
+            unused.pop(index)
+    return results
+
 def board_match_tokens(board: dict[str, str]) -> list[str]:
     fqbn = board.get("fqbn", "")
     board_name = board.get("board_name", "")
@@ -135,7 +209,25 @@ def board_match_tokens(board: dict[str, str]) -> list[str]:
             normalized.append(clean)
     return normalized
 
-def match_project_board(project: dict[str, Any], boards: list[dict[str, str]]) -> dict[str, str]:
+def base_fqbn(fqbn: str) -> str:
+    return ":".join(fqbn.split(":")[:3])
+
+def match_project_board(
+    project: dict[str, Any],
+    boards: list[dict[str, str]],
+    workspace_boards: dict[str, dict[str, str]] | None = None,
+) -> dict[str, str]:
+    project_path = str(project.get("path") or "").lower()
+    stored = (workspace_boards or {}).get(project_path)
+    if stored:
+        stored_fqbn = stored.get("fqbn", "")
+        for board in boards:
+            if base_fqbn(board.get("fqbn", "")) == base_fqbn(stored_fqbn):
+                return board
+        return {
+            "fqbn": stored_fqbn,
+            "board_name": stored.get("name", ""),
+        }
     if not boards:
         return {"fqbn": "", "board_name": ""}
     if len(boards) == 1:
@@ -160,10 +252,15 @@ def match_project_board(project: dict[str, Any], boards: list[dict[str, str]]) -
         return scored[0][1]
     return boards[0]
 
-def apply_project_board(project: dict[str, Any], boards: list[dict[str, str]]) -> dict[str, Any]:
-    board = match_project_board(project, boards)
+def apply_project_board(
+    project: dict[str, Any],
+    boards: list[dict[str, str]],
+    workspace_boards: dict[str, dict[str, str]] | None = None,
+) -> dict[str, Any]:
+    board = match_project_board(project, boards, workspace_boards)
     project["fqbn"] = board.get("fqbn", "")
     project["board_name"] = board.get("board_name", "")
+    project["board_source"] = "workspace_state" if (workspace_boards or {}).get(str(project.get("path") or "").lower()) else "process"
     return project
 
 def append_root_with_ancestors(roots: list[Path], root: Path, levels: int = 2) -> None:
@@ -252,6 +349,8 @@ def sketch_project_from_path(
         "valid": True,
         "native": native_available(),
         "source": source,
+        "status": "ready",
+        "unsaved": False,
         "message": "Open Arduino sketch found.",
     }
 
@@ -289,13 +388,23 @@ def discover_arduino_projects(
     titles: list[str] | None = None,
     ino_paths: list[str] | None = None,
     tool_processes: list[dict[str, object]] | None = None,
+    open_workspaces: list[dict[str, object]] | None = None,
+    workspace_boards: dict[str, dict[str, str]] | None = None,
 ) -> list[dict[str, Any]]:
     implicit_detection = titles is None and ino_paths is None and tool_processes is None
     processes = list_arduino_ide_processes() if implicit_detection else []
     arduino_processes = tool_processes if tool_processes is not None else (
         list_arduino_tool_processes() if implicit_detection else []
     )
+    open_workspace_rows = open_workspaces if open_workspaces is not None else (
+        list_arduino_open_workspaces() if implicit_detection else []
+    )
+    workspace_board_map = workspace_boards if workspace_boards is not None else (
+        list_arduino_workspace_boards() if implicit_detection else {}
+    )
     boards = detected_boards(arduino_processes)
+    window_rows = list_window_rows() if implicit_detection else []
+    title_boards = boards_by_window_title(window_rows, arduino_processes)
     window_titles = titles if titles is not None else []
     if titles is None:
         window_titles.extend(
@@ -304,7 +413,8 @@ def discover_arduino_projects(
             if str(process.get("title") or "").strip()
         )
         for title in open_window_titles():
-            if title not in window_titles:
+            lower = title.lower()
+            if ("arduino" in lower or ".ino" in lower) and title not in window_titles:
                 window_titles.append(title)
     open_ino_paths = list(ino_paths or [])
     path_sources: dict[str, str] = {}
@@ -319,6 +429,10 @@ def discover_arduino_projects(
         path = resolve_workspace(path_text)
         if path is not None:
             path_roots.append(path.parent if path.suffix else path)
+    for workspace in open_workspace_rows:
+        folder = resolve_workspace(str(workspace.get("path") or ""))
+        if folder is not None:
+            path_roots.append(folder)
     trusted_roots = arduino_search_roots(config)
     roots = arduino_search_roots(config, extra_roots=path_roots)
     title_sketches: list[str] = []
@@ -331,13 +445,26 @@ def discover_arduino_projects(
                 title_sketches.append(sketch)
     if should_ignore_stale_process_paths(open_ino_paths, title_sketches, roots, trusted_roots):
         open_ino_paths = []
+    title_folders: dict[tuple[str, str], Path | None] = {}
+    live_folder_keys: set[str] = set()
+    for title in window_titles:
+        for sketch in extract_ino_names(title):
+            folder = find_saved_sketch_folder(sketch, roots)
+            title_folders[(title, sketch)] = folder
+            if folder is not None:
+                live_folder_keys.add(str(folder).lower())
+    claimed_board_bases = {
+        base_fqbn(str(board.get("fqbn") or ""))
+        for path, board in workspace_board_map.items()
+        if path in live_folder_keys and str(board.get("fqbn") or "")
+    }
     projects: list[dict[str, Any]] = []
     seen: set[str] = set()
     for path_text in open_ino_paths:
         project = sketch_project_from_path(path_text, source=path_sources.get(path_text, "process"))
         if project is None:
             continue
-        apply_project_board(project, boards)
+        apply_project_board(project, boards, workspace_board_map)
         key = str(Path(project["path"]).resolve()).lower()
         if key in seen:
             continue
@@ -348,7 +475,8 @@ def discover_arduino_projects(
         if "arduino" not in lower and ".ino" not in lower:
             continue
         for sketch in extract_ino_names(title):
-            folder = find_saved_sketch_folder(sketch, roots)
+            folder = title_folders.get((title, sketch))
+            unsaved = folder is None and title_looks_unsaved_sketch([sketch])
             key = str(folder).lower() if folder else f"{title.lower()}::{sketch.lower()}"
             if key in seen:
                 continue
@@ -362,9 +490,39 @@ def discover_arduino_projects(
                 "valid": folder is not None,
                 "native": native_available(),
                 "source": "window_title",
-                "message": "Sketch folder found." if folder else "Open Arduino sketch detected, but matching folder was not found in search roots.",
+                "status": "ready" if folder else ("unsaved" if unsaved else "folder_missing"),
+                "unsaved": unsaved,
+                "message": (
+                    "Sketch folder found."
+                    if folder
+                    else (
+                        "Unsaved Arduino sketch detected. Save it in Arduino IDE before selecting it as a workspace."
+                        if unsaved
+                        else "Open Arduino sketch detected, but matching folder was not found in search roots."
+                    )
+                ),
             }
-            projects.append(apply_project_board(project, boards))
+            title_board = title_boards.get(title)
+            if title_board:
+                project["fqbn"] = title_board["fqbn"]
+                project["board_name"] = title_board["board_name"]
+                project["board_source"] = "process_tree"
+                projects.append(project)
+            else:
+                exact_board = workspace_board_map.get(str(folder).lower()) if folder is not None else None
+                unclaimed_boards = [
+                    board for board in boards
+                    if base_fqbn(board.get("fqbn", "")) not in claimed_board_bases
+                ]
+                if exact_board is None and len(unclaimed_boards) == 1:
+                    board = unclaimed_boards[0]
+                    project["fqbn"] = board["fqbn"]
+                    project["board_name"] = board["board_name"]
+                    project["board_source"] = "remaining_process"
+                    claimed_board_bases.add(base_fqbn(board["fqbn"]))
+                    projects.append(project)
+                else:
+                    projects.append(apply_project_board(project, boards, workspace_board_map))
     return projects
 
 def resolve_workspace(path_text: str) -> Path | None:

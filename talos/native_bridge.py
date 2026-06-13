@@ -9,6 +9,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from urllib.parse import unquote
 
 from talos.core import ROOT
 
@@ -21,6 +22,10 @@ TITLE_BUFFER_CHARS = 65536
 INO_BUFFER_CHARS = 4096
 _CACHE_TTL_SECONDS = 0.45
 _CACHE: dict[str, tuple[float, object]] = {}
+ARDUINO_IDE_CONFIG = Path.home() / "AppData" / "Roaming" / "arduino-ide" / "config.json"
+ARDUINO_IDE_LEVELDB = Path.home() / "AppData" / "Roaming" / "arduino-ide" / "Local Storage" / "leveldb"
+WORKSPACE_BOARD_KEY = b":arduino-ide:boardListHistory"
+BOARD_JSON_RE = re.compile(rb'\\"name\\":\\"([^"]+?)\\",\\"fqbn\\":\\"([^"]+?)\\"')
 
 def _load_library() -> ctypes.CDLL | None:
     if os.name != "nt":
@@ -55,6 +60,36 @@ def list_window_titles() -> list[str]:
         _LIBRARY.talos_list_window_titles(buffer, TITLE_BUFFER_CHARS)
         return [line for line in buffer.value.splitlines() if line.strip()]
     return list(cached_value("window_titles", list_window_titles_fallback))
+
+def list_window_rows() -> list[dict[str, object]]:
+    if os.name != "nt":
+        return []
+    return list(cached_value("window_rows", list_window_rows_win32))
+
+def list_window_rows_win32() -> list[dict[str, object]]:
+    user32 = ctypes.windll.user32
+    rows: list[dict[str, object]] = []
+    enum_proc_type = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+
+    def collect(hwnd: int, _lparam: int) -> bool:
+        if not user32.IsWindowVisible(hwnd):
+            return True
+        length = user32.GetWindowTextLengthW(hwnd)
+        if length <= 0:
+            return True
+        buffer = ctypes.create_unicode_buffer(length + 1)
+        user32.GetWindowTextW(hwnd, buffer, length + 1)
+        title = buffer.value.strip()
+        if not title:
+            return True
+        pid = ctypes.c_ulong()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        rows.append({"pid": int(pid.value), "title": title})
+        return True
+
+    callback = enum_proc_type(collect)
+    user32.EnumWindows(callback, 0)
+    return rows
 
 def list_window_titles_fallback() -> list[str]:
     if os.name != "nt":
@@ -137,17 +172,89 @@ def list_arduino_tool_processes() -> list[dict[str, object]]:
         return []
     return list(cached_value("arduino_tool_processes", list_arduino_tool_processes_uncached))
 
+def list_arduino_open_workspaces() -> list[dict[str, object]]:
+    return list(cached_value("arduino_open_workspaces", list_arduino_open_workspaces_uncached))
+
+def list_arduino_workspace_boards() -> dict[str, dict[str, str]]:
+    cached = cached_value("arduino_workspace_boards", list_arduino_workspace_boards_uncached)
+    return dict(cached)
+
+def list_arduino_open_workspaces_uncached() -> list[dict[str, object]]:
+    try:
+        payload = json.loads(ARDUINO_IDE_CONFIG.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    workspaces = payload.get("workspaces", []) if isinstance(payload, dict) else []
+    rows: list[dict[str, object]] = []
+    for workspace in workspaces:
+        if not isinstance(workspace, dict):
+            continue
+        raw_path = str(workspace.get("file") or "").strip()
+        if not raw_path:
+            continue
+        try:
+            path = str(Path(raw_path).expanduser().resolve())
+        except OSError:
+            continue
+        rows.append({"path": path, "time": int(workspace.get("time") or 0)})
+    return rows
+
+def leveldb_workspace_path(raw: bytes) -> str:
+    text = raw.decode("utf-8", errors="ignore")
+    if text.startswith("/"):
+        text = text[1:]
+    decoded = unquote(text)
+    try:
+        return str(Path(decoded).resolve())
+    except OSError:
+        return decoded
+
+def list_arduino_workspace_boards_uncached() -> dict[str, dict[str, str]]:
+    if not ARDUINO_IDE_LEVELDB.exists():
+        return {}
+    results: dict[str, dict[str, str]] = {}
+    try:
+        files = sorted(
+            (path for path in ARDUINO_IDE_LEVELDB.iterdir() if path.suffix.lower() in {".ldb", ".log"}),
+            key=lambda path: path.stat().st_mtime,
+        )
+    except OSError:
+        return {}
+    prefix = b"_file://\x00\x01theia:file:///"
+    for path in files:
+        try:
+            data = path.read_bytes()
+        except OSError:
+            continue
+        start = 0
+        while True:
+            key_at = data.find(WORKSPACE_BOARD_KEY, start)
+            if key_at < 0:
+                break
+            path_at = data.rfind(prefix, max(0, key_at - 1024), key_at)
+            if path_at >= 0:
+                raw_path = data[path_at + len(prefix):key_at]
+                board_match = BOARD_JSON_RE.search(data, key_at, min(len(data), key_at + 4096))
+                if board_match is not None:
+                    workspace = leveldb_workspace_path(raw_path)
+                    results[workspace.lower()] = {
+                        "name": board_match.group(1).decode("utf-8", errors="replace"),
+                        "fqbn": board_match.group(2).decode("utf-8", errors="replace"),
+                    }
+            start = key_at + len(WORKSPACE_BOARD_KEY)
+    return results
+
 def list_arduino_ide_processes_uncached() -> list[dict[str, object]]:
-    processes = list_arduino_ide_processes_wmic()
+    processes = list_arduino_ide_processes_powershell()
     if processes:
         return processes
-    return list_arduino_ide_processes_powershell()
+    return list_arduino_ide_processes_wmic()
 
 def list_arduino_tool_processes_uncached() -> list[dict[str, object]]:
-    processes = list_arduino_tool_processes_wmic()
+    processes = list_arduino_tool_processes_powershell()
     if processes:
         return processes
-    return list_arduino_tool_processes_powershell()
+    return list_arduino_tool_processes_wmic()
 
 def list_arduino_ide_processes_wmic() -> list[dict[str, object]]:
     command = [
@@ -200,16 +307,32 @@ def list_arduino_tool_processes_wmic() -> list[dict[str, object]]:
             processes.append(process)
     return processes
 
-def arduino_process_row(command_line: str, process_id: str | int, name: str = "Arduino IDE.exe") -> dict[str, object] | None:
+def process_creation_time(value: object) -> int:
+    match = re.search(r"Date\((\d+)", str(value or ""))
+    return int(match.group(1)) if match else 0
+
+def arduino_process_row(
+    command_line: str,
+    process_id: str | int,
+    name: str = "Arduino IDE.exe",
+    parent_process_id: str | int = 0,
+    creation_date: object = "",
+) -> dict[str, object] | None:
     try:
         pid = int(process_id)
     except (TypeError, ValueError):
         pid = 0
+    try:
+        parent_pid = int(parent_process_id)
+    except (TypeError, ValueError):
+        parent_pid = 0
     if not command_line:
         return None
     return {
         "name": name,
         "pid": pid,
+        "parent_pid": parent_pid,
+        "created_at": process_creation_time(creation_date),
         "title": "",
         "command_line": command_line,
         "ino_paths": extract_ino_paths(command_line),
@@ -220,7 +343,7 @@ def arduino_process_row(command_line: str, process_id: str | int, name: str = "A
 def list_arduino_ide_processes_powershell() -> list[dict[str, object]]:
     command = powershell_command(
         "Get-CimInstance Win32_Process | Where-Object { $_.Name -ieq 'Arduino IDE.exe' } | "
-        "Select-Object Name,ProcessId,CommandLine | ConvertTo-Json -Compress"
+        "Select-Object Name,ProcessId,ParentProcessId,CreationDate,CommandLine | ConvertTo-Json -Compress"
     )
     try:
         completed = subprocess.run(command, capture_output=True, text=True, timeout=5)
@@ -238,7 +361,12 @@ def list_arduino_ide_processes_powershell() -> list[dict[str, object]]:
         if not isinstance(row, dict):
             continue
         command_line = str(row.get("CommandLine") or row.get("command_line") or "")
-        process = arduino_process_row(command_line, row.get("ProcessId") or row.get("pid") or 0)
+        process = arduino_process_row(
+            command_line,
+            row.get("ProcessId") or row.get("pid") or 0,
+            parent_process_id=row.get("ParentProcessId") or row.get("parent_pid") or 0,
+            creation_date=row.get("CreationDate") or row.get("created_at") or "",
+        )
         if process is not None:
             process["name"] = str(row.get("Name") or row.get("name") or "Arduino IDE.exe")
             processes.append(process)
@@ -248,7 +376,7 @@ def list_arduino_tool_processes_powershell() -> list[dict[str, object]]:
     command = powershell_command(
         "Get-CimInstance Win32_Process | "
         "Where-Object { $_.Name -ieq 'Arduino IDE.exe' -or $_.Name -ieq 'arduino-language-server.exe' -or $_.Name -ieq 'arduino-cli.exe' } | "
-        "Select-Object Name,ProcessId,CommandLine | ConvertTo-Json -Compress"
+        "Select-Object Name,ProcessId,ParentProcessId,CreationDate,CommandLine | ConvertTo-Json -Compress"
     )
     try:
         completed = subprocess.run(command, capture_output=True, text=True, timeout=5)
@@ -270,6 +398,8 @@ def list_arduino_tool_processes_powershell() -> list[dict[str, object]]:
             command_line,
             row.get("ProcessId") or row.get("pid") or 0,
             name=str(row.get("Name") or row.get("name") or ""),
+            parent_process_id=row.get("ParentProcessId") or row.get("parent_pid") or 0,
+            creation_date=row.get("CreationDate") or row.get("created_at") or "",
         )
         if process is not None:
             processes.append(process)

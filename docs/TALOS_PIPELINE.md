@@ -17,7 +17,7 @@ Current active stage: Stage 2 - Verify output cleanup
 Next major stage: Stage 3 - Arduino file workflow
 ```
 
-Stage 1 is usable and will keep receiving hardening fixes. Stage 2 is partly complete: ANSI cleanup, memory parsing, library parsing, and platform parsing are implemented. The remaining Stage 2 work is to surface compile issues by file and line in the UI.
+Stage 1 is complete. Arduino sketch detection requires a live Arduino process or window signal; persisted workspace state is used only to resolve folder and board metadata. Board mapping prefers Arduino IDE's workspace-scoped board state over filename heuristics. Stage 2 is partly complete: ANSI cleanup, memory parsing, library parsing, and platform parsing are implemented. The remaining Stage 2 work is to surface compile issues by file and line in the UI.
 
 ## Progress Rules
 
@@ -50,8 +50,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\pipeline_status.ps1
 - [x] Use bundled Arduino IDE `arduino-cli` when it is not in PATH.
 - [x] Build and load native C DLL at `native/bin/talos_native.dll`.
 - [x] Reduce UI refresh latency while the Arduino tab is active.
-- [ ] Make unsaved sketch status clearer in the Arduino UI.
-- [ ] Improve exact sketch-to-board mapping when many Arduino IDE windows are open.
+- [x] Make unsaved sketch status clearer in the Arduino UI.
+- [x] Improve exact sketch-to-board mapping when many Arduino IDE windows are open.
+- [x] Ignore persisted Arduino workspace state after its sketch or IDE window is closed.
+- [x] Keep the selected workspace board synchronized with live Arduino IDE changes.
+- [x] Map each Arduino window to its own board through the IDE process tree.
 
 ## Stage 2 - Verify Output Cleanup
 
