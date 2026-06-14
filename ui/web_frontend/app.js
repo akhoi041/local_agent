@@ -282,6 +282,15 @@ function setEditorDirty(dirty) {
   $("#saveFileBtn").disabled = !state.activeFilePath || !state.editorDirty || state.editorSaving;
 }
 
+function renderEditorLineNumbers() {
+  const editor = $("#sourceEditor");
+  const lineCount = Math.max(1, editor.value.split("\n").length);
+  $("#editorLineNumbers").textContent = Array.from(
+    { length: lineCount },
+    (_value, index) => String(index + 1),
+  ).join("\n");
+}
+
 function resetEditor(message = "No file selected.") {
   state.activeFilePath = "";
   state.editorOriginalContent = "";
@@ -289,6 +298,7 @@ function resetEditor(message = "No file selected.") {
   state.editorSaving = false;
   $("#editorFileName").textContent = "Select a source file";
   $("#sourceEditor").value = "";
+  renderEditorLineNumbers();
   $("#sourceEditor").disabled = true;
   $("#editorStatus").textContent = message;
   setEditorDirty(false);
@@ -309,6 +319,7 @@ async function openWorkspaceFile(path) {
     state.editorOriginalContent = result.content || "";
     $("#editorFileName").textContent = result.path;
     $("#sourceEditor").value = state.editorOriginalContent;
+    renderEditorLineNumbers();
     $("#sourceEditor").disabled = false;
     $("#editorStatus").textContent = `${Number(result.bytes || 0)} bytes`;
     setEditorDirty(false);
@@ -404,7 +415,7 @@ function renderArduino(arduino, force = false, ide = {}) {
     <tr data-path="${escapeHtml(file.path)}" tabindex="0">
       <td>
         <span class="file-name">${escapeHtml(file.path)}</span>
-        <span class="file-meta">${Number(file.lines || 0)} lines · ${Number(file.bytes || 0)} bytes</span>
+        <span class="file-meta">${Number(file.lines || 0)} lines | ${Number(file.bytes || 0)} bytes</span>
       </td>
     </tr>
   `).join("");
@@ -437,7 +448,7 @@ function codexAccountLabel(payload = {}) {
   if (!payload.available) return "Codex runtime not found";
   if (payload.initializing) return "Starting local Codex...";
   if (payload.error && !account.type) return "Sign-in required";
-  const plan = account.planType ? ` · ${account.planType}` : "";
+  const plan = account.planType ? ` | ${account.planType}` : "";
   const email = account.email ? `${account.email}${plan}` : `${account.type || "ChatGPT"}${plan}`;
   return payload.connected ? email : "Connecting...";
 }
@@ -461,12 +472,33 @@ function renderCodex(payload = {}) {
             <div class="codex-message-body">${escapeHtml(message.text || "")}</div>
           </article>
         `).join("")
-      : `<div class="codex-empty">Ask Codex to inspect, edit, verify, or optimize the selected Arduino sketch.</div>`;
+      : `
+        <div class="codex-empty">
+          <span class="codex-empty-mark">C</span>
+          <strong>Work with your Arduino sketch</strong>
+          <p>Codex receives the selected workspace, active file, and latest verify result.</p>
+          <div class="codex-suggestions">
+            <button type="button" data-codex-prompt="Review this sketch and identify the most important issues.">Review this sketch</button>
+            <button type="button" data-codex-prompt="Explain the active file and its control flow.">Explain the active file</button>
+            <button type="button" data-codex-prompt="Optimize this sketch while preserving its current behavior.">Optimize the code</button>
+          </div>
+        </div>`;
+    bindCodexSuggestions();
     $("#codexMessages").scrollTop = $("#codexMessages").scrollHeight;
   }
   const activity = payload.activity || [];
-  $("#codexActivity").hidden = !activity.length;
-  $("#codexActivity").textContent = activity.join("\n");
+  const visibleActivity = state.codexBusy ? activity.slice(-4) : [];
+  $("#codexActivity").hidden = !visibleActivity.length;
+  $("#codexActivity").textContent = visibleActivity.join("\n");
+}
+
+function bindCodexSuggestions() {
+  $$("[data-codex-prompt]").forEach((button) => {
+    button.addEventListener("click", () => {
+      $("#codexInput").value = button.dataset.codexPrompt || "";
+      $("#codexInput").focus();
+    });
+  });
 }
 
 async function refreshCodex() {
@@ -543,6 +575,7 @@ function renderArduinoProjects(projects = []) {
           ${project.unsaved ? '<span class="project-badge">Unsaved</span>' : ""}
           ${!project.valid && !project.unsaved ? '<span class="project-badge warning">Folder not found</span>' : ""}
         </div>
+        ${project.valid ? `<div class="project-source-meta">${Number(project.source_count || 0)} source tab(s)</div>` : ""}
         ${project.unsaved ? '<div class="project-path">Save this sketch in Arduino IDE to create a selectable workspace.</div>' : ""}
       </div>
       <button class="button ghost select-project" data-index="${index}" ${project.valid && !state.workspaceSelectionRunning ? "" : "disabled"}>Select</button>
@@ -752,6 +785,7 @@ function bindEvents() {
     }
   });
   $("#sourceEditor").addEventListener("input", () => {
+    renderEditorLineNumbers();
     setEditorDirty($("#sourceEditor").value !== state.editorOriginalContent);
     $("#editorStatus").textContent = state.editorDirty ? "Unsaved changes." : "No changes.";
   });
@@ -760,6 +794,9 @@ function bindEvents() {
       event.preventDefault();
       saveWorkspaceFile();
     }
+  });
+  $("#sourceEditor").addEventListener("scroll", () => {
+    $("#editorLineNumbers").scrollTop = $("#sourceEditor").scrollTop;
   });
   $("#boardInfoBtn").addEventListener("click", () => {
     const panel = $("#boardInfoPanel");
@@ -798,6 +835,8 @@ function bindEvents() {
 }
 
 bindEvents();
+bindCodexSuggestions();
+renderEditorLineNumbers();
 refresh();
 setInterval(maybeRefresh, REFRESH_TICK_MS);
 refreshCodex();

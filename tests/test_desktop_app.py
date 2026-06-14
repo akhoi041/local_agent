@@ -46,6 +46,8 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn('id="codexPanel"', html)
         self.assertIn('id="codexComposer"', html)
         self.assertIn('id="toggleCodexBtn"', html)
+        self.assertIn('id="editorLineNumbers"', html)
+        self.assertIn("data-codex-prompt", html)
 
     def test_codex_status_starts_runtime_without_blocking_for_handshake(self) -> None:
         bridge = CodexBridge()
@@ -106,10 +108,33 @@ class TalosArduinoTests(unittest.TestCase):
             self.assertEqual(summary["main_sketch"], "Blink.ino")
             self.assertEqual([item["path"] for item in summary["files"]], ["Blink.ino", "helpers.cpp"])
 
+    def test_arduino_workspace_summary_includes_header_and_cpp_tabs_case_insensitively(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp) / "Controller"
+            root.mkdir()
+            (root / "Controller.ino").write_text("void setup() {}\n", encoding="utf-8")
+            (root / "motor.CPP").write_text("void motor_init() {}\n", encoding="utf-8")
+            (root / "motor.H").write_text("void motor_init();\n", encoding="utf-8")
+
+            summary = workspace_summary({"arduino_workspace_path": str(root), "arduino_fqbn": ""})
+
+            self.assertEqual(
+                [item["path"] for item in summary["files"]],
+                ["Controller.ino", "motor.CPP", "motor.H"],
+            )
+
     def test_native_bridge_extracts_multiple_open_sketch_titles(self) -> None:
         self.assertEqual(extract_ino_names("1.ino - Arduino IDE"), ["1.ino"])
         self.assertEqual(extract_ino_names("2.ino | Arduino IDE"), ["2.ino"])
         self.assertEqual(extract_ino_names("test | Arduino IDE 2.3.4"), ["test.ino"])
+        self.assertEqual(
+            extract_ino_names("LQR_pendulum - lqr_controller.cpp | Arduino IDE 2.3.4"),
+            ["LQR_pendulum.ino"],
+        )
+        self.assertEqual(
+            extract_ino_names("LQR_pendulum - config.h | Arduino IDE 2.3.4"),
+            ["LQR_pendulum.ino"],
+        )
         self.assertIsInstance(native_available(), bool)
 
     def test_native_bridge_extracts_board_from_language_server_command(self) -> None:
@@ -140,6 +165,7 @@ class TalosArduinoTests(unittest.TestCase):
             self.assertEqual([project["sketch"] for project in projects], ["1.ino", "2.ino"])
             self.assertEqual([Path(project["path"]).name for project in projects], ["1", "2"])
             self.assertTrue(all(project["valid"] for project in projects))
+            self.assertTrue(all(project["source_count"] == 1 for project in projects))
 
     def test_arduino_discovery_maps_ide_2_titles_without_ino_extension(self) -> None:
         with TemporaryDirectory() as tmp:

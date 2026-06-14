@@ -82,9 +82,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\pipeline_status.ps1
 - [x] Save edited files back into the selected sketch folder.
 - [x] Keep all file operations scoped inside the sketch workspace.
 - [x] Add UI feedback for dirty/unsaved edited files.
+- [x] Detect all `.ino`, `.h`, `.hpp`, `.c`, and `.cpp` tabs in the selected Arduino sketch folder.
+- [x] Keep project detection stable when Arduino IDE focuses a secondary `.h` or `.cpp` tab.
 - [x] Promote the editor into a VSCode-style Explorer/Editor/Output workbench.
 - [x] Add a compact hover-expand navigation rail with a persisted pin state.
 - [x] Collapse the unpinned navigation rail immediately when the pointer leaves.
+- [x] Polish the IDE workbench with editor line numbers and a focused Codex welcome/composer layout.
 
 ## Stage 4 - Codex Debug Loop
 

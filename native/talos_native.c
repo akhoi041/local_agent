@@ -40,6 +40,24 @@ static int valid_sketch_char(wchar_t ch) {
     return iswalnum(ch) || ch == L'_' || ch == L'.' || ch == L'-' || ch == L' ';
 }
 
+static int is_source_tab_suffix(const wchar_t *text, int start, int end) {
+    static const wchar_t *suffixes[] = {
+        L".ino", L".h", L".hpp", L".c", L".cc", L".cpp", L".cxx", L".s"
+    };
+    int suffix_index;
+    for (suffix_index = 0; suffix_index < (int)(sizeof(suffixes) / sizeof(suffixes[0])); suffix_index++) {
+        const wchar_t *suffix = suffixes[suffix_index];
+        int suffix_len = (int)wcslen(suffix);
+        int offset;
+        if (end - start < suffix_len) continue;
+        for (offset = 0; offset < suffix_len; offset++) {
+            if (towlower(text[end - suffix_len + offset]) != towlower(suffix[offset])) break;
+        }
+        if (offset == suffix_len) return 1;
+    }
+    return 0;
+}
+
 static int append_inferred_ino_name(const wchar_t *title, wchar_t *out, int out_len, int *used, int count) {
     int i = 0;
     int end = -1;
@@ -63,6 +81,16 @@ static int append_inferred_ino_name(const wchar_t *title, wchar_t *out, int out_
     while (start < end && iswspace(title[start])) start++;
     while (end > start && (iswspace(title[end - 1]) || title[end - 1] == L'-' || title[end - 1] == L'|')) end--;
     if (end <= start) return count;
+    for (i = start; i + 2 < end; i++) {
+        if (title[i] == L' ' && title[i + 1] == L'-' && title[i + 2] == L' ') {
+            int tab_start = i + 3;
+            if (is_source_tab_suffix(title, tab_start, end)) {
+                end = i;
+                while (end > start && iswspace(title[end - 1])) end--;
+                break;
+            }
+        }
+    }
     for (i = start; i < end; i++) {
         if (!valid_sketch_char(title[i])) return count;
     }

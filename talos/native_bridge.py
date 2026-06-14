@@ -436,12 +436,42 @@ def extract_board_name(text: str) -> str:
     match = re.search(r"(?i)(?:^|\s)-board-name\s+([^\s]+)", text)
     return match.group(1).strip() if match else ""
 
+def sketch_name_from_arduino_title(title: str) -> str:
+    if "arduino ide" not in title.lower():
+        return ""
+    workspace_title = re.split(
+        r"\s+[|]\s+Arduino IDE\b",
+        title,
+        maxsplit=1,
+        flags=re.IGNORECASE,
+    )[0].strip(" -|[]()")
+    tab_match = re.match(
+        r"^(?P<sketch>.+?)\s+-\s+[^\\/]+?\.(?:ino|h|hpp|c|cc|cpp|cxx|s)$",
+        workspace_title,
+        flags=re.IGNORECASE,
+    )
+    if tab_match:
+        workspace_title = tab_match.group("sketch").strip()
+    if workspace_title.lower().endswith(".ino"):
+        workspace_title = workspace_title[:-4]
+    workspace_title = workspace_title.rstrip(".")
+    if not workspace_title or not re.fullmatch(r"[A-Za-z0-9 _.-]+", workspace_title):
+        return ""
+    return f"{workspace_title}.ino"
+
 def extract_ino_names(title: str) -> list[str]:
+    title_sketch = sketch_name_from_arduino_title(title)
     if _LIBRARY is not None:
         buffer = ctypes.create_unicode_buffer(INO_BUFFER_CHARS)
         _LIBRARY.talos_extract_ino_names(title, buffer, INO_BUFFER_CHARS)
         names = [line for line in buffer.value.splitlines() if line.strip()]
         if names:
+            if title_sketch and any(
+                name.lower().endswith((".cpp.ino", ".c.ino", ".h.ino", ".hpp.ino"))
+                or " - " in name
+                for name in names
+            ):
+                return [title_sketch]
             return names
 
     names: list[str] = []
@@ -452,13 +482,4 @@ def extract_ino_names(title: str) -> list[str]:
     if names:
         return names
 
-    if "arduino ide" not in title.lower():
-        return []
-    sketch_title = re.split(r"\s+[-|]\s+Arduino IDE\b", title, maxsplit=1, flags=re.IGNORECASE)[0]
-    sketch_title = sketch_title.strip(" -|[]()")
-    if not re.fullmatch(r"[A-Za-z0-9 _.-]+", sketch_title):
-        return []
-    sketch_title = sketch_title.rstrip(".")
-    if not sketch_title:
-        return []
-    return [f"{sketch_title}.ino"]
+    return [title_sketch] if title_sketch else []

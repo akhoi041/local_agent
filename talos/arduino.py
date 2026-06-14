@@ -19,7 +19,7 @@ from talos.native_bridge import (
     native_available,
 )
 
-ARDUINO_EXTENSIONS = {".ino", ".h", ".hpp", ".c", ".cpp", ".S", ".txt", ".md"}
+ARDUINO_EXTENSIONS = {".ino", ".h", ".hpp", ".c", ".cpp", ".s", ".txt", ".md"}
 IGNORED_DIRS = {
     ".git",
     ".vs",
@@ -58,7 +58,7 @@ def arduino_config(config: dict[str, Any]) -> dict[str, str]:
     }
 
 def is_source_file(path: Path) -> bool:
-    return path.suffix in ARDUINO_EXTENSIONS
+    return path.suffix.lower() in ARDUINO_EXTENSIONS
 
 def open_window_titles() -> list[str]:
     return list_window_titles()
@@ -289,6 +289,8 @@ def arduino_search_roots(config: dict[str, Any], extra_roots: list[Path] | None 
             home / "Documents" / "Arduino",
             home / "OneDrive" / "Documents" / "Arduino",
             home / "Arduino",
+            home / "Desktop",
+            home / "Downloads",
         ]
     )
     unique: list[Path] = []
@@ -469,6 +471,7 @@ def discover_arduino_projects(
         if key in seen:
             continue
         seen.add(key)
+        project.update(project_source_metadata(Path(project["path"])))
         projects.append(project)
     for title in window_titles:
         lower = title.lower()
@@ -502,6 +505,7 @@ def discover_arduino_projects(
                     )
                 ),
             }
+            project.update(project_source_metadata(folder))
             title_board = title_boards.get(title)
             if title_board:
                 project["fqbn"] = title_board["fqbn"]
@@ -609,6 +613,15 @@ def iter_source_files(workspace: Path) -> list[Path]:
         if is_source_file(path):
             files.append(path)
     return sorted(files, key=lambda item: item.relative_to(workspace).as_posix().lower())
+
+def project_source_metadata(folder: Path | None) -> dict[str, Any]:
+    if folder is None or not folder.exists() or not folder.is_dir():
+        return {"source_count": 0, "source_files": []}
+    files = iter_source_files(folder)
+    return {
+        "source_count": len(files),
+        "source_files": [path.relative_to(folder).as_posix() for path in files],
+    }
 
 def find_main_sketch(workspace: Path, files: list[Path] | None = None) -> Path | None:
     source_files = files if files is not None else iter_source_files(workspace)
