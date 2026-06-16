@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import ctypes
 import base64
+import ctypes
 import json
 import os
 import re
@@ -408,9 +408,6 @@ def list_arduino_tool_processes_powershell() -> list[dict[str, object]]:
 def powershell_command(script: str) -> list[str]:
     encoded = base64.b64encode(script.encode("utf-16le")).decode("ascii")
     return ["powershell", "-NoProfile", "-EncodedCommand", encoded]
-
-def arduino_ide_running() -> bool:
-    return bool(list_arduino_ide_processes())
 
 def extract_ino_paths(text: str) -> list[str]:
     paths: list[str] = []

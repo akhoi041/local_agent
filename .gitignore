@@ -18,8 +18,7 @@ dist/
 *.pkg
 
 # App runtime state
-tasks.json
-memory.json
+config/run_history.json
 tmp*/
 .talos_sandbox/
 *.log

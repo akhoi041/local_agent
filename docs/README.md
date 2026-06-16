@@ -75,7 +75,7 @@ tests/                  Regression tests
 docs/                   README and license
 ```
 
-Runtime files such as `.talos_sandbox/`, `tasks.json`, and `memory.json` are ignored by Git.
+Runtime files such as `.talos_sandbox/` and `config/run_history.json` are ignored by Git.
 
 ## Codex Bridge CLI
 

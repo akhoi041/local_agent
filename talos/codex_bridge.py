@@ -6,17 +6,72 @@ import queue
 import shutil
 import subprocess
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
 from talos.core import ROOT, now
+from talos.run_history import record_patch
 
 CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 PATCH_IGNORED_DIRS = {".git", ".talos_sandbox", "__pycache__", "build", "dist"}
 PATCH_FILE_LIMIT = 2_000_000
 THREAD_SANDBOX_MODE = "workspace-write"
 CODEX_TURN_TIMEOUT_SECONDS = 300
+CODEX_THREAD_REFRESH_SECONDS = 15
 
+def _clean_thread_text(text: str) -> str:
+    value = str(text or "").strip()
+    marker = "\n\nTalos Arduino context:"
+    if marker in value:
+        value = value.split(marker, 1)[0].strip()
+    return value
+
+def normalize_codex_thread(thread: dict[str, Any], active_id: str = "") -> dict[str, Any]:
+    preview = _clean_thread_text(str(thread.get("preview") or ""))
+    title = str(thread.get("name") or "").strip() or preview.splitlines()[0].strip()
+    if len(title) > 72:
+        title = f"{title[:69].rstrip()}..."
+    return {
+        "id": str(thread.get("id") or ""),
+        "title": title or "Untitled conversation",
+        "preview": preview,
+        "workspace": str(thread.get("cwd") or ""),
+        "created_at": thread.get("createdAt") or 0,
+        "updated_at": thread.get("updatedAt") or 0,
+        "source": thread.get("source") or "",
+        "active": str(thread.get("id") or "") == active_id,
+    }
+
+def messages_from_codex_thread(thread: dict[str, Any]) -> list[dict[str, Any]]:
+    messages: list[dict[str, Any]] = []
+    for turn in thread.get("turns") or []:
+        turn_time = turn.get("startedAt") or turn.get("completedAt") or ""
+        for item in turn.get("items") or []:
+            item_type = str(item.get("type") or "")
+            if item_type == "userMessage":
+                text = "\n".join(
+                    str(content.get("text") or "")
+                    for content in item.get("content") or []
+                    if content.get("type") == "text" and content.get("text")
+                )
+                role = "user"
+            elif item_type == "agentMessage":
+                text = str(item.get("text") or "")
+                role = "assistant"
+            else:
+                continue
+            text = _clean_thread_text(text)
+            if text:
+                messages.append(
+                    {
+                        "id": str(item.get("id") or f"{role}-{len(messages) + 1}"),
+                        "role": role,
+                        "text": text,
+                        "time": turn_time,
+                    }
+                )
+    return messages[-100:]
 
 def find_codex_executable() -> str:
     executable = shutil.which("codex")
@@ -28,7 +83,6 @@ def find_codex_executable() -> str:
         reverse=True,
     )
     return str(candidates[0]) if candidates else ""
-
 
 def build_codex_prompt(
     message: str,
@@ -68,7 +122,6 @@ def build_codex_prompt(
         )
     return "\n\n".join(section for section in sections if section)
 
-
 def snapshot_workspace(workspace: str | Path) -> dict[str, dict[str, Any]]:
     root = Path(workspace).resolve()
     snapshot: dict[str, dict[str, Any]] = {}
@@ -93,7 +146,6 @@ def snapshot_workspace(workspace: str | Path) -> dict[str, dict[str, Any]]:
     except OSError:
         return snapshot
     return snapshot
-
 
 def diff_workspace_snapshots(
     before: dict[str, dict[str, Any]],
@@ -121,7 +173,6 @@ def diff_workspace_snapshots(
         )
     return changes
 
-
 class CodexBridge:
     def __init__(self) -> None:
         self._process: subprocess.Popen[str] | None = None
@@ -144,15 +195,20 @@ class CodexBridge:
         self._assistant_message_id = ""
         self._patches: list[dict[str, Any]] = []
         self._patch_revision = 0
+        self._patch_event_revision = 0
         self._turn_workspace = ""
         self._turn_track_changes = False
         self._turn_snapshot: dict[str, dict[str, Any]] = {}
         self._turn_protocol_changes: dict[str, dict[str, Any]] = {}
         self._turn_diff = ""
+        self._remote_threads: list[dict[str, Any]] = []
+        self._remote_threads_updated_at = 0.0
+        self._remote_threads_loading = False
 
     def status(self, start: bool = True) -> dict[str, Any]:
         if start:
             self.start_async()
+        self._schedule_thread_refresh()
         with self._lock:
             process_running = self._process is not None and self._process.poll() is None
             return {
@@ -169,6 +225,8 @@ class CodexBridge:
                 "activity": list(self._activity[-40:]),
                 "patches": list(self._patches[-20:]),
                 "patch_revision": self._patch_revision,
+                "patch_event_revision": self._patch_event_revision,
+                "conversations": self._thread_summaries(),
             }
 
     def start_async(self) -> None:
@@ -212,6 +270,11 @@ class CodexBridge:
                 if account_result.get("requiresOpenaiAuth") and not self._account:
                     self._error = "Codex is not signed in. Sign in through the Codex extension or CLI first."
                 self._append_activity("Codex app-server connected.")
+            try:
+                self._refresh_threads()
+            except Exception as error:
+                with self._lock:
+                    self._append_activity(f"Codex history refresh warning: {error}")
         except Exception as error:
             with self._lock:
                 self._error = str(error)
@@ -281,7 +344,13 @@ class CodexBridge:
             self._turn_snapshot = snapshot_workspace(workspace_path) if allow_edits else {}
             self._turn_protocol_changes = {}
             self._turn_diff = ""
-        prompt = build_codex_prompt(text, workspace, active_file, verify_context, allow_edits)
+        prompt = build_codex_prompt(
+            text,
+            workspace,
+            active_file,
+            verify_context,
+            allow_edits,
+        )
         threading.Thread(
             target=self._run_turn,
             args=(prompt, workspace_path, allow_edits),
@@ -302,7 +371,48 @@ class CodexBridge:
             self._activity.clear()
             self._patches.clear()
             self._patch_revision += 1
-            self._append_activity("Started a new local conversation.")
+            self._append_activity("Ready for a new Codex thread.")
+        return {"ok": True}
+
+    def select_conversation(self, conversation_id: str) -> dict[str, Any]:
+        selected_id = conversation_id.strip()
+        if not selected_id:
+            return {"ok": False, "error": "Conversation id is empty."}
+        self.ensure_started()
+        with self._lock:
+            if self._turn_running:
+                return {"ok": False, "error": "Wait for the active Codex turn to finish."}
+        try:
+            result = self._request(
+                "thread/resume",
+                {
+                    "threadId": selected_id,
+                    "approvalPolicy": "never",
+                    "sandbox": THREAD_SANDBOX_MODE,
+                },
+                timeout=30,
+            )
+        except Exception as error:
+            return {"ok": False, "error": f"Could not load Codex conversation: {error}"}
+        thread = result.get("thread") or {}
+        if not thread.get("id"):
+            return {"ok": False, "error": "Codex returned an empty conversation."}
+        messages = messages_from_codex_thread(thread)
+        with self._lock:
+            self._thread_id = selected_id
+            self._thread_cwd = str(thread.get("cwd") or "")
+            self._assistant_message_id = ""
+            self._turn_id = ""
+            self._turn_error = ""
+            self._messages = messages
+            self._patches = []
+            self._patch_revision += 1
+            self._activity.clear()
+            self._append_activity("Loaded Codex conversation history.")
+            self._remote_threads = [
+                normalize_codex_thread(item, selected_id)
+                for item in self._remote_threads
+            ]
         return {"ok": True}
 
     def shutdown(self) -> None:
@@ -524,6 +634,7 @@ class CodexBridge:
                 error = turn.get("error") or {}
                 if error:
                     self._turn_error = str(error.get("message") or error)
+                self._schedule_thread_refresh(force=True)
             elif method == "error":
                 error = params.get("error") or {}
                 message_text = str(error.get("message") or error or "Unknown Codex error.")
@@ -630,15 +741,18 @@ class CodexBridge:
         files = [merged[path] for path in sorted(merged, key=str.lower)]
         if files:
             self._patch_revision += 1
+            self._patch_event_revision += 1
             patch = {
                 "id": f"patch-{self._patch_revision}",
                 "time": now(),
                 "workspace": workspace,
                 "files": files,
                 "diff": self._turn_diff,
+                "event_revision": self._patch_event_revision,
             }
             self._patches.append(patch)
             del self._patches[:-20]
+            record_patch(patch)
             self._append_activity(f"Recorded Codex patch across {len(files)} file(s).")
         self._clear_turn_patch_state()
 
@@ -653,5 +767,57 @@ class CodexBridge:
         self._activity.append(f"{now()} {text}")
         del self._activity[:-100]
 
+    def _schedule_thread_refresh(self, force: bool = False) -> None:
+        with self._lock:
+            process_running = self._process is not None and self._process.poll() is None
+            stale = time.monotonic() - self._remote_threads_updated_at >= CODEX_THREAD_REFRESH_SECONDS
+            if (
+                not process_running
+                or not self._initialized.is_set()
+                or self._remote_threads_loading
+                or (not force and not stale)
+            ):
+                return
+            self._remote_threads_loading = True
+        threading.Thread(target=self._refresh_threads_worker, daemon=True).start()
+
+    def _refresh_threads_worker(self) -> None:
+        try:
+            self._refresh_threads()
+        except Exception as error:
+            with self._lock:
+                self._append_activity(f"Codex history refresh warning: {error}")
+        finally:
+            with self._lock:
+                self._remote_threads_loading = False
+
+    def _refresh_threads(self) -> None:
+        result = self._request(
+            "thread/list",
+            {
+                "limit": 50,
+                "sortKey": "updated_at",
+                "sortDirection": "desc",
+                "archived": False,
+            },
+            timeout=30,
+        )
+        threads = result.get("data") or result.get("threads") or []
+        with self._lock:
+            self._remote_threads = [
+                normalize_codex_thread(item, self._thread_id)
+                for item in threads
+                if isinstance(item, dict) and item.get("id")
+            ]
+            self._remote_threads_updated_at = time.monotonic()
+
+    def _thread_summaries(self) -> list[dict[str, Any]]:
+        return [
+            {
+                **item,
+                "active": item.get("id") == self._thread_id,
+            }
+            for item in self._remote_threads
+        ]
 
 CODEX_BRIDGE = CodexBridge()

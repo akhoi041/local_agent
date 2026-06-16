@@ -17,7 +17,6 @@ from talos.arduino import (
     workspace_summary,
     write_workspace_file,
 )
-from talos.core import language_label
 from talos.native_bridge import extract_board_name, extract_fqbn, native_available
 from talos.codex_bridge import (
     CODEX_TURN_TIMEOUT_SECONDS,
@@ -25,8 +24,11 @@ from talos.codex_bridge import (
     THREAD_SANDBOX_MODE,
     build_codex_prompt,
     diff_workspace_snapshots,
+    messages_from_codex_thread,
+    normalize_codex_thread,
     snapshot_workspace,
 )
+from talos.run_history import record_patch, record_verify, run_history
 
 class TalosArduinoTests(unittest.TestCase):
     def test_codex_prompt_contains_selected_arduino_context(self) -> None:
@@ -83,12 +85,21 @@ class TalosArduinoTests(unittest.TestCase):
             bridge._turn_snapshot = snapshot_workspace(root)
             (root / "created.ino").write_text("void setup() {}\n", encoding="utf-8")
 
-            bridge._finalize_turn_patch()
+            with patch("talos.codex_bridge.record_patch"):
+                bridge._finalize_turn_patch()
             status = bridge.status(start=False)
 
             self.assertEqual(status["patch_revision"], 1)
+            self.assertEqual(status["patch_event_revision"], 1)
             self.assertEqual(status["patches"][0]["files"][0]["path"], "created.ino")
             self.assertEqual(status["patches"][0]["files"][0]["kind"], "add")
+
+    def test_codex_thread_changes_do_not_emit_patch_events(self) -> None:
+        bridge = CodexBridge()
+        bridge.new_thread()
+
+        status = bridge.status(start=False)
+        self.assertEqual(status["patch_event_revision"], 0)
 
     def test_frontend_contains_codex_workbench_panel(self) -> None:
         html = (Path(__file__).parents[1] / "ui" / "web_frontend" / "index.html").read_text(encoding="utf-8")
@@ -100,6 +111,113 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("data-codex-prompt", html)
         self.assertIn('id="codexAllowEdits"', html)
         self.assertIn('id="cancelCodexBtn"', html)
+        self.assertNotIn('id="codexHistoryBtn"', html)
+        self.assertIn('id="codexBackBtn"', html)
+        self.assertIn('id="codexHistoryCount"', html)
+        self.assertIn('id="runHistoryTab"', html)
+        self.assertIn('id="explorerSplitter"', html)
+        self.assertNotIn('id="codexSplitter"', html)
+
+        script = (Path(__file__).parents[1] / "ui" / "web_frontend" / "app.js").read_text(encoding="utf-8")
+        self.assertIn("patch_event_revision", script)
+        self.assertIn("Patch applied. Verifying sandbox...", script)
+        self.assertIn("formatDuration", script)
+        self.assertIn("timings.compile", script)
+        self.assertIn("View all (", script)
+        self.assertIn("relativeTimeLabel", script)
+        self.assertIn("showCodexTasks(true)", script)
+        self.assertNotIn("toggleCodexHistory", script)
+        self.assertIn("bindExplorerSplitter", script)
+        self.assertNotIn("CODEX_WIDTH_KEY", script)
+        self.assertNotIn("applyWindowMetrics", script)
+        self.assertNotIn("--native-window-width", script)
+
+        styles = (Path(__file__).parents[1] / "ui" / "web_frontend" / "styles.css").read_text(encoding="utf-8")
+        self.assertNotIn("width: 100vw;", styles)
+        self.assertIn("max-width: none;", styles)
+        self.assertIn("justify-self: stretch;", styles)
+        self.assertIn("inset: 0;", styles)
+        self.assertIn("border-left: 1px solid var(--line);", styles)
+        self.assertIn("minmax(320px, 1fr)", styles)
+        self.assertIn("grid-template-columns: minmax(0, 1fr);", styles)
+        self.assertIn("grid-template-areas:", styles)
+        self.assertIn("grid-column: 1 / -1;", styles)
+        self.assertIn("display: none;", styles)
+        self.assertIn("[hidden]", styles)
+        self.assertIn("display: none !important;", styles)
+        self.assertNotIn("--codex-panel-width", styles)
+
+    def test_codex_thread_summary_prefers_name_and_supports_unix_time(self) -> None:
+        summary = normalize_codex_thread(
+            {
+                "id": "thread-1",
+                "name": "Arduino review",
+                "preview": "Long injected prompt",
+                "cwd": r"C:\Sketch",
+                "updatedAt": 1781541452,
+            },
+            "thread-1",
+        )
+
+        self.assertEqual(summary["title"], "Arduino review")
+        self.assertEqual(summary["updated_at"], 1781541452)
+        self.assertTrue(summary["active"])
+
+    def test_codex_thread_messages_restore_user_and_assistant_text(self) -> None:
+        messages = messages_from_codex_thread(
+            {
+                "turns": [
+                    {
+                        "startedAt": 1781541452,
+                        "items": [
+                            {
+                                "id": "user-1",
+                                "type": "userMessage",
+                                "content": [
+                                    {
+                                        "type": "text",
+                                        "text": "Review this sketch.\n\nTalos Arduino context:\n- Workspace: C:\\Sketch",
+                                    }
+                                ],
+                            },
+                            {
+                                "id": "assistant-1",
+                                "type": "agentMessage",
+                                "text": "The sketch compiles.",
+                            },
+                        ],
+                    }
+                ]
+            }
+        )
+
+        self.assertEqual(messages[0]["text"], "Review this sketch.")
+        self.assertEqual(messages[1]["text"], "The sketch compiles.")
+
+    def test_run_history_keeps_verify_and_patch_events(self) -> None:
+        with TemporaryDirectory() as tmp:
+            history_path = Path(tmp) / "run_history.json"
+            with patch("talos.run_history.RUN_HISTORY_PATH", history_path):
+                record_verify(
+                    {
+                        "ok": True,
+                        "status": "passed",
+                        "summary": {"path": r"C:\Sketch", "main_sketch": "Sketch.ino"},
+                        "output": "Sketch uses 100 bytes.",
+                    },
+                    "codex_patch",
+                )
+                record_patch(
+                    {
+                        "id": "patch-1",
+                        "workspace": r"C:\Sketch",
+                        "files": [{"path": "Sketch.ino", "kind": "update"}],
+                    }
+                )
+                events = run_history()
+
+            self.assertEqual([event["type"] for event in events], ["patch", "verify"])
+            self.assertEqual(events[1]["source"], "codex_patch")
 
     def test_codex_status_starts_runtime_without_blocking_for_handshake(self) -> None:
         bridge = CodexBridge()
@@ -142,9 +260,6 @@ class TalosArduinoTests(unittest.TestCase):
         ]
 
         self.assertEqual(boards_by_window_title(windows, processes), {})
-
-    def test_language_label_defaults_to_vietnamese(self) -> None:
-        self.assertEqual(language_label({"language": "vi"}), "Ti\u1ebfng Vi\u1ec7t")
 
     def test_arduino_workspace_summary_finds_main_sketch_and_tabs(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -476,6 +591,8 @@ class TalosArduinoTests(unittest.TestCase):
 
             self.assertFalse(result["ok"])
             self.assertEqual(result["status"], "missing_fqbn")
+            self.assertIn("prepare", result["timings"])
+            self.assertIn("total", result["timings"])
 
     def test_arduino_compile_output_parser_cleans_ansi_and_extracts_summary(self) -> None:
         output = (
@@ -532,6 +649,18 @@ class TalosArduinoTests(unittest.TestCase):
             self.assertEqual(sandbox.name, "Blink")
             self.assertTrue((sandbox / "Blink.ino").exists())
             self.assertFalse((sandbox / "build").exists())
+
+    def test_arduino_sandbox_copy_ignores_platformio_cache(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp) / "Blink"
+            root.mkdir()
+            (root / "Blink.ino").write_text("void setup() {}\nvoid loop() {}\n", encoding="utf-8")
+            (root / ".pio").mkdir()
+            (root / ".pio" / "cache.o").write_text("ignore\n", encoding="utf-8")
+
+            sandbox = copy_workspace_to_sandbox(root)
+
+            self.assertFalse((sandbox / ".pio").exists())
 
     def test_arduino_workspace_file_write_read_and_delete_are_scoped(self) -> None:
         with TemporaryDirectory() as tmp:

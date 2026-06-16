@@ -126,6 +126,15 @@
               </section>
             </aside>
 
+            <div
+              id="explorerSplitter"
+              class="pane-splitter"
+              role="separator"
+              aria-label="Resize Explorer"
+              aria-orientation="vertical"
+              tabindex="0"
+            ></div>
+
             <main class="ide-editor-area">
               <div class="editor-tabbar">
                 <div class="editor-tab active">
@@ -149,19 +158,24 @@
 
               <section class="ide-output-panel">
                 <div class="output-tabbar">
-                  <div class="output-tab active">Verify output</div>
+                  <div class="output-tabs" role="tablist">
+                    <button id="verifyOutputTab" class="output-tab active" type="button" role="tab" aria-selected="true">Verify output</button>
+                    <button id="runHistoryTab" class="output-tab" type="button" role="tab" aria-selected="false">History</button>
+                  </div>
                   <div class="panel-actions">
                     <button id="copyIssuesBtn" class="icon-button" type="button" title="Copy compile issues only" aria-label="Copy compile issues only" disabled>Copy Issues</button>
                     <button id="copyVerifyBtn" class="icon-button" type="button" title="Copy full verify output" aria-label="Copy full verify output">Copy All</button>
                   </div>
                 </div>
                 <div id="arduinoOutput" class="verify-output empty">Sandbox compile has not been run.</div>
+                <div id="runHistory" class="run-history" hidden></div>
               </section>
             </main>
 
-            <aside id="codexPanel" class="codex-panel" aria-label="Codex chat">
+            <aside id="codexPanel" class="codex-panel history-mode" aria-label="Codex chat">
               <div class="codex-head">
                 <div class="codex-identity">
+                  <button id="codexBackBtn" class="icon-button codex-back" type="button" title="Back to Tasks" aria-label="Back to Tasks" hidden>&larr;</button>
                   <span class="codex-mark">C</span>
                   <span class="codex-head-copy">
                     <span class="codex-title">Codex</span>
@@ -177,6 +191,13 @@
                 <span>Workspace</span>
                 <span>Active file</span>
                 <span>Verify output</span>
+              </div>
+              <div id="codexHistory" class="codex-history">
+                <div class="codex-history-head">
+                  <span>Tasks</span>
+                  <span id="codexHistoryCount"></span>
+                </div>
+                <div id="codexHistoryList" class="codex-history-list"></div>
               </div>
               <div id="codexMessages" class="codex-messages" aria-live="polite">
                 <div class="codex-empty">

@@ -73,6 +73,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\pipeline_status.ps1
 - [x] Preserve Verify Output scrolling when compile issue details are visible.
 - [x] Let the Arduino results area fill available window height with one primary output scrollbar.
 - [x] Add a copy button for issue-only debug context.
+- [x] Show verify timing breakdown and skip common build/cache folders during sandbox copy.
+- [x] Keep Verify Output and run history mutually exclusive so old passed cards do not leak into the current verify result.
 
 ## Stage 3 - Arduino File Workflow
 
@@ -99,8 +101,17 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\pipeline_status.ps1
 - [x] Keep Codex startup and UI polling non-blocking to avoid workbench lag.
 - [x] Let Codex patch relevant files through the Talos-controlled workspace bridge.
 - [x] Recover cleanly from rejected or timed-out Codex turns and allow manual cancellation.
-- [ ] Re-run verify after a Codex patch.
-- [ ] Keep a short history of verify attempts and patches.
+- [x] Load and resume real Codex app-server threads shared with the VSCode Codex history.
+- [x] Present real Codex thread history as a VSCode-style Tasks view with recent and full lists.
+- [x] Keep the Codex Tasks view visible for empty threads and pin the composer to the panel bottom.
+- [x] Add responsive, draggable Explorer and Codex panes with persisted IDE proportions.
+- [x] Make Codex Tasks the default panel view and replace the History toggle with conversation back navigation.
+- [x] Stretch the IDE container chain from the live body width without stale `vw` sizing after maximize or restore.
+- [x] Bound Explorer, Editor, Output, and Codex as explicit workbench boxes with clipped overflow.
+- [x] Rebuild the Codex panel as a flexible workbench column without pixel-based pane persistence.
+- [x] Remove the duplicate native build script, no-op worker loop, legacy local chat cache, and obsolete workspace CSS architecture.
+- [x] Re-run verify automatically after a Codex patch in the selected workspace.
+- [x] Keep a short local history of verify attempts and Codex patches.
 
 ## Stage 5 - Native C Expansion
 

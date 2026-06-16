@@ -18,11 +18,10 @@ def run_desktop_shell() -> None:
         )
         return
 
-    from talos.server import CODEX_BRIDGE, LocalAgentWebHandler, STOP_EVENT, find_port, worker_loop
+    from talos.server import CODEX_BRIDGE, LocalAgentWebHandler, find_port
 
     host = "127.0.0.1"
     port = find_port(host, 8787)
-    threading.Thread(target=worker_loop, daemon=True).start()
     server = ThreadingHTTPServer((host, port), LocalAgentWebHandler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     window_ref: dict[str, Any] = {"window": None, "maximized": False}
@@ -69,7 +68,6 @@ def run_desktop_shell() -> None:
                 window.destroy()
 
     def on_closed() -> None:
-        STOP_EVENT.set()
         CODEX_BRIDGE.shutdown()
         server.shutdown()
         server.server_close()

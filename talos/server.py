@@ -13,8 +13,6 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from talos.core import (
     ROOT,
-    language_code,
-    language_label,
     load_config,
     now,
     save_config,
@@ -29,23 +27,19 @@ from talos.arduino import (
     workspace_summary,
     write_workspace_file,
 )
-from talos.native_bridge import native_available
 from talos.codex_bridge import CODEX_BRIDGE
+from talos.native_bridge import native_available
+from talos.run_history import record_verify, run_history
 
 ASSET_ROOT = Path(getattr(sys, "_MEIPASS", ROOT))
 FRONTEND = ASSET_ROOT / "web_frontend" if getattr(sys, "frozen", False) else ROOT / "ui" / "web_frontend"
 EVENTS: list[str] = []
 EVENT_LOCK = threading.Lock()
-STOP_EVENT = threading.Event()
 
 def log_event(message: str) -> None:
     with EVENT_LOCK:
         EVENTS.append(message)
         del EVENTS[:-200]
-
-def worker_loop() -> None:
-    while not STOP_EVENT.is_set():
-        STOP_EVENT.wait(60)
 
 def state_payload() -> dict[str, Any]:
     config = load_config()
@@ -55,11 +49,8 @@ def state_payload() -> dict[str, Any]:
         "name": "Talos",
         "role": "Codex local tool server",
         "root": str(ROOT),
-        "language": language_label(config),
-        "language_code": language_code(config),
         "native_available": native_available(),
         "config": {
-            "language": config.get("language", "vi"),
             "theme": config.get("theme", "light"),
             "arduino_workspace_path": config.get("arduino_workspace_path", ""),
             "arduino_fqbn": config.get("arduino_fqbn", ""),
@@ -76,9 +67,11 @@ def state_payload() -> dict[str, Any]:
             "POST /api/arduino_delete",
             "POST /api/arduino_verify",
             "GET /api/codex_status",
+            "GET /api/run_history",
             "POST /api/codex_message",
             "POST /api/codex_cancel",
             "POST /api/codex_thread",
+            "POST /api/codex_conversation",
         ],
         "events": list(EVENTS),
     }
@@ -110,6 +103,9 @@ class LocalAgentWebHandler(BaseHTTPRequestHandler):
         if parsed.path == "/api/codex_status":
             self.send_json(CODEX_BRIDGE.status())
             return
+        if parsed.path == "/api/run_history":
+            self.send_json({"ok": True, "events": run_history()})
+            return
         path = parsed.path
         if path == "/":
             path = "/index.html"
@@ -119,7 +115,7 @@ class LocalAgentWebHandler(BaseHTTPRequestHandler):
         payload = self.read_json()
         if self.path == "/api/settings":
             config = load_config()
-            for key in ("language", "theme", "arduino_workspace_path", "arduino_fqbn"):
+            for key in ("theme", "arduino_workspace_path", "arduino_fqbn"):
                 if key in payload:
                     config[key] = str(payload[key]).strip()
             save_config(config)
@@ -143,6 +139,7 @@ class LocalAgentWebHandler(BaseHTTPRequestHandler):
                 config["arduino_fqbn"] = str(payload.get("fqbn", "")).strip()
             save_config(config)
             result = run_arduino_compile(config)
+            record_verify(result, str(payload.get("source") or "manual"))
             status = "passed" if result.get("ok") else result.get("status", "failed")
             log_event(f"{now()} Arduino verify {status}")
             self.send_json(result)
@@ -186,6 +183,10 @@ class LocalAgentWebHandler(BaseHTTPRequestHandler):
             return
         if self.path == "/api/codex_cancel":
             result = CODEX_BRIDGE.cancel_turn()
+            self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
+            return
+        if self.path == "/api/codex_conversation":
+            result = CODEX_BRIDGE.select_conversation(str(payload.get("id", "")))
             self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
             return
         self.send_json({"error": "Not found."}, HTTPStatus.NOT_FOUND)
@@ -252,7 +253,6 @@ def main() -> None:
     args = parser.parse_args()
 
     port = find_port(args.host, args.port)
-    threading.Thread(target=worker_loop, daemon=True).start()
     server = ThreadingHTTPServer((args.host, port), LocalAgentWebHandler)
     print(f"Local Agent Web UI: http://{args.host}:{port}")
     try:
@@ -260,7 +260,6 @@ def main() -> None:
     except KeyboardInterrupt:
         pass
     finally:
-        STOP_EVENT.set()
         CODEX_BRIDGE.shutdown()
         server.server_close()
 

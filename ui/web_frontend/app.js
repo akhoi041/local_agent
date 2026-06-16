@@ -22,20 +22,28 @@ const state = {
   codexRefreshPromise: null,
   codexRefreshTimer: null,
   codexPatchRevision: 0,
+  codexPatchEventRevision: null,
   codexChangedFiles: new Set(),
   codexPatchSyncRunning: false,
+  codexConversationSignature: "",
+  codexHistoryExpanded: false,
+  codexConversations: [],
+  codexTasksVisible: true,
+  runHistorySignature: "",
 };
 
 const THEMES = ["light", "dark", "neutral"];
 const THEME_KEY = "talos-theme";
 const RAIL_PIN_KEY = "talos-rail-pinned";
 const CODEX_PANEL_KEY = "talos-codex-panel-open";
+const EXPLORER_WIDTH_KEY = "talos-explorer-pane-width";
 const FAST_REFRESH_MS = 1000;
 const IDLE_REFRESH_MS = 5000;
 const REFRESH_TICK_MS = 250;
 const CODEX_BUSY_REFRESH_MS = 400;
 const CODEX_IDLE_REFRESH_MS = 3000;
 const CODEX_HIDDEN_REFRESH_MS = 8000;
+const VERIFY_WAIT_TIMEOUT_MS = 130000;
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -71,6 +79,57 @@ function applyCodexPanel(open) {
   $("#toggleCodexBtn")?.setAttribute("aria-pressed", String(Boolean(open)));
   localStorage.setItem(CODEX_PANEL_KEY, String(Boolean(open)));
   scheduleCodexRefresh(0);
+}
+
+function clampPaneWidth(value, minimum, maximum) {
+  return Math.min(Math.max(Number(value) || minimum, minimum), maximum);
+}
+
+function restorePaneWidths() {
+  const root = document.documentElement;
+  const explorer = Number(localStorage.getItem(EXPLORER_WIDTH_KEY));
+  if (Number.isFinite(explorer) && explorer > 0) {
+    root.style.setProperty("--explorer-pane-width", `${clampPaneWidth(explorer, 240, 420)}px`);
+  }
+}
+
+function resetExplorerWidth() {
+  document.documentElement.style.removeProperty("--explorer-pane-width");
+  localStorage.removeItem(EXPLORER_WIDTH_KEY);
+}
+
+function bindExplorerSplitter(selector) {
+  const splitter = $(selector);
+  if (!splitter) return;
+  splitter.addEventListener("dblclick", resetExplorerWidth);
+  splitter.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0 || window.innerWidth <= 900) return;
+    const workbench = splitter.closest(".ide-workbench");
+    if (!workbench) return;
+    event.preventDefault();
+    splitter.setPointerCapture(event.pointerId);
+    splitter.classList.add("dragging");
+    const bounds = workbench.getBoundingClientRect();
+    const update = (clientX) => {
+      const available = bounds.width;
+      const minimumEditor = Math.min(520, Math.max(360, available * 0.38));
+      const maximum = Math.max(240, available - minimumEditor - 320 - 8);
+      const width = clampPaneWidth(clientX - bounds.left, 240, maximum);
+      document.documentElement.style.setProperty("--explorer-pane-width", `${Math.round(width)}px`);
+      localStorage.setItem(EXPLORER_WIDTH_KEY, String(Math.round(width)));
+    };
+    const move = (moveEvent) => update(moveEvent.clientX);
+    const finish = () => {
+      splitter.classList.remove("dragging");
+      splitter.removeEventListener("pointermove", move);
+      splitter.removeEventListener("pointerup", finish);
+      splitter.removeEventListener("pointercancel", finish);
+    };
+    splitter.addEventListener("pointermove", move);
+    splitter.addEventListener("pointerup", finish);
+    splitter.addEventListener("pointercancel", finish);
+    update(event.clientX);
+  });
 }
 
 function activeViewId() {
@@ -164,6 +223,13 @@ function formatBytes(value = 0) {
   return `${number} B`;
 }
 
+function formatDuration(value = 0) {
+  const seconds = Number(value || 0);
+  if (!Number.isFinite(seconds)) return "";
+  if (seconds < 1) return `${Math.round(seconds * 1000)} ms`;
+  return `${seconds.toFixed(2)} s`;
+}
+
 function memorySummary(memory = {}) {
   const rows = [];
   if (memory.program) {
@@ -177,13 +243,21 @@ function memorySummary(memory = {}) {
 
 function verifySummaryHtml(result = {}) {
   const rows = memorySummary(result.memory || {});
+  const timings = result.timings || {};
   const libraries = result.libraries || [];
   const platforms = result.platforms || [];
   const issues = result.issues || [];
-  if (!rows.length && !libraries.length && !platforms.length && !issues.length) return "";
+  const timingRows = [
+    ["Prepare", timings.prepare],
+    ["Sandbox copy", timings.sandbox_copy],
+    ["Compile", timings.compile],
+    ["Total", timings.total],
+  ].filter(([, value]) => Number.isFinite(Number(value)));
+  if (!rows.length && !timingRows.length && !libraries.length && !platforms.length && !issues.length) return "";
   return `
     <div class="verify-summary">
       ${rows.map(([label, value]) => `<div><span>${escapeHtml(label)}</span><b>${escapeHtml(value)}</b></div>`).join("")}
+      ${timingRows.map(([label, value]) => `<div><span>${escapeHtml(label)}</span><b>${escapeHtml(formatDuration(value))}</b></div>`).join("")}
       ${libraries.length ? `<div><span>Libraries</span><b>${escapeHtml(libraries.map((item) => `${item.name} ${item.version}`.trim()).join(", "))}</b></div>` : ""}
       ${platforms.length ? `<div><span>Platform</span><b>${escapeHtml(platforms.map((item) => `${item.name} ${item.version}`.trim()).join(", "))}</b></div>` : ""}
       ${issues.length ? `<div><span>Issues</span><b>${escapeHtml(String(issues.length))}</b></div>` : ""}
@@ -257,6 +331,69 @@ function renderVerifyOutput(result = null, pendingText = "") {
     ${verifyIssuesHtml(result.issues || [])}
     <pre class="verify-log">${escapeHtml(result.output || "No compiler output.")}</pre>
   `;
+}
+
+function setOutputView(view) {
+  const historyVisible = view === "history";
+  $("#arduinoOutput").toggleAttribute("hidden", historyVisible);
+  $("#runHistory").toggleAttribute("hidden", !historyVisible);
+  $("#arduinoOutput").setAttribute("aria-hidden", String(historyVisible));
+  $("#runHistory").setAttribute("aria-hidden", String(!historyVisible));
+  $("#verifyOutputTab").classList.toggle("active", !historyVisible);
+  $("#runHistoryTab").classList.toggle("active", historyVisible);
+  $("#verifyOutputTab").setAttribute("aria-selected", String(!historyVisible));
+  $("#runHistoryTab").setAttribute("aria-selected", String(historyVisible));
+  $("#copyIssuesBtn").hidden = historyVisible;
+  $("#copyVerifyBtn").hidden = historyVisible;
+}
+
+function renderRunHistory(events = []) {
+  const signature = JSON.stringify(events);
+  if (signature === state.runHistorySignature) return;
+  state.runHistorySignature = signature;
+  $("#runHistory").innerHTML = events.length
+    ? events.map((event) => {
+        if (event.type === "patch") {
+          const files = event.files || [];
+          return `
+            <article class="run-history-item patch">
+              <div class="run-history-main">
+                <span class="run-history-badge">PATCH</span>
+                <div>
+                  <strong>${files.length} file(s) changed by Codex</strong>
+                  <span>${escapeHtml(event.time || "")}</span>
+                </div>
+              </div>
+              <div class="run-history-files">
+                ${files.map((file) => `<code>${escapeHtml(file.kind || "update")} ${escapeHtml(file.path || "")}</code>`).join("")}
+              </div>
+            </article>`;
+        }
+        const source = event.source === "codex_patch" ? "After Codex patch" : "Manual verify";
+        return `
+          <button class="run-history-item verify ${event.ok ? "passed" : "failed"}" type="button" data-verify-history-id="${escapeHtml(event.id || "")}">
+            <span class="run-history-badge">${escapeHtml(event.status || "failed")}</span>
+            <span class="run-history-copy">
+              <strong>${escapeHtml(event.main_sketch || "Arduino sketch")}</strong>
+              <span>${escapeHtml(source)} | ${escapeHtml(event.time || "")}</span>
+            </span>
+          </button>`;
+      }).join("")
+    : '<div class="run-history-empty">No verify attempts or Codex patches recorded yet.</div>';
+  $$("[data-verify-history-id]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const event = events.find((item) => item.id === button.dataset.verifyHistoryId);
+      if (!event?.result) return;
+      renderVerifyOutput(event.result);
+      setOutputView("verify");
+    });
+  });
+}
+
+async function refreshRunHistory() {
+  const payload = await api("/api/run_history");
+  renderRunHistory(payload.events || []);
+  return payload;
 }
 
 async function copyText(text, statusSelector = "") {
@@ -470,6 +607,8 @@ function renderCodex(payload = {}) {
     || (state.codexBusy ? "Codex is working..." : payload.thread_id ? "Thread ready" : "Ready for a new thread");
   const messages = payload.messages || [];
   const patches = payload.patches || [];
+  const conversations = payload.conversations || [];
+  renderCodexHistory(conversations);
   const signature = JSON.stringify([messages, patches]);
   if (signature !== state.codexMessagesSignature) {
     state.codexMessagesSignature = signature;
@@ -519,8 +658,60 @@ function renderCodex(payload = {}) {
     state.codexChangedFiles = new Set(
       (latestPatch.files || []).map((file) => String(file.path || "").toLowerCase()),
     );
-    syncWorkspaceAfterCodexPatch();
+    renderArduinoFilesAfterCodexPatch();
   }
+  const nextEventRevision = Number(payload.patch_event_revision || 0);
+  if (state.codexPatchEventRevision === null) {
+    state.codexPatchEventRevision = nextEventRevision;
+  } else if (nextEventRevision !== state.codexPatchEventRevision) {
+    state.codexPatchEventRevision = nextEventRevision;
+    const latestPatch = patches.at(-1) || {};
+    syncWorkspaceAfterCodexPatch(latestPatch);
+  }
+}
+
+function renderCodexHistory(conversations = []) {
+  state.codexConversations = conversations;
+  const signature = JSON.stringify([conversations, state.codexHistoryExpanded]);
+  if (signature === state.codexConversationSignature) return;
+  state.codexConversationSignature = signature;
+  $("#codexHistoryCount").textContent = conversations.length ? String(conversations.length) : "";
+  const visible = state.codexHistoryExpanded ? conversations : conversations.slice(0, 3);
+  $("#codexHistoryList").innerHTML = visible.length
+    ? `${visible.map((conversation) => `
+        <button class="codex-history-item ${conversation.active ? "active" : ""}" type="button" data-conversation-id="${escapeHtml(conversation.id || "")}">
+          <span class="codex-history-title">${escapeHtml(conversation.title || "New conversation")}</span>
+          <span class="codex-history-time">${escapeHtml(relativeTimeLabel(conversation.updated_at || ""))}</span>
+        </button>
+      `).join("")}${conversations.length > 3 ? `
+        <button id="codexHistoryMoreBtn" class="codex-history-more" type="button">
+          ${state.codexHistoryExpanded ? "Show recent" : `View all (${conversations.length})`}
+        </button>` : ""}`
+    : '<div class="codex-history-empty">No saved conversations yet.</div>';
+  $$("[data-conversation-id]").forEach((button) => {
+    button.addEventListener("click", () => selectCodexConversation(button.dataset.conversationId || ""));
+  });
+  $("#codexHistoryMoreBtn")?.addEventListener("click", () => {
+    state.codexHistoryExpanded = !state.codexHistoryExpanded;
+    state.codexConversationSignature = "";
+    renderCodexHistory(state.codexConversations);
+  });
+}
+
+function relativeTimeLabel(value = "") {
+  const timestamp = typeof value === "number"
+    ? value * 1000
+    : Date.parse(String(value).replace(" ", "T"));
+  if (!Number.isFinite(timestamp)) return "";
+  const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+  if (seconds < 60) return "now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d`;
+  return `${Math.floor(days / 7)}w`;
 }
 
 function bindCodexSuggestions() {
@@ -532,25 +723,58 @@ function bindCodexSuggestions() {
   });
 }
 
-async function syncWorkspaceAfterCodexPatch() {
+function renderArduinoFilesAfterCodexPatch() {
+  $$("#arduinoFiles tr").forEach((row) => {
+    const changed = state.codexChangedFiles.has(String(row.dataset.path || "").toLowerCase());
+    row.classList.toggle("codex-changed", changed);
+  });
+}
+
+async function waitForVerifyIdle() {
+  const deadline = Date.now() + VERIFY_WAIT_TIMEOUT_MS;
+  while (state.arduinoVerifyRunning && Date.now() < deadline) {
+    await new Promise((resolve) => window.setTimeout(resolve, 250));
+  }
+  return !state.arduinoVerifyRunning;
+}
+
+async function syncWorkspaceAfterCodexPatch(patch = {}) {
   if (state.codexPatchSyncRunning) return;
   state.codexPatchSyncRunning = true;
   try {
     await refresh();
-    if (!state.activeFilePath || !state.codexChangedFiles.has(state.activeFilePath.toLowerCase())) return;
-    if (state.editorDirty) {
-      $("#editorStatus").textContent = "Codex changed this file on disk. Save or reopen it to reconcile changes.";
-      return;
+    if (state.activeFilePath && state.codexChangedFiles.has(state.activeFilePath.toLowerCase())) {
+      if (state.editorDirty) {
+        $("#editorStatus").textContent = "Codex changed this file on disk. Save or reopen it to reconcile changes.";
+      } else {
+        try {
+          const result = await api(`/api/arduino_file?path=${encodeURIComponent(state.activeFilePath)}`);
+          state.editorOriginalContent = result.content || "";
+          $("#sourceEditor").value = state.editorOriginalContent;
+          renderEditorLineNumbers();
+          $("#editorStatus").textContent = `Reloaded after Codex patch (${Number(result.bytes || 0)} bytes).`;
+          setEditorDirty(false);
+        } catch (_error) {
+          resetEditor("The active file was removed by Codex.");
+        }
+      }
     }
-    try {
-      const result = await api(`/api/arduino_file?path=${encodeURIComponent(state.activeFilePath)}`);
-      state.editorOriginalContent = result.content || "";
-      $("#sourceEditor").value = state.editorOriginalContent;
-      renderEditorLineNumbers();
-      $("#editorStatus").textContent = `Reloaded after Codex patch (${Number(result.bytes || 0)} bytes).`;
-      setEditorDirty(false);
-    } catch (_error) {
-      resetEditor("The active file was removed by Codex.");
+    const patchWorkspace = normalizedWindowsPath(patch.workspace || "");
+    const selectedWorkspace = normalizedWindowsPath(state.selectedWorkspacePath);
+    if (patchWorkspace && patchWorkspace === selectedWorkspace) {
+      $("#codexStatus").textContent = "Patch applied. Verifying sandbox...";
+      try {
+        if (!await waitForVerifyIdle()) {
+          throw new Error("the previous sandbox verify did not finish");
+        }
+        const result = await verifyArduinoWorkspace("codex_patch");
+        $("#codexStatus").textContent = result.ok
+          ? "Patch applied and sandbox verify passed."
+          : "Patch applied, but sandbox verify failed.";
+      } catch (error) {
+        renderVerifyOutput(null, `Automatic verify failed: ${error.message}`);
+        $("#codexStatus").textContent = "Patch applied, but automatic verify could not run.";
+      }
     }
   } finally {
     state.codexPatchSyncRunning = false;
@@ -589,6 +813,7 @@ async function sendCodexMessage() {
   if (!message || state.codexBusy) return;
   $("#codexStatus").textContent = "Sending context to Codex...";
   $("#sendCodexBtn").disabled = true;
+  showCodexTasks(false);
   try {
     await api("/api/codex_message", {
       method: "POST",
@@ -613,6 +838,36 @@ async function newCodexThread() {
   try {
     await api("/api/codex_thread", { method: "POST", body: "{}" });
     state.codexMessagesSignature = "";
+    showCodexTasks(false);
+    await refreshCodex();
+    $("#codexInput").focus();
+  } catch (error) {
+    $("#codexStatus").textContent = error.message;
+  }
+}
+
+function showCodexTasks(open = true) {
+  const history = $("#codexHistory");
+  state.codexTasksVisible = Boolean(open);
+  history.hidden = !state.codexTasksVisible;
+  $("#codexPanel").classList.toggle("history-mode", state.codexTasksVisible);
+  $("#codexBackBtn").hidden = state.codexTasksVisible;
+  if (state.codexTasksVisible) {
+    state.codexHistoryExpanded = false;
+    state.codexConversationSignature = "";
+    renderCodexHistory(state.codexConversations);
+  }
+}
+
+async function selectCodexConversation(conversationId) {
+  if (!conversationId || state.codexBusy) return;
+  try {
+    await api("/api/codex_conversation", {
+      method: "POST",
+      body: JSON.stringify({ id: conversationId }),
+    });
+    state.codexMessagesSignature = "";
+    showCodexTasks(false);
     await refreshCodex();
   } catch (error) {
     $("#codexStatus").textContent = error.message;
@@ -747,7 +1002,8 @@ async function saveArduinoWorkspace() {
   }
 }
 
-async function verifyArduinoWorkspace() {
+async function verifyArduinoWorkspace(source = "manual") {
+  setOutputView("verify");
   renderVerifyOutput(null, "Copying sketch folder to sandbox and running arduino-cli compile...");
   state.arduinoVerifyRunning = true;
   $("#verifyArduinoBtn").disabled = true;
@@ -757,10 +1013,12 @@ async function verifyArduinoWorkspace() {
       body: JSON.stringify({
         path: $("#arduinoPathInput").value,
         fqbn: state.arduinoFqbnFull || $("#arduinoFqbnInput").value,
+        source,
       }),
     });
     renderVerifyOutput(result);
     state.arduinoDirty = false;
+    await refreshRunHistory();
     await refresh();
     return result;
   } finally {
@@ -824,8 +1082,11 @@ async function snapWindow(kind) {
 }
 
 function bindEvents() {
+  restorePaneWidths();
   applyRailPinned(railPinned());
   applyCodexPanel(codexPanelOpen());
+  showCodexTasks(true);
+  bindExplorerSplitter("#explorerSplitter");
   $$(".nav").forEach((button) => button.addEventListener("click", () => setView(button.dataset.view)));
   $("#pinRailBtn").addEventListener("click", () => applyRailPinned(!railPinned()));
   $("#refreshBtn").addEventListener("click", refresh);
@@ -834,7 +1095,12 @@ function bindEvents() {
     await saveArduinoWorkspace();
     await refreshAfterWorkspaceMutation();
   });
-  $("#verifyArduinoBtn").addEventListener("click", verifyArduinoWorkspace);
+  $("#verifyArduinoBtn").addEventListener("click", () => verifyArduinoWorkspace("manual"));
+  $("#verifyOutputTab").addEventListener("click", () => setOutputView("verify"));
+  $("#runHistoryTab").addEventListener("click", async () => {
+    setOutputView("history");
+    await refreshRunHistory();
+  });
   $("#saveSettingsBtn").addEventListener("click", saveSettings);
   $("#copyFilesBtn").addEventListener("click", () => copyText(fileListText(), "#arduinoMeta"));
   $("#copyIssuesBtn").addEventListener("click", () => copyText(state.lastIssueText));
@@ -843,6 +1109,7 @@ function bindEvents() {
   $("#toggleCodexBtn").addEventListener("click", () => applyCodexPanel(!codexPanelOpen()));
   $("#closeCodexBtn").addEventListener("click", () => applyCodexPanel(false));
   $("#newCodexThreadBtn").addEventListener("click", newCodexThread);
+  $("#codexBackBtn").addEventListener("click", () => showCodexTasks(true));
   $("#cancelCodexBtn").addEventListener("click", cancelCodexTurn);
   $("#codexComposer").addEventListener("submit", (event) => {
     event.preventDefault();
@@ -907,6 +1174,10 @@ function bindEvents() {
 bindEvents();
 bindCodexSuggestions();
 renderEditorLineNumbers();
+const requestedView = new URLSearchParams(window.location.search).get("view");
+if (["dashboard", "workspace", "logs", "settings"].includes(requestedView)) {
+  setView(requestedView);
+}
 refresh();
 setInterval(maybeRefresh, REFRESH_TICK_MS);
 refreshCodex();

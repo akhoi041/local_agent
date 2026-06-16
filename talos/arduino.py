@@ -3,6 +3,7 @@ from __future__ import annotations
 import shutil
 import subprocess
 import re
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -25,7 +26,11 @@ IGNORED_DIRS = {
     ".vs",
     ".vscode",
     "__pycache__",
+    ".cache",
+    ".pio",
     "build",
+    "cmake-build-debug",
+    "cmake-build-release",
     "dist",
     "node_modules",
 }
@@ -37,6 +42,7 @@ ARDUINO_CLI_CANDIDATES = [
     Path("C:/Program Files/Arduino IDE/resources/app/lib/backend/resources/arduino-cli.exe"),
     Path("C:/Program Files (x86)/Arduino IDE/resources/app/lib/backend/resources/arduino-cli.exe"),
 ]
+_ARDUINO_CLI_CACHE: str | None = None
 ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 PROGRAM_MEMORY_RE = re.compile(
     r"Sketch uses\s+(?P<used>\d+)\s+bytes\s+\((?P<percent>\d+)%\).*?Maximum is\s+(?P<maximum>\d+)\s+bytes",
@@ -727,13 +733,18 @@ def copy_workspace_to_sandbox(workspace: Path) -> Path:
     return target
 
 def find_arduino_cli() -> str | None:
+    global _ARDUINO_CLI_CACHE
+    if _ARDUINO_CLI_CACHE:
+        return _ARDUINO_CLI_CACHE
     cli = shutil.which("arduino-cli")
     if cli is not None:
+        _ARDUINO_CLI_CACHE = cli
         return cli
     for candidate in ARDUINO_CLI_CANDIDATES:
         try:
             if candidate.exists() and candidate.is_file():
-                return str(candidate)
+                _ARDUINO_CLI_CACHE = str(candidate)
+                return _ARDUINO_CLI_CACHE
         except OSError:
             continue
     return None
@@ -818,26 +829,42 @@ def parse_compile_output(output: str) -> dict[str, Any]:
     }
 
 def run_arduino_compile(config: dict[str, Any], timeout: int = 120) -> dict[str, Any]:
+    started_at = time.perf_counter()
+    timings: dict[str, float] = {}
+
+    def mark(name: str, step_started_at: float) -> float:
+        timings[name] = round(time.perf_counter() - step_started_at, 3)
+        return time.perf_counter()
+
+    def with_total(payload: dict[str, Any]) -> dict[str, Any]:
+        timings["total"] = round(time.perf_counter() - started_at, 3)
+        payload["timings"] = timings.copy()
+        return payload
+
+    step_started_at = time.perf_counter()
     summary = workspace_summary(config)
+    step_started_at = mark("prepare", step_started_at)
     if not summary["valid"]:
-        return {"ok": False, "status": "not_ready", "summary": summary, "output": summary["message"]}
+        return with_total({"ok": False, "status": "not_ready", "summary": summary, "output": summary["message"]})
     if not summary["fqbn"]:
-        return {
+        return with_total({
             "ok": False,
             "status": "missing_fqbn",
             "summary": summary,
             "output": "Set an Arduino FQBN first, for example arduino:avr:uno.",
-        }
+        })
     cli = find_arduino_cli()
+    step_started_at = mark("cli_lookup", step_started_at)
     if cli is None:
-        return {
+        return with_total({
             "ok": False,
             "status": "missing_cli",
             "summary": summary,
             "output": "arduino-cli was not found in PATH or in the Arduino IDE bundled resources folder.",
-        }
+        })
     workspace = Path(summary["path"])
     sandbox = copy_workspace_to_sandbox(workspace)
+    step_started_at = mark("sandbox_copy", step_started_at)
     command = [cli, "compile", "--fqbn", summary["fqbn"], str(sandbox)]
     try:
         completed = subprocess.run(
@@ -847,9 +874,11 @@ def run_arduino_compile(config: dict[str, Any], timeout: int = 120) -> dict[str,
             timeout=timeout,
             cwd=sandbox,
         )
+        step_started_at = mark("compile", step_started_at)
     except subprocess.TimeoutExpired as exc:
+        mark("compile", step_started_at)
         parsed = parse_compile_output("\n".join(part for part in (exc.stdout, exc.stderr) if part))
-        return {
+        return with_total({
             "ok": False,
             "status": "timeout",
             "summary": summary,
@@ -861,10 +890,11 @@ def run_arduino_compile(config: dict[str, Any], timeout: int = 120) -> dict[str,
             "platforms": parsed["platforms"],
             "issues": parsed["issues"],
             "issue_context": parsed["issue_context"],
-        }
+        })
     output = "\n".join(part.strip() for part in (completed.stdout, completed.stderr) if part and part.strip())
     parsed = parse_compile_output(output)
-    return {
+    mark("parse_output", step_started_at)
+    return with_total({
         "ok": completed.returncode == 0,
         "status": "passed" if completed.returncode == 0 else "failed",
         "returncode": completed.returncode,
@@ -877,4 +907,4 @@ def run_arduino_compile(config: dict[str, Any], timeout: int = 120) -> dict[str,
         "platforms": parsed["platforms"],
         "issues": parsed["issues"],
         "issue_context": parsed["issue_context"],
-    }
+    })
