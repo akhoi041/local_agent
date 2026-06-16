@@ -19,15 +19,20 @@ DLL_CANDIDATES = [
     ROOT / "native" / "bin" / "talos_native.dll",
 ]
 TITLE_BUFFER_CHARS = 65536
+WINDOW_ROW_BUFFER_CHARS = 131072
+PROCESS_ROW_BUFFER_CHARS = 131072
 INO_BUFFER_CHARS = 4096
 _CACHE_TTL_SECONDS = 0.45
 _CACHE: dict[str, tuple[float, object]] = {}
+_HAS_NATIVE_WINDOW_ROWS = False
+_HAS_NATIVE_PROCESS_ROWS = False
 ARDUINO_IDE_CONFIG = Path.home() / "AppData" / "Roaming" / "arduino-ide" / "config.json"
 ARDUINO_IDE_LEVELDB = Path.home() / "AppData" / "Roaming" / "arduino-ide" / "Local Storage" / "leveldb"
 WORKSPACE_BOARD_KEY = b":arduino-ide:boardListHistory"
 BOARD_JSON_RE = re.compile(rb'\\"name\\":\\"([^"]+?)\\",\\"fqbn\\":\\"([^"]+?)\\"')
 
 def _load_library() -> ctypes.CDLL | None:
+    global _HAS_NATIVE_PROCESS_ROWS, _HAS_NATIVE_WINDOW_ROWS
     if os.name != "nt":
         return None
     dll_path = next((path for path in DLL_CANDIDATES if path.exists()), None)
@@ -38,6 +43,18 @@ def _load_library() -> ctypes.CDLL | None:
     library.talos_list_window_titles.restype = ctypes.c_int
     library.talos_extract_ino_names.argtypes = [ctypes.c_wchar_p, ctypes.c_wchar_p, ctypes.c_int]
     library.talos_extract_ino_names.restype = ctypes.c_int
+    try:
+        library.talos_list_window_rows.argtypes = [ctypes.c_wchar_p, ctypes.c_int]
+        library.talos_list_window_rows.restype = ctypes.c_int
+        _HAS_NATIVE_WINDOW_ROWS = True
+    except AttributeError:
+        _HAS_NATIVE_WINDOW_ROWS = False
+    try:
+        library.talos_list_arduino_process_rows.argtypes = [ctypes.c_wchar_p, ctypes.c_int]
+        library.talos_list_arduino_process_rows.restype = ctypes.c_int
+        _HAS_NATIVE_PROCESS_ROWS = True
+    except AttributeError:
+        _HAS_NATIVE_PROCESS_ROWS = False
     return library
 
 _LIBRARY = _load_library()
@@ -64,7 +81,68 @@ def list_window_titles() -> list[str]:
 def list_window_rows() -> list[dict[str, object]]:
     if os.name != "nt":
         return []
+    if _LIBRARY is not None and _HAS_NATIVE_WINDOW_ROWS:
+        buffer = ctypes.create_unicode_buffer(WINDOW_ROW_BUFFER_CHARS)
+        _LIBRARY.talos_list_window_rows(buffer, WINDOW_ROW_BUFFER_CHARS)
+        return parse_window_rows_payload(buffer.value)
     return list(cached_value("window_rows", list_window_rows_win32))
+
+def parse_window_rows_payload(payload: str) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for raw_line in str(payload or "").splitlines():
+        pid_text, separator, title = raw_line.partition("\t")
+        if not separator:
+            continue
+        try:
+            pid = int(pid_text)
+        except ValueError:
+            pid = 0
+        title = title.strip()
+        if title:
+            rows.append({"pid": pid, "title": title})
+    return rows
+
+def list_arduino_process_rows_native() -> list[dict[str, object]]:
+    if os.name != "nt" or _LIBRARY is None or not _HAS_NATIVE_PROCESS_ROWS:
+        return []
+    buffer = ctypes.create_unicode_buffer(PROCESS_ROW_BUFFER_CHARS)
+    _LIBRARY.talos_list_arduino_process_rows(buffer, PROCESS_ROW_BUFFER_CHARS)
+    return parse_process_rows_payload(buffer.value)
+
+def parse_process_rows_payload(payload: str) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for raw_line in str(payload or "").splitlines():
+        parts = raw_line.split("\t", 3)
+        if len(parts) != 4:
+            continue
+        name, pid_text, parent_text, created_text = parts
+        try:
+            pid = int(pid_text)
+        except ValueError:
+            pid = 0
+        try:
+            parent_pid = int(parent_text)
+        except ValueError:
+            parent_pid = 0
+        try:
+            created_at = int(created_text)
+        except ValueError:
+            created_at = 0
+        if name.strip():
+            rows.append(
+                {
+                    "name": name.strip(),
+                    "pid": pid,
+                    "parent_pid": parent_pid,
+                    "created_at": created_at,
+                    "title": "",
+                    "command_line": "",
+                    "ino_paths": [],
+                    "fqbn": "",
+                    "board_name": "",
+                }
+            )
+    return rows
 
 def list_window_rows_win32() -> list[dict[str, object]]:
     user32 = ctypes.windll.user32
@@ -245,6 +323,12 @@ def list_arduino_workspace_boards_uncached() -> dict[str, dict[str, str]]:
     return results
 
 def list_arduino_ide_processes_uncached() -> list[dict[str, object]]:
+    native_processes = [
+        row for row in list_arduino_process_rows_native()
+        if str(row.get("name") or "").lower() == "arduino ide.exe"
+    ]
+    if native_processes:
+        return native_processes
     processes = list_arduino_ide_processes_powershell()
     if processes:
         return processes

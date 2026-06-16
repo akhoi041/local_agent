@@ -17,7 +17,13 @@ from talos.arduino import (
     workspace_summary,
     write_workspace_file,
 )
-from talos.native_bridge import extract_board_name, extract_fqbn, native_available
+from talos.native_bridge import (
+    extract_board_name,
+    extract_fqbn,
+    native_available,
+    parse_process_rows_payload,
+    parse_window_rows_payload,
+)
 from talos.codex_bridge import (
     CODEX_TURN_TIMEOUT_SECONDS,
     CodexBridge,
@@ -313,6 +319,25 @@ class TalosArduinoTests(unittest.TestCase):
 
         self.assertEqual(extract_fqbn(command), "esp32:esp32:esp32:UploadSpeed=921600,CPUFreq=240")
         self.assertEqual(extract_board_name(command), "ESP32 Dev Module")
+
+    def test_native_bridge_parses_native_window_rows(self) -> None:
+        rows = parse_window_rows_payload("123\tBlink | Arduino IDE 2.3.4\nbad\tIgnored\n456\tTalos")
+
+        self.assertEqual(rows[0], {"pid": 123, "title": "Blink | Arduino IDE 2.3.4"})
+        self.assertEqual(rows[1], {"pid": 0, "title": "Ignored"})
+        self.assertEqual(rows[2], {"pid": 456, "title": "Talos"})
+
+    def test_native_bridge_parses_native_process_rows(self) -> None:
+        rows = parse_process_rows_payload(
+            "Arduino IDE.exe\t101\t1\t1781541452000\narduino-language-server.exe\t102\t101\tbad"
+        )
+
+        self.assertEqual(rows[0]["name"], "Arduino IDE.exe")
+        self.assertEqual(rows[0]["pid"], 101)
+        self.assertEqual(rows[0]["parent_pid"], 1)
+        self.assertEqual(rows[0]["created_at"], 1781541452000)
+        self.assertEqual(rows[1]["created_at"], 0)
+        self.assertEqual(rows[1]["fqbn"], "")
 
     def test_arduino_discovery_maps_open_sketches_to_folders(self) -> None:
         with TemporaryDirectory() as tmp:

@@ -9,7 +9,7 @@ New-Item -ItemType Directory -Path $outDir -Force | Out-Null
 
 $cl = Get-Command cl.exe -ErrorAction SilentlyContinue
 if ($cl) {
-  & $cl.Source /nologo /LD /O2 /W3 /Fe:$dll $src user32.lib
+  & $cl.Source /nologo /LD /O2 /W3 /Fe:$dll $src user32.lib kernel32.lib
   if ($LASTEXITCODE -ne 0) { throw "cl.exe failed with exit code $LASTEXITCODE" }
   Write-Host "Built native library:"
   Write-Host $dll
@@ -18,7 +18,7 @@ if ($cl) {
 
 $gcc = Get-Command gcc.exe -ErrorAction SilentlyContinue
 if ($gcc) {
-  & $gcc.Source -shared -O2 -municode -o $dll $src -luser32
+  & $gcc.Source -shared -O2 -municode -o $dll $src -luser32 -lkernel32
   if ($LASTEXITCODE -ne 0) { throw "gcc.exe failed with exit code $LASTEXITCODE" }
   Write-Host "Built native library:"
   Write-Host $dll

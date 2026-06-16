@@ -1,9 +1,12 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <stdio.h>
+#include <tlhelp32.h>
 #include <wchar.h>
 #include <wctype.h>
 
 #define TALOS_TITLE_LIMIT 512
+#define TALOS_PROCESS_ROW_LIMIT 768
 
 static int append_text(wchar_t *out, int out_len, int *used, const wchar_t *text) {
     int i = 0;
@@ -186,4 +189,110 @@ int talos_list_window_titles(wchar_t *out, int out_len) {
     state.count = 0;
     EnumWindows(enum_windows_proc, (LPARAM)&state);
     return state.count;
+}
+
+static BOOL CALLBACK enum_window_rows_proc(HWND hwnd, LPARAM lparam) {
+    struct enum_state *state = (struct enum_state *)lparam;
+    wchar_t title[TALOS_TITLE_LIMIT];
+    wchar_t row[TALOS_TITLE_LIMIT + 32];
+    DWORD pid = 0;
+    int len;
+
+    if (!IsWindowVisible(hwnd)) return TRUE;
+    len = GetWindowTextLengthW(hwnd);
+    if (len <= 0) return TRUE;
+    GetWindowTextW(hwnd, title, TALOS_TITLE_LIMIT);
+    if (!title[0]) return TRUE;
+
+    GetWindowThreadProcessId(hwnd, &pid);
+    _snwprintf(row, TALOS_TITLE_LIMIT + 32, L"%lu\t%s", (unsigned long)pid, title);
+    row[TALOS_TITLE_LIMIT + 31] = L'\0';
+
+    if (state->count > 0) append_text(state->out, state->out_len, &state->used, L"\n");
+    append_text(state->out, state->out_len, &state->used, row);
+    state->count++;
+    return TRUE;
+}
+
+__declspec(dllexport)
+int talos_list_window_rows(wchar_t *out, int out_len) {
+    struct enum_state state;
+    if (!out || out_len <= 0) return 0;
+    out[0] = L'\0';
+    state.out = out;
+    state.out_len = out_len;
+    state.used = 0;
+    state.count = 0;
+    EnumWindows(enum_window_rows_proc, (LPARAM)&state);
+    return state.count;
+}
+
+static int is_target_process_name(const wchar_t *name) {
+    return _wcsicmp(name, L"Arduino IDE.exe") == 0
+        || _wcsicmp(name, L"arduino-language-server.exe") == 0
+        || _wcsicmp(name, L"arduino-cli.exe") == 0;
+}
+
+static unsigned long long process_created_at_ms(DWORD pid) {
+    HANDLE process;
+    FILETIME created;
+    FILETIME exited;
+    FILETIME kernel;
+    FILETIME user;
+    ULARGE_INTEGER value;
+    const unsigned long long epoch_delta_ms = 11644473600000ULL;
+
+    process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (!process) return 0;
+    if (!GetProcessTimes(process, &created, &exited, &kernel, &user)) {
+        CloseHandle(process);
+        return 0;
+    }
+    CloseHandle(process);
+    value.LowPart = created.dwLowDateTime;
+    value.HighPart = created.dwHighDateTime;
+    return (value.QuadPart / 10000ULL) - epoch_delta_ms;
+}
+
+__declspec(dllexport)
+int talos_list_arduino_process_rows(wchar_t *out, int out_len) {
+    HANDLE snapshot;
+    PROCESSENTRY32W entry;
+    int used = 0;
+    int count = 0;
+
+    if (!out || out_len <= 0) return 0;
+    out[0] = L'\0';
+
+    snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snapshot == INVALID_HANDLE_VALUE) return 0;
+
+    entry.dwSize = sizeof(PROCESSENTRY32W);
+    if (!Process32FirstW(snapshot, &entry)) {
+        CloseHandle(snapshot);
+        return 0;
+    }
+
+    do {
+        wchar_t row[TALOS_PROCESS_ROW_LIMIT];
+        unsigned long long created_at;
+        if (!is_target_process_name(entry.szExeFile)) continue;
+        created_at = process_created_at_ms(entry.th32ProcessID);
+        _snwprintf(
+            row,
+            TALOS_PROCESS_ROW_LIMIT,
+            L"%s\t%lu\t%lu\t%llu",
+            entry.szExeFile,
+            (unsigned long)entry.th32ProcessID,
+            (unsigned long)entry.th32ParentProcessID,
+            created_at
+        );
+        row[TALOS_PROCESS_ROW_LIMIT - 1] = L'\0';
+        if (count > 0) append_text(out, out_len, &used, L"\n");
+        append_text(out, out_len, &used, row);
+        count++;
+    } while (Process32NextW(snapshot, &entry));
+
+    CloseHandle(snapshot);
+    return count;
 }

@@ -117,6 +117,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\pipeline_status.ps1
 
 - [x] Native C extracts `.ino` names from Arduino IDE titles.
 - [x] Native C lists top-level window titles.
+- [x] Move window title/PID row detection into native C with Python fallback.
+- [x] Move Arduino process presence and parent PID snapshot into native C with Python fallback.
 - [ ] Move more Windows process/window detection into native C.
 - [ ] Reduce dependence on PowerShell/CIM for hot-path detection.
 - [ ] Add native build/check command to normal verification flow.
