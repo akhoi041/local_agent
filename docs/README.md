@@ -123,6 +123,14 @@ Build the native C helper when a C compiler is available:
 .\scripts\build_native.ps1
 ```
 
+Run the normal project verification flow:
+
+```powershell
+.\scripts\check.ps1
+```
+
+This rebuilds the native DLL, checks that the current Python bridge can load the expected native exports, runs the regression tests, and prints the pipeline status.
+
 Build:
 
 ```powershell

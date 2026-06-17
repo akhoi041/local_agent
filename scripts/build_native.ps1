@@ -17,8 +17,17 @@ if ($cl) {
 }
 
 $gcc = Get-Command gcc.exe -ErrorAction SilentlyContinue
+if (-not $gcc) {
+  $wingetPackages = Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Packages"
+  if (Test-Path -LiteralPath $wingetPackages) {
+    $gcc = Get-ChildItem -LiteralPath $wingetPackages -Recurse -Filter gcc.exe -ErrorAction SilentlyContinue |
+      Where-Object { $_.FullName -match '\\mingw64\\bin\\gcc\.exe$' } |
+      Select-Object -First 1
+  }
+}
 if ($gcc) {
-  & $gcc.Source -shared -O2 -municode -o $dll $src -luser32 -lkernel32
+  $gccPath = if ($gcc.Source) { $gcc.Source } else { $gcc.FullName }
+  & $gccPath -shared -O2 -municode -o $dll $src -luser32 -lkernel32
   if ($LASTEXITCODE -ne 0) { throw "gcc.exe failed with exit code $LASTEXITCODE" }
   Write-Host "Built native library:"
   Write-Host $dll

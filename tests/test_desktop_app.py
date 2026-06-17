@@ -153,6 +153,12 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("display: none !important;", styles)
         self.assertNotIn("--codex-panel-width", styles)
 
+        check_script = (Path(__file__).parents[1] / "scripts" / "check.ps1").read_text(encoding="utf-8")
+        self.assertIn("build_native.ps1", check_script)
+        self.assertIn("_HAS_NATIVE_WINDOW_ROWS", check_script)
+        self.assertIn("_HAS_NATIVE_PROCESS_ROWS", check_script)
+        self.assertIn("unittest tests.test_desktop_app", check_script)
+
     def test_codex_thread_summary_prefers_name_and_supports_unix_time(self) -> None:
         summary = normalize_codex_thread(
             {

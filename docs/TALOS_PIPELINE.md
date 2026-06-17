@@ -16,11 +16,27 @@ Talos = local bridge between Codex and external IDEs/apps, starting with Arduino
 ## Current Position
 
 ```text
-Current active stage: Stage 4 - Codex debug loop
-Next major stage: Stage 5 - Native C expansion
+Current active stage: Stage 5 - Native C expansion
+Next major stage: Arduino MVP hardening and smoke-test closure
 ```
 
-Stages 1 through 3 are complete. Talos can detect Arduino sketches and boards, present structured verify results, safely read or edit source files, and host a real Codex app-server conversation beside the editor. The active work is Stage 4: turning compile issues, Codex patches, and repeated sandbox verification into one compact debug loop.
+Stages 1 through 4 are complete. Talos can detect Arduino sketches and boards, present structured verify results, safely read or edit source files, host a real Codex app-server conversation beside the editor, let Codex patch the selected workspace, and verify again in a sandbox.
+
+The active work is Stage 5: tightening the Windows/native layer so Arduino detection stays fast and reliable without depending on PowerShell/CIM for hot-path checks. MATLAB and other app integrations are paused until the Arduino bridge is stable enough to use daily.
+
+## Arduino MVP Exit Criteria
+
+Talos can be considered Arduino-ready when these are true:
+
+- [x] Multiple open Arduino IDE windows are detected as separate sketch candidates.
+- [x] `.ino`, `.h`, `.hpp`, `.c`, and `.cpp` files in the selected sketch folder are visible and editable.
+- [x] Board/FQBN is detected and stays synchronized with the selected sketch when practical.
+- [x] Verify runs against a sandbox copy and returns structured output.
+- [x] Codex can receive workspace context, edit files through Talos, and trigger verify again.
+- [x] Updated native DLL is built and loaded with current process/window exports.
+- [x] Native DLL build/check is part of normal verification so native regressions are caught early.
+- [ ] Hot-path Arduino process/window detection avoids PowerShell/CIM when the native DLL is available.
+- [ ] One manual end-to-end Arduino smoke test is documented: detect sketch, edit file, verify, ask Codex, apply patch, verify again.
 
 ## Progress Rules
 
@@ -119,16 +135,19 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\pipeline_status.ps1
 - [x] Native C lists top-level window titles.
 - [x] Move window title/PID row detection into native C with Python fallback.
 - [x] Move Arduino process presence and parent PID snapshot into native C with Python fallback.
-- [ ] Move more Windows process/window detection into native C.
-- [ ] Reduce dependence on PowerShell/CIM for hot-path detection.
-- [ ] Add native build/check command to normal verification flow.
+- [x] Build and load the updated DLL with the new native process/window exports.
+- [x] Add native build/check command to normal verification flow.
+- [ ] Reduce dependence on PowerShell/CIM for hot-path detection when native exports are available.
+- [ ] Document the Arduino end-to-end smoke test.
 
-## Stage 6 - MATLAB Later
+## Future Backlog - Other Apps
 
-- [ ] Detect MATLAB process.
-- [ ] Detect MATLAB current folder/script.
-- [ ] Read and edit MATLAB files through scoped APIs.
-- [ ] Run MATLAB scripts or commands in a controlled runtime.
+These are intentionally paused until Arduino is stable and smoke-tested:
+
+- MATLAB process detection.
+- MATLAB current folder/script detection.
+- MATLAB scoped read/edit APIs.
+- MATLAB controlled runtime execution.
 
 ## Development Principles
 
