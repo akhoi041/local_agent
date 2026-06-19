@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from talos.core import ROOT, now
+from talos.core import ROOT, load_app_identity, now
 from talos.run_history import record_patch
 
 CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -252,14 +252,15 @@ class CodexBridge:
 
     def _start_worker(self) -> None:
         try:
+            app_identity = load_app_identity()
             self._start_process()
             self._request(
                 "initialize",
                 {
                     "clientInfo": {
-                        "name": "talos",
-                        "title": "Talos",
-                        "version": "0.1.0",
+                        "name": app_identity["app_name"].lower().replace(" ", "-"),
+                        "title": app_identity["display_name"],
+                        "version": app_identity["version"],
                     }
                 },
             )

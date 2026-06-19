@@ -498,6 +498,9 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertEqual(ide_scan.call_count, 1)
         self.assertEqual(tool_scan.call_count, 1)
         self.assertEqual(window_scan.call_count, 1)
+        self.assertEqual(payload["app"]["publisher"], "T-Engine")
+        self.assertEqual(payload["app"]["version"], "0.1.0")
+        self.assertEqual(payload["app"]["channel"], "Beta")
         self.assertTrue(payload["arduino_ide"]["running"])
 
     def test_arduino_discovery_does_not_include_configured_folder_without_open_ide_signal(self) -> None:

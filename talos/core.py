@@ -13,8 +13,19 @@ else:
     ROOT = Path(__file__).resolve().parent.parent
 
 CONFIG_PATH = ROOT / "config" / "config.json"
+APP_IDENTITY_PATH = ROOT / "config" / "app_identity.json"
 WEBVIEW_MIN_WIDTH = 520
 WEBVIEW_MIN_HEIGHT = 420
+
+DEFAULT_APP_IDENTITY: dict[str, str] = {
+    "app_name": "Talos",
+    "display_name": "Talos",
+    "publisher": "T-Engine",
+    "version": "0.1.0",
+    "channel": "Beta",
+    "support": "",
+    "icon_source": "talos_icon.png",
+}
 
 DEFAULT_CONFIG: dict[str, Any] = {
     "theme": "light",
@@ -49,6 +60,11 @@ def load_config() -> dict[str, Any]:
 
 def save_config(config: dict[str, Any]) -> None:
     write_json_file(CONFIG_PATH, DEFAULT_CONFIG | config)
+
+def load_app_identity() -> dict[str, str]:
+    data = read_json_file(APP_IDENTITY_PATH, {}, encoding="utf-8-sig")
+    identity = DEFAULT_APP_IDENTITY | data if isinstance(data, dict) else DEFAULT_APP_IDENTITY.copy()
+    return {key: str(value).strip() for key, value in identity.items()}
 
 def now() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")

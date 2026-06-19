@@ -16,13 +16,13 @@ Talos = local bridge between Codex and external IDEs/apps, starting with Arduino
 ## Current Position
 
 ```text
-Current active stage: Stage 5 - Native C expansion
-Next major stage: Arduino MVP hardening and smoke-test closure
+Current active stage: Stage 6 - Commercial app packaging
+Next major stage: Release-ready Windows desktop app
 ```
 
-Stages 1 through 4 are complete. Talos can detect Arduino sketches and boards, present structured verify results, safely read or edit source files, host a real Codex app-server conversation beside the editor, let Codex patch the selected workspace, and verify again in a sandbox.
+Stages 1 through 5 are complete. Talos can detect Arduino sketches and boards, present structured verify results, safely read or edit source files, host a real Codex app-server conversation beside the editor, let Codex patch the selected workspace, verify again in a sandbox, and use native C for speed-sensitive Windows detection.
 
-The active work is Stage 5: tightening the Windows/native layer so Arduino detection stays fast and reliable without depending on PowerShell/CIM for hot-path checks. MATLAB and other app integrations are paused until the Arduino bridge is stable enough to use daily.
+The active work is Stage 6: turning the Arduino-ready Talos prototype into a real distributable desktop app with its own product identity, icon, packaging flow, install/uninstall path, and release checklist. MATLAB and other app integrations are paused until the Arduino product path is stable enough to ship.
 
 ## Arduino MVP Exit Criteria
 
@@ -139,6 +139,21 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\pipeline_status.ps1
 - [x] Add native build/check command to normal verification flow.
 - [x] Reduce dependence on PowerShell/CIM for hot-path detection when native exports are available.
 - [x] Document the Arduino end-to-end smoke test.
+
+## Stage 6 - Commercial App Packaging
+
+- [x] Define the commercial app identity: final name, publisher, version format, support URL, and release channel.
+- [ ] Create a dedicated Talos icon set, including `.ico` and source PNG sizes for Windows packaging.
+- [ ] Apply the app icon to the desktop window, taskbar entry, packaged executable, and installer shortcuts.
+- [ ] Package the app into a standalone Windows executable that includes Python bridge code, web frontend assets, native DLL, config defaults, and scripts needed at runtime.
+- [ ] Add a repeatable release build command that starts from a clean tree and writes artifacts into a versioned release folder.
+- [ ] Build a Windows installer with Start Menu shortcut, optional Desktop shortcut, install location, and clean uninstall behavior.
+- [ ] Move user-writable runtime data to the correct per-user app data location instead of relying on the source tree.
+- [ ] Add version display inside the UI and expose build metadata in the server state endpoint.
+- [ ] Add release notes, license/EULA, privacy notes, and third-party dependency notices.
+- [ ] Define the code-signing path for commercial distribution, even if signing is initially documented rather than automated.
+- [ ] Smoke-test the installed app outside the repository: launch, detect Arduino IDE, edit sketch, verify sandbox, ask Codex, apply patch, verify again.
+- [ ] Produce a distribution checklist with artifact names, hashes, installer test result, rollback/uninstall test, and known limitations.
 
 ## Future Backlog - Other Apps
 

@@ -1,0 +1,9 @@
+{
+  "app_name": "Talos",
+  "display_name": "Talos",
+  "publisher": "T-Engine",
+  "version": "0.1.0",
+  "channel": "Beta",
+  "support": "",
+  "icon_source": "talos_icon.png"
+}

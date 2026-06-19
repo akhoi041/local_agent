@@ -6,7 +6,7 @@ from http.server import ThreadingHTTPServer
 from tkinter import messagebox
 from typing import Any
 
-from talos.core import WEBVIEW_MIN_HEIGHT, WEBVIEW_MIN_WIDTH
+from talos.core import WEBVIEW_MIN_HEIGHT, WEBVIEW_MIN_WIDTH, load_app_identity
 
 def run_desktop_shell() -> None:
     try:
@@ -20,6 +20,7 @@ def run_desktop_shell() -> None:
 
     from talos.server import CODEX_BRIDGE, LocalAgentWebHandler, find_port
 
+    app_name = load_app_identity()["display_name"]
     host = "127.0.0.1"
     port = find_port(host, 8787)
     server = ThreadingHTTPServer((host, port), LocalAgentWebHandler)
@@ -73,7 +74,7 @@ def run_desktop_shell() -> None:
         server.server_close()
 
     window = webview.create_window(
-        "Talos",
+        app_name,
         f"http://{host}:{port}",
         width=1280,
         height=840,
@@ -91,4 +92,4 @@ if __name__ == "__main__":
     try:
         run_desktop_shell()
     except Exception as exc:
-        messagebox.showerror("Talos", str(exc))
+        messagebox.showerror(load_app_identity()["display_name"], str(exc))

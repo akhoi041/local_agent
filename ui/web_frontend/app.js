@@ -183,6 +183,17 @@ function hydrateTheme(config = {}) {
   if (THEMES.includes(stored)) applyTheme(stored);
 }
 
+function hydrateAppIdentity(app = {}) {
+  const displayName = app.display_name || app.app_name || "Talos";
+  const channel = app.channel ? ` ${app.channel}` : "";
+  const version = app.version ? `v${app.version}${channel}` : channel.trim();
+  document.title = displayName;
+  $("#chromeAppName").textContent = displayName;
+  $("#brandName").textContent = displayName;
+  $("#heroAppName").textContent = displayName;
+  $("#modeLine").dataset.version = version || "";
+}
+
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (char) => ({
     "&": "&amp;",
@@ -990,6 +1001,7 @@ function renderArduinoProjects(projects = []) {
 
 function render(payload) {
   hydrateTheme(payload.config || {});
+  hydrateAppIdentity(payload.app || {});
   const projects = payload.arduino_projects || [];
   const arduino = payload.arduino || {};
   const selectedPath = normalizedWindowsPath(arduino.path);
@@ -998,7 +1010,8 @@ function render(payload) {
   ))
     || projects.find((project) => normalizedWindowsPath(project.path) === selectedPath)
     || {};
-  $("#modeLine").textContent = `${payload.role} | ${payload.root}`;
+  const versionText = $("#modeLine").dataset.version ? ` | ${$("#modeLine").dataset.version}` : "";
+  $("#modeLine").textContent = `${payload.role}${versionText} | ${payload.root}`;
   $("#toolList").textContent = (payload.tools || []).join("\n");
   renderStats(payload);
   renderArduino(arduino, false, selectedProject);
