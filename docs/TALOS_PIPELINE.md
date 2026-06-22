@@ -177,7 +177,7 @@ Exit condition: a user can understand which tool owns the real sketch, review or
 Purpose: ensure Talos never loses external work or silently overwrites an Arduino sketch while Codex changes are pending.
 
 - [x] Detect when Arduino IDE or another editor changes a source file while Talos has a staged Codex change.
-- [ ] Present a three-way conflict view: original base, current Arduino file, and staged Codex change.
+- [x] Present a three-way conflict view: original base, current Arduino file, and staged Codex change.
 - [ ] Add an explicit conflict-resolution action that never overwrites external changes silently.
 - [ ] Create a lightweight checkpoint before Save File and provide rollback to the last saved Talos checkpoint.
 - [ ] Show a patch timeline with source, files/hunks, editor apply time, save time, verify result, and rollback action.

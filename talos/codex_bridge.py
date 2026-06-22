@@ -667,6 +667,8 @@ class CodexBridge:
                 if current_hash == base_hash:
                     continue
                 file["review_status"] = "conflict"
+                file["conflict_current_content"] = current
+                file["conflict_detected_at"] = now()
                 for hunk in file.get("hunks") or []:
                     if hunk.get("review_status") in {"staged", "reviewing", "applied-to-editor"}:
                         hunk["review_status"] = "conflict"

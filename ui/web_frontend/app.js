@@ -864,7 +864,21 @@ function renderCodexDiff(editorContent = "", proposedContent = "", file = {}) {
   $$(".codex-diff-line").forEach((row) => row.addEventListener("click", () => selectDiffLine(row)));
 }
 
+function setCodexConflictMode(patch = null, file = null) {
+  const visible = Boolean(patch && file && file.review_status === "conflict");
+  const view = $("#codexConflictView");
+  view.hidden = !visible;
+  $(".source-editor").classList.toggle("conflicting", visible);
+  if (!visible) return;
+  $("#codexConflictLabel").textContent = `Resolve conflict: ${file.path}`;
+  $("#codexConflictTime").textContent = file.conflict_detected_at || "";
+  $("#codexConflictBase").textContent = String(file.base_content || "");
+  $("#codexConflictCurrent").textContent = String(file.conflict_current_content || "");
+  $("#codexConflictProposed").textContent = String(file.content || "");
+}
+
 function setCodexReviewMode(patch = null) {
+  setCodexConflictMode();
   state.codexReviewPatch = patch;
   const activeFile = state.activeFilePath;
   const file = patch && (patch.files || []).find((item) => item.path === activeFile);
@@ -923,6 +937,8 @@ function refreshCodexReview(patches = []) {
   ));
   if (conflict) {
     setCodexReviewMode(null);
+    const conflictFile = (conflict.files || []).find((file) => file.path === state.activeFilePath);
+    setCodexConflictMode(conflict, conflictFile);
     $("#editorStatus").textContent = "External source change detected. Resolve the Codex conflict before applying or saving this draft.";
     $("#codexStatus").textContent = "Codex change conflict detected.";
     return;

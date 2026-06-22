@@ -167,6 +167,29 @@
                     <button id="applyCodexPatchBtn" class="button primary" type="button">Apply To Editor</button>
                   </div>
                 </div>
+                <div id="codexConflictView" class="codex-conflict-view" hidden>
+                  <header>
+                    <div>
+                      <span class="codex-review-kicker">External change detected</span>
+                      <strong id="codexConflictLabel">Conflict requires resolution</strong>
+                    </div>
+                    <span id="codexConflictTime" class="conflict-time"></span>
+                  </header>
+                  <div class="codex-conflict-grid">
+                    <section>
+                      <span>Original base</span>
+                      <pre id="codexConflictBase"></pre>
+                    </section>
+                    <section>
+                      <span>Current Arduino file</span>
+                      <pre id="codexConflictCurrent"></pre>
+                    </section>
+                    <section>
+                      <span>Codex staged change</span>
+                      <pre id="codexConflictProposed"></pre>
+                    </section>
+                  </div>
+                </div>
                 <div id="codexDiffPreview" class="codex-diff-preview" hidden></div>
                 <div class="editor-canvas">
                   <pre id="editorLineNumbers" class="editor-line-numbers" role="button" aria-label="Select source line" title="Click a line number to select that line">1</pre>

@@ -212,6 +212,7 @@ class TalosArduinoTests(unittest.TestCase):
 
             self.assertEqual(status["patches"][0]["files"][0]["review_status"], "conflict")
             self.assertEqual(status["patches"][0]["review_status"], "conflict")
+            self.assertEqual(status["patches"][0]["files"][0]["conflict_current_content"], "external edit\n")
 
     def test_frontend_contains_codex_workbench_panel(self) -> None:
         html = (Path(__file__).parents[1] / "ui" / "web_frontend" / "index.html").read_text(encoding="utf-8")
@@ -256,6 +257,8 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("/api/codex_apply_all", script)
         self.assertIn("Codex change conflict detected", script)
         self.assertIn("Save blocked: this file changed outside Talos", script)
+        self.assertIn("setCodexConflictMode", script)
+        self.assertIn('id="codexConflictView"', html)
         self.assertIn('id="applyCodexTurnBtn"', html)
         self.assertIn("localEditMode", script)
         self.assertIn("setLocalEditMode", script)
