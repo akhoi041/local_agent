@@ -109,6 +109,15 @@ html {
   overflow: hidden;
 }
 
+body.native-window .app-chrome {
+  display: none;
+}
+
+body.native-window .scene {
+  inset: 0;
+  min-height: var(--app-min-height);
+}
+
 body {
   position: relative;
   min-width: var(--app-min-width);
@@ -2061,6 +2070,35 @@ button.run-history-item:hover {
   overflow-wrap: anywhere;
 }
 
+.patch-timeline {
+  display: grid;
+  gap: 4px;
+  margin: 9px 0 0;
+  padding: 8px 0 0 82px;
+  border-top: 1px solid var(--line-soft);
+  list-style: none;
+}
+
+.patch-timeline li {
+  display: grid;
+  grid-template-columns: minmax(94px, auto) minmax(0, 1fr);
+  gap: 8px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.patch-timeline strong {
+  color: var(--text);
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.patch-timeline span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .run-history-empty {
   padding: 16px 8px;
   color: var(--muted);
@@ -2364,11 +2402,12 @@ select {
 .info-popover {
   position: absolute;
   top: calc(100% + 8px);
-  right: 0;
+  left: 0;
+  right: auto;
   z-index: 20;
-  width: min(520px, 76vw);
-  max-height: 240px;
-  padding: 12px;
+  width: 100%;
+  max-height: min(280px, 42vh);
+  padding: 10px;
   overflow: auto;
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -2376,7 +2415,7 @@ select {
   background: var(--panel);
   box-shadow: 0 8px 24px rgba(140, 149, 159, 0.2);
   font-family: ui-monospace, SFMono-Regular, SFMono, Consolas, "Liberation Mono", Menlo, monospace;
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.45;
   white-space: pre-wrap;
   overflow-wrap: anywhere;

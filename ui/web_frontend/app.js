@@ -21,6 +21,7 @@ const state = {
   editorLoading: false,
   editorSaving: false,
   editorDiskChecking: false,
+  lastCheckpoint: null,
   codexBusy: false,
   codexMessagesSignature: "",
   codexRefreshPromise: null,
@@ -39,6 +40,7 @@ const state = {
   codexReviewPatch: null,
   codexPatches: [],
   codexApplyingPatchId: "",
+  codexPatchVerifyRunning: false,
   codexConversationSignature: "",
   codexHistoryExpanded: false,
   codexConversations: [],
@@ -380,18 +382,22 @@ function renderRunHistory(events = []) {
     ? events.map((event) => {
         if (event.type === "patch") {
           const files = event.files || [];
+          const timeline = event.timeline || [];
           return `
             <article class="run-history-item patch">
               <div class="run-history-main">
                 <span class="run-history-badge">PATCH</span>
                 <div>
-                  <strong>${files.length} file(s) changed by Codex</strong>
-                  <span>${escapeHtml(event.time || "")}</span>
+                  <strong>${files.length} file(s) from Codex</strong>
+                  <span>${escapeHtml(event.status || "staged")} | ${escapeHtml(event.time || "")}</span>
                 </div>
               </div>
               <div class="run-history-files">
-                ${files.map((file) => `<code>${escapeHtml(file.kind || "update")} ${escapeHtml(file.path || "")}</code>`).join("")}
+                ${files.map((file) => `<code>${escapeHtml(file.kind || "update")} ${escapeHtml(file.path || "")} | ${Number(file.hunks || 0)} hunk(s) | ${escapeHtml(file.status || "staged")}</code>`).join("")}
               </div>
+              <ol class="patch-timeline">
+                ${timeline.map((entry) => `<li><strong>${escapeHtml(String(entry.action || "updated").replaceAll("-", " "))}</strong><span>${escapeHtml(entry.path || entry.detail?.status || "")} ${escapeHtml(entry.time || "")}</span></li>`).join("")}
+              </ol>
             </article>`;
         }
         const source = event.source === "codex_patch" ? "After Codex patch" : "Manual verify";
@@ -413,6 +419,17 @@ function renderRunHistory(events = []) {
       setOutputView("verify");
     });
   });
+}
+
+function verifySource() {
+  const patch = state.codexPatches.find((item) => (
+    normalizedWindowsPath(item.workspace || "") === normalizedWindowsPath(state.selectedWorkspacePath)
+    && (item.files || []).some((file) => (
+      file.path === state.activeFilePath
+      && ["applied-to-editor", "saved"].includes(file.review_status || "")
+    ))
+  ));
+  return patch ? "codex_patch" : "manual";
 }
 
 async function refreshRunHistory() {
@@ -446,6 +463,31 @@ function setEditorDirty(dirty) {
   $("#editorDirtyBadge").hidden = !state.editorDirty;
   const conflicted = state.conflictedFilePaths.has(state.activeFilePath);
   $("#saveFileBtn").disabled = !state.activeFilePath || !state.editorDirty || state.editorSaving || conflicted;
+  $("#saveAndVerifyBtn").disabled = !state.activeFilePath || !state.editorDirty || state.editorSaving || conflicted;
+  $("#rollbackFileBtn").disabled = !state.activeFilePath || !state.lastCheckpoint || state.editorSaving || conflicted;
+}
+
+function setCheckpoint(checkpoint = null) {
+  state.lastCheckpoint = checkpoint || null;
+  const button = $("#rollbackFileBtn");
+  const available = Boolean(state.activeFilePath && state.lastCheckpoint && !state.editorSaving && !state.conflictedFilePaths.has(state.activeFilePath));
+  button.disabled = !available;
+  button.title = available
+    ? `Restore ${state.activeFilePath} to its state before Talos saved it at ${state.lastCheckpoint.created_at || "the last checkpoint"}`
+    : "No safe Talos checkpoint is available for this file";
+}
+
+async function refreshCheckpoint() {
+  if (!state.activeFilePath) {
+    setCheckpoint();
+    return;
+  }
+  try {
+    const result = await api(`/api/arduino_checkpoint?path=${encodeURIComponent(state.activeFilePath)}`);
+    setCheckpoint(result.checkpoint);
+  } catch (_error) {
+    setCheckpoint();
+  }
 }
 
 function updateEditorAccess() {
@@ -495,6 +537,7 @@ function applyEditorFileResult(result, statusText = "") {
     state.activeFileByWorkspace[normalizedWindowsPath(state.selectedWorkspacePath)] = result.path;
   }
   state.editorOriginalContent = result.content || "";
+  setCheckpoint();
   state.editorFileMtimeNs = Number(result.mtime_ns || 0);
   state.codexPreviewPath = "";
   state.codexPreviewStreaming = false;
@@ -531,6 +574,7 @@ function applyStoredCodexDraft() {
 
 function resetEditor(message = "No file selected.") {
   state.activeFilePath = "";
+  setCheckpoint();
   state.localEditMode = false;
   state.editorOriginalContent = "";
   state.editorFileMtimeNs = 0;
@@ -570,6 +614,7 @@ async function openWorkspaceFile(path) {
     applyStoredCodexDraft();
     renderActiveFileRow();
     refreshCodexReview(state.codexPatches);
+    await refreshCheckpoint();
   } catch (error) {
     $("#editorStatus").textContent = `Open failed: ${error.message}`;
   } finally {
@@ -584,10 +629,10 @@ function renderActiveFileRow() {
 }
 
 async function saveWorkspaceFile() {
-  if (!state.activeFilePath || !state.editorDirty || state.editorSaving) return;
+  if (!state.activeFilePath || !state.editorDirty || state.editorSaving) return false;
   if (state.conflictedFilePaths.has(state.activeFilePath)) {
     $("#editorStatus").textContent = "Save blocked: this file changed outside Talos and requires conflict resolution.";
-    return;
+    return false;
   }
   state.editorSaving = true;
   $("#saveFileBtn").disabled = true;
@@ -603,6 +648,7 @@ async function saveWorkspaceFile() {
     state.localEditMode = false;
     $("#editorStatus").textContent = `Saved ${result.path} (${Number(result.bytes || 0)} bytes).`;
     setEditorDirty(false);
+    setCheckpoint(result.checkpoint);
     updateEditorAccess();
     void api("/api/codex_save_patch", {
       method: "POST",
@@ -611,11 +657,41 @@ async function saveWorkspaceFile() {
       $("#codexStatus").textContent = `File saved, but change status could not be synced: ${error.message}`;
     });
     await refresh();
+    return true;
   } catch (error) {
     $("#editorStatus").textContent = `Save failed: ${error.message}`;
+    return false;
   } finally {
     state.editorSaving = false;
-    $("#saveFileBtn").disabled = !state.activeFilePath || !state.editorDirty;
+    setEditorDirty(state.editorDirty);
+  }
+}
+
+async function saveAndVerifyWorkspace() {
+  const saved = await saveWorkspaceFile();
+  if (!saved) return;
+  await verifyArduinoWorkspace(verifySource());
+}
+
+async function rollbackWorkspaceFile() {
+  if (!state.activeFilePath || !state.lastCheckpoint || state.editorSaving) return;
+  if (!window.confirm(`Restore ${state.activeFilePath} to the state before Talos's last save?`)) return;
+  state.editorSaving = true;
+  setEditorDirty(state.editorDirty);
+  try {
+    await api("/api/arduino_rollback", {
+      method: "POST",
+      body: JSON.stringify({ path: state.activeFilePath }),
+    });
+    const restored = await api(`/api/arduino_file?path=${encodeURIComponent(state.activeFilePath)}`);
+    applyEditorFileResult(restored, "Restored the file from the Talos checkpoint. Arduino IDE now has the restored version.");
+    setCheckpoint();
+    await refresh();
+  } catch (error) {
+    $("#editorStatus").textContent = `Rollback failed: ${error.message}`;
+  } finally {
+    state.editorSaving = false;
+    setEditorDirty(state.editorDirty);
   }
 }
 
@@ -667,6 +743,7 @@ async function checkActiveFileOnDisk() {
     }
     applyEditorFileResult(result, `Reloaded from disk (${Number(result.bytes || 0)} bytes).`);
     renderActiveFileRow();
+    await refreshCheckpoint();
   } catch (error) {
     resetEditor(`Active file reload failed: ${error.message}`);
   } finally {
@@ -877,6 +954,25 @@ function setCodexConflictMode(patch = null, file = null) {
   $("#codexConflictProposed").textContent = String(file.content || "");
 }
 
+async function keepExternalConflict() {
+  const patch = state.codexPatches.find((item) => (
+    normalizedWindowsPath(item.workspace || "") === normalizedWindowsPath(state.selectedWorkspacePath)
+    && (item.files || []).some((file) => file.path === state.activeFilePath && file.review_status === "conflict")
+  ));
+  if (!patch?.id || !state.activeFilePath) return;
+  try {
+    await api("/api/codex_keep_external", {
+      method: "POST",
+      body: JSON.stringify({ id: patch.id, path: state.activeFilePath }),
+    });
+    const current = await api(`/api/arduino_file?path=${encodeURIComponent(state.activeFilePath)}`);
+    applyEditorFileResult(current, "Kept the current Arduino file. The conflicting Codex change was rejected.");
+    await refreshCodex();
+  } catch (error) {
+    $("#codexStatus").textContent = `Could not keep the Arduino version: ${error.message}`;
+  }
+}
+
 function setCodexReviewMode(patch = null) {
   setCodexConflictMode();
   state.codexReviewPatch = patch;
@@ -910,6 +1006,7 @@ function setCodexReviewMode(patch = null) {
     : `Codex change review: ${file.path}`;
   $("#applyCodexPatchBtn").textContent = reviewable ? "Apply To Editor" : "Restore Proposed Change";
   $("#applyCodexPatchBtn").disabled = false;
+  $("#verifyCodexPatchBtn").disabled = streaming;
   $("#applyCodexTurnBtn").hidden = false;
   $("#rejectCodexTurnBtn").hidden = false;
   $("#applyCodexTurnBtn").disabled = !reviewable || streaming;
@@ -1000,6 +1097,32 @@ async function applyCodexPatch(patch = state.codexReviewPatch) {
   }).finally(() => {
     state.codexApplyingPatchId = "";
   });
+}
+
+async function verifyCodexPatch() {
+  const patch = state.codexReviewPatch;
+  if (!patch?.id || state.codexPatchVerifyRunning) return;
+  state.codexPatchVerifyRunning = true;
+  $("#verifyCodexPatchBtn").disabled = true;
+  setOutputView("verify");
+  renderVerifyOutput(null, "Compiling the staged Codex change in an isolated Arduino sandbox...");
+  try {
+    const result = await api("/api/codex_verify_patch", {
+      method: "POST",
+      body: JSON.stringify({ id: patch.id }),
+    });
+    renderVerifyOutput(result);
+    $("#codexStatus").textContent = result.ok
+      ? "Staged Codex change compiled successfully. Review and Save File when ready."
+      : "Staged Codex change did not compile. Arduino IDE files were not changed.";
+    await refreshRunHistory();
+  } catch (error) {
+    renderVerifyOutput(null, `Staged Codex verify failed: ${error.message}`);
+    $("#codexStatus").textContent = `Could not verify staged Codex change: ${error.message}`;
+  } finally {
+    state.codexPatchVerifyRunning = false;
+    if (state.codexReviewPatch?.id === patch.id) $("#verifyCodexPatchBtn").disabled = false;
+  }
 }
 
 async function reviewCodexHunk(action, hunkId) {
@@ -1548,7 +1671,7 @@ async function saveArduinoWorkspace() {
   }
 }
 
-async function verifyArduinoWorkspace(source = "manual") {
+async function verifyArduinoWorkspace(source = verifySource()) {
   setOutputView("verify");
   renderVerifyOutput(null, "Copying sketch folder to sandbox and running arduino-cli compile...");
   state.arduinoVerifyRunning = true;
@@ -1641,7 +1764,7 @@ function bindEvents() {
     await saveArduinoWorkspace();
     await refreshAfterWorkspaceMutation();
   });
-  $("#verifyArduinoBtn").addEventListener("click", () => verifyArduinoWorkspace("manual"));
+  $("#verifyArduinoBtn").addEventListener("click", () => verifyArduinoWorkspace());
   $("#verifyOutputTab").addEventListener("click", () => setOutputView("verify"));
   $("#runHistoryTab").addEventListener("click", async () => {
     setOutputView("history");
@@ -1653,10 +1776,14 @@ function bindEvents() {
   $("#copyVerifyBtn").addEventListener("click", () => copyText(state.lastVerifyText));
   $("#editInTalosBtn").addEventListener("click", () => setLocalEditMode(!state.localEditMode));
   $("#saveFileBtn").addEventListener("click", saveWorkspaceFile);
+  $("#saveAndVerifyBtn").addEventListener("click", saveAndVerifyWorkspace);
+  $("#rollbackFileBtn").addEventListener("click", rollbackWorkspaceFile);
   $("#applyCodexPatchBtn").addEventListener("click", () => applyCodexPatch());
+  $("#verifyCodexPatchBtn").addEventListener("click", verifyCodexPatch);
   $("#rejectCodexPatchBtn").addEventListener("click", rejectCodexPatch);
   $("#applyCodexTurnBtn").addEventListener("click", () => resolveCodexTurn("apply"));
   $("#rejectCodexTurnBtn").addEventListener("click", () => resolveCodexTurn("reject"));
+  $("#keepExternalConflictBtn").addEventListener("click", keepExternalConflict);
   $("#toggleCodexBtn").addEventListener("click", () => applyCodexPanel(!codexPanelOpen()));
   $("#closeCodexBtn").addEventListener("click", () => applyCodexPanel(false));
   $("#newCodexThreadBtn").addEventListener("click", newCodexThread);

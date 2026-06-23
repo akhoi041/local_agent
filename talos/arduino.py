@@ -843,7 +843,11 @@ def parse_compile_output(output: str) -> dict[str, Any]:
         "issue_context": format_compile_issue_context(issues),
     }
 
-def run_arduino_compile(config: dict[str, Any], timeout: int = 120) -> dict[str, Any]:
+def run_arduino_compile(
+    config: dict[str, Any],
+    timeout: int = 120,
+    overrides: dict[str, str | None] | None = None,
+) -> dict[str, Any]:
     started_at = time.perf_counter()
     timings: dict[str, float] = {}
 
@@ -879,6 +883,31 @@ def run_arduino_compile(config: dict[str, Any], timeout: int = 120) -> dict[str,
         })
     workspace = Path(summary["path"])
     sandbox = copy_workspace_to_sandbox(workspace)
+    for relative_path, content in (overrides or {}).items():
+        target = (sandbox / relative_path).resolve()
+        try:
+            target.relative_to(sandbox)
+        except ValueError:
+            return with_total({
+                "ok": False,
+                "status": "invalid_override",
+                "summary": summary,
+                "sandbox": str(sandbox),
+                "output": "Staged change path must stay inside the Arduino sandbox.",
+            })
+        if not is_source_file(target):
+            return with_total({
+                "ok": False,
+                "status": "invalid_override",
+                "summary": summary,
+                "sandbox": str(sandbox),
+                "output": f"Unsupported staged source file type: {target.suffix or '[none]'}",
+            })
+        if content is None:
+            target.unlink(missing_ok=True)
+        else:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(content, encoding="utf-8", newline="\n")
     step_started_at = mark("sandbox_copy", step_started_at)
     command = [cli, "compile", "--fqbn", summary["fqbn"], str(sandbox)]
     try:

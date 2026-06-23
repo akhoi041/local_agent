@@ -625,6 +625,47 @@ class CodexBridge:
             self._append_activity(f"Rejected Codex change: {target}.")
             return {"ok": True, "patch": dict(patch), "file": dict(file)}
 
+    def keep_external_conflict(self, patch_id: str, workspace: str, relative_path: str) -> dict[str, Any]:
+        """Resolve a conflict by explicitly preserving the Arduino workspace version."""
+        with self._lock:
+            patch, file, error = self._reviewable_file(patch_id, workspace, relative_path)
+            if error:
+                return {"ok": False, "error": error}
+            if file.get("review_status") != "conflict":
+                return {"ok": False, "error": "This Codex change is not in conflict."}
+            target = str(relative_path or "").replace("\\", "/")
+            file["review_status"] = "rejected"
+            file["conflict_resolution"] = "kept-external"
+            file["conflict_resolved_at"] = now()
+            for hunk in file.get("hunks") or []:
+                if hunk.get("review_status") == "conflict":
+                    hunk["review_status"] = "rejected"
+            file.pop("editor_content", None)
+            self._sync_patch_status(patch)
+            self._append_activity(f"Kept external Arduino file and rejected Codex change: {target}.")
+            return {"ok": True, "patch": dict(patch), "file": dict(file)}
+
+    def staged_sandbox_overrides(self, patch_id: str, workspace: str) -> dict[str, Any]:
+        """Return an isolated workspace overlay for compiling a pending Codex patch."""
+        with self._lock:
+            patch = self._patch_for_workspace(patch_id, workspace)
+            if patch is None:
+                return {"ok": False, "error": "Codex patch was not found for this workspace."}
+            overrides: dict[str, str | None] = {}
+            for file in patch.get("files") or []:
+                status = str(file.get("review_status") or "staged")
+                if status == "conflict":
+                    return {"ok": False, "error": "Resolve the external file conflict before staged verification."}
+                if status in {"rejected", "saved"}:
+                    continue
+                path = str(file.get("path") or "").replace("\\", "/")
+                if not path:
+                    continue
+                overrides[path] = None if file.get("kind") == "delete" else str(file.get("content") or "")
+            if not overrides:
+                return {"ok": False, "error": "This Codex patch has no pending source changes to verify."}
+            return {"ok": True, "patch": dict(patch), "overrides": overrides}
+
     def _reviewable_file(
         self,
         patch_id: str,

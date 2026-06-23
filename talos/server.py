@@ -29,6 +29,13 @@ from talos.arduino import (
     write_workspace_file,
 )
 from talos.codex_bridge import CODEX_BRIDGE
+from talos.checkpoints import (
+    create_before_save_checkpoint,
+    discard_checkpoint,
+    latest_saved_checkpoint,
+    mark_checkpoint_saved,
+    rollback_last_checkpoint,
+)
 from talos.native_bridge import (
     list_arduino_ide_processes,
     list_arduino_open_workspaces,
@@ -37,7 +44,13 @@ from talos.native_bridge import (
     list_window_rows,
     native_available,
 )
-from talos.run_history import record_verify, run_history
+from talos.run_history import (
+    record_patch_transition,
+    record_patch_verification,
+    record_rollback,
+    record_verify,
+    run_history,
+)
 
 ASSET_ROOT = Path(getattr(sys, "_MEIPASS", ROOT))
 FRONTEND = ASSET_ROOT / "web_frontend" if getattr(sys, "frozen", False) else ROOT / "ui" / "web_frontend"
@@ -92,7 +105,9 @@ def state_payload() -> dict[str, Any]:
             "GET /api/arduino_context",
             "GET /api/arduino_projects",
             "GET /api/arduino_file?path=...",
+            "GET /api/arduino_checkpoint?path=...",
             "POST /api/arduino_file",
+            "POST /api/arduino_rollback",
             "POST /api/arduino_delete",
             "POST /api/arduino_verify",
             "GET /api/codex_status",
@@ -104,8 +119,10 @@ def state_payload() -> dict[str, Any]:
             "POST /api/codex_reject_hunk",
             "POST /api/codex_apply_all",
             "POST /api/codex_reject_all",
+            "POST /api/codex_verify_patch",
             "POST /api/codex_save_patch",
             "POST /api/codex_reject_patch",
+            "POST /api/codex_keep_external",
             "POST /api/codex_cancel",
             "POST /api/codex_thread",
             "POST /api/codex_conversation",
@@ -141,6 +158,10 @@ class LocalAgentWebHandler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/arduino_file":
             result = read_workspace_file(load_config(), query.get("path", [""])[0])
+            self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
+            return
+        if parsed.path == "/api/arduino_checkpoint":
+            result = latest_saved_checkpoint(load_config(), query.get("path", [""])[0])
             self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
             return
         if parsed.path == "/api/codex_status":
@@ -183,21 +204,43 @@ class LocalAgentWebHandler(BaseHTTPRequestHandler):
             save_config(config)
             result = run_arduino_compile(config)
             record_verify(result, str(payload.get("source") or "manual"))
+            if str(payload.get("source") or "manual") == "codex_patch":
+                record_patch_verification(str(workspace_summary(config).get("path") or ""), result)
             status = "passed" if result.get("ok") else result.get("status", "failed")
             log_event(f"{now()} Arduino verify {status}")
             self.send_json(result)
             return
         if self.path == "/api/arduino_file":
             config = load_config()
+            checkpoint_result = create_before_save_checkpoint(config, str(payload.get("path", "")))
+            if not checkpoint_result.get("ok"):
+                self.send_json(checkpoint_result, HTTPStatus.BAD_REQUEST)
+                return
             result = write_workspace_file(
                 config,
                 str(payload.get("path", "")),
                 str(payload.get("content", "")),
             )
+            checkpoint = checkpoint_result.get("checkpoint") if isinstance(checkpoint_result.get("checkpoint"), dict) else {}
+            checkpoint_id = str(checkpoint.get("id") or "")
             if result.get("ok"):
+                checkpoint_saved = mark_checkpoint_saved(checkpoint_id, str(payload.get("content", "")))
+                result["checkpoint"] = checkpoint_saved.get("checkpoint") if checkpoint_saved.get("ok") else None
                 workspace = workspace_summary(config)
-                CODEX_BRIDGE.mark_patch_saved(str(workspace.get("path") or ""), str(result.get("path") or ""))
+                patch_result = CODEX_BRIDGE.mark_patch_saved(str(workspace.get("path") or ""), str(result.get("path") or ""))
+                if patch_result.get("saved"):
+                    record_patch_transition(patch_result.get("patch") or {}, "saved", str(result.get("path") or ""))
                 log_event(f"{now()} wrote Arduino file: {result.get('path')}")
+            elif checkpoint_id:
+                discard_checkpoint(checkpoint_id)
+            self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
+            return
+        if self.path == "/api/arduino_rollback":
+            config = load_config()
+            result = rollback_last_checkpoint(config, str(payload.get("path", "")))
+            if result.get("ok"):
+                record_rollback(str(workspace_summary(config).get("path") or ""), str(result.get("path") or ""))
+                log_event(f"{now()} rolled back Arduino file: {result.get('path')}")
             self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
             return
         if self.path == "/api/arduino_delete":
@@ -231,6 +274,7 @@ class LocalAgentWebHandler(BaseHTTPRequestHandler):
                 str(payload.get("path", "")),
             )
             if result.get("ok"):
+                record_patch_transition(result.get("patch") or {}, "editor-applied", str(payload.get("path") or ""))
                 log_event(f"{now()} applied Codex patch to Talos editor: {payload.get('path', '')}")
             self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
             return
@@ -242,6 +286,8 @@ class LocalAgentWebHandler(BaseHTTPRequestHandler):
                 str(payload.get("path", "")),
                 str(payload.get("hunk_id", "")),
             )
+            if result.get("ok"):
+                record_patch_transition(result.get("patch") or {}, "hunk-applied", str(payload.get("path") or ""), {"hunk_id": str(payload.get("hunk_id") or "")})
             self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
             return
         if self.path == "/api/codex_reject_hunk":
@@ -252,17 +298,44 @@ class LocalAgentWebHandler(BaseHTTPRequestHandler):
                 str(payload.get("path", "")),
                 str(payload.get("hunk_id", "")),
             )
+            if result.get("ok"):
+                record_patch_transition(result.get("patch") or {}, "hunk-rejected", str(payload.get("path") or ""), {"hunk_id": str(payload.get("hunk_id") or "")})
             self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
             return
         if self.path == "/api/codex_apply_all":
             workspace = workspace_summary(load_config())
             result = CODEX_BRIDGE.apply_all(str(payload.get("id", "")), str(workspace.get("path") or ""))
+            if result.get("ok"):
+                record_patch_transition(result.get("patch") or {}, "turn-applied")
             self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
             return
         if self.path == "/api/codex_reject_all":
             workspace = workspace_summary(load_config())
             result = CODEX_BRIDGE.reject_all(str(payload.get("id", "")), str(workspace.get("path") or ""))
+            if result.get("ok"):
+                record_patch_transition(result.get("patch") or {}, "turn-rejected")
             self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
+            return
+        if self.path == "/api/codex_verify_patch":
+            config = load_config()
+            workspace = workspace_summary(config)
+            staged = CODEX_BRIDGE.staged_sandbox_overrides(
+                str(payload.get("id", "")),
+                str(workspace.get("path") or ""),
+            )
+            if not staged.get("ok"):
+                self.send_json(staged, HTTPStatus.BAD_REQUEST)
+                return
+            result = run_arduino_compile(config, overrides=staged.get("overrides") or {})
+            result["patch_id"] = str(payload.get("id") or "")
+            record_verify(result, "codex_patch")
+            record_patch_transition(
+                staged.get("patch") or {},
+                "staged-verified",
+                detail={"status": str(result.get("status") or "failed"), "ok": bool(result.get("ok"))},
+            )
+            log_event(f"{now()} staged Codex patch verify {result.get('status', 'failed')}")
+            self.send_json(result)
             return
         if self.path == "/api/codex_review_patch":
             workspace = workspace_summary(load_config())
@@ -288,7 +361,20 @@ class LocalAgentWebHandler(BaseHTTPRequestHandler):
         if self.path == "/api/codex_reject_patch":
             result = CODEX_BRIDGE.reject_patch(str(payload.get("id", "")), str(payload.get("path", "")))
             if result.get("ok"):
+                record_patch_transition(result.get("patch") or {}, "rejected", str(payload.get("path") or ""))
                 log_event(f"{now()} rejected Codex patch: {payload.get('id', '')}")
+            self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
+            return
+        if self.path == "/api/codex_keep_external":
+            workspace = workspace_summary(load_config())
+            result = CODEX_BRIDGE.keep_external_conflict(
+                str(payload.get("id", "")),
+                str(workspace.get("path") or ""),
+                str(payload.get("path", "")),
+            )
+            if result.get("ok"):
+                record_patch_transition(result.get("patch") or {}, "kept-external", str(payload.get("path") or ""))
+                log_event(f"{now()} kept external Arduino file for Codex conflict: {payload.get('path', '')}")
             self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
             return
         if self.path == "/api/codex_thread":

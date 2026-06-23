@@ -80,7 +80,7 @@ def run_desktop_shell() -> None:
         height=840,
         min_size=(WEBVIEW_MIN_WIDTH, WEBVIEW_MIN_HEIGHT),
         background_color="#ffffff",
-        frameless=True,
+        frameless=False,
         easy_drag=False,
         js_api=WindowApi(),
     )

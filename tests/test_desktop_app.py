@@ -37,7 +37,13 @@ from talos.codex_bridge import (
     snapshot_workspace,
     staged_patch_files,
 )
-from talos.run_history import record_patch, record_verify, run_history
+from talos.checkpoints import (
+    create_before_save_checkpoint,
+    latest_saved_checkpoint,
+    mark_checkpoint_saved,
+    rollback_last_checkpoint,
+)
+from talos.run_history import record_patch, record_patch_transition, record_verify, run_history
 from talos.server import state_payload
 
 class TalosArduinoTests(unittest.TestCase):
@@ -214,6 +220,33 @@ class TalosArduinoTests(unittest.TestCase):
             self.assertEqual(status["patches"][0]["review_status"], "conflict")
             self.assertEqual(status["patches"][0]["files"][0]["conflict_current_content"], "external edit\n")
 
+            resolved = bridge.keep_external_conflict("patch-conflict", str(root), "Sketch.ino")
+
+            self.assertTrue(resolved["ok"])
+            self.assertEqual(resolved["file"]["review_status"], "rejected")
+            self.assertEqual(resolved["file"]["conflict_resolution"], "kept-external")
+            self.assertEqual((root / "Sketch.ino").read_text(encoding="utf-8"), "external edit\n")
+
+    def test_staged_patch_sandbox_overrides_use_pending_codex_content_only(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp) / "Sketch"
+            root.mkdir()
+            bridge = CodexBridge()
+            bridge._patches.append({
+                "id": "patch-verify",
+                "workspace": str(root),
+                "review_status": "reviewing",
+                "files": [
+                    {"path": "Sketch.ino", "kind": "update", "content": "proposed\n", "review_status": "reviewing"},
+                    {"path": "ignored.cpp", "kind": "update", "content": "ignored\n", "review_status": "rejected"},
+                ],
+            })
+
+            result = bridge.staged_sandbox_overrides("patch-verify", str(root))
+
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["overrides"], {"Sketch.ino": "proposed\n"})
+
     def test_frontend_contains_codex_workbench_panel(self) -> None:
         html = (Path(__file__).parents[1] / "ui" / "web_frontend" / "index.html").read_text(encoding="utf-8")
 
@@ -222,6 +255,8 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn('id="toggleCodexBtn"', html)
         self.assertIn('id="editInTalosBtn"', html)
         self.assertIn('id="editorModeBadge"', html)
+        self.assertIn('id="boardInfoBtn"', html)
+        self.assertIn('id="boardInfoPanel"', html)
         self.assertIn('id="editorLineNumbers"', html)
         self.assertIn("data-codex-prompt", html)
         self.assertIn('id="codexAllowEdits"', html)
@@ -258,11 +293,25 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("Codex change conflict detected", script)
         self.assertIn("Save blocked: this file changed outside Talos", script)
         self.assertIn("setCodexConflictMode", script)
+        self.assertIn("rollbackWorkspaceFile", script)
+        self.assertIn("/api/arduino_rollback", script)
+        self.assertIn("saveAndVerifyWorkspace", script)
+        self.assertIn("verifySource", script)
+        self.assertIn("patch-timeline", script)
+        self.assertIn("verifyCodexPatch", script)
+        self.assertIn("/api/codex_verify_patch", script)
+        self.assertIn("keepExternalConflict", script)
+        self.assertIn("/api/codex_keep_external", script)
         self.assertIn('id="codexConflictView"', html)
+        self.assertIn('id="keepExternalConflictBtn"', html)
+        self.assertIn('id="rollbackFileBtn"', html)
+        self.assertIn('id="saveAndVerifyBtn"', html)
+        self.assertIn('id="verifyCodexPatchBtn"', html)
         self.assertIn('id="applyCodexTurnBtn"', html)
         self.assertIn("localEditMode", script)
         self.assertIn("setLocalEditMode", script)
         self.assertIn("updateEditorAccess", script)
+        self.assertIn("boardInfoText", script)
         self.assertIn("Arduino IDE owns the saved sketch", script)
         self.assertIn("codexDiffPreview", html)
         self.assertNotIn("virtualPatchEnabled", script)
@@ -295,6 +344,10 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("grid-template-columns: minmax(0, 1fr);", styles)
         self.assertIn("grid-template-areas:", styles)
         self.assertIn("grid-column: 1 / -1;", styles)
+        self.assertIn("body.native-window .app-chrome", styles)
+
+        desktop = (Path(__file__).parents[1] / "desktop_app.py").read_text(encoding="utf-8")
+        self.assertIn("frameless=False", desktop)
         self.assertIn("display: none;", styles)
         self.assertIn("[hidden]", styles)
         self.assertIn("display: none !important;", styles)
@@ -380,10 +433,22 @@ class TalosArduinoTests(unittest.TestCase):
                         "files": [{"path": "Sketch.ino", "kind": "update"}],
                     }
                 )
+                record_patch_transition(
+                    {
+                        "id": "patch-1",
+                        "workspace": r"C:\Sketch",
+                        "review_status": "saved",
+                        "files": [{"path": "Sketch.ino", "kind": "update", "review_status": "saved", "hunks": [{}, {}]}],
+                    },
+                    "saved",
+                    "Sketch.ino",
+                )
                 events = run_history()
 
             self.assertEqual([event["type"] for event in events], ["patch", "verify"])
             self.assertEqual(events[1]["source"], "codex_patch")
+            self.assertEqual(events[0]["files"][0]["hunks"], 2)
+            self.assertEqual(events[0]["timeline"][-1]["action"], "saved")
 
     def test_codex_status_starts_runtime_without_blocking_for_handshake(self) -> None:
         bridge = CodexBridge()
@@ -965,6 +1030,35 @@ class TalosArduinoTests(unittest.TestCase):
 
             self.assertFalse(result["ok"])
             self.assertFalse((Path(tmp) / "outside.ino").exists())
+
+    def test_checkpoint_rolls_back_only_when_talos_saved_version_is_current(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp) / "Blink"
+            root.mkdir()
+            target = root / "Blink.ino"
+            target.write_text("before\n", encoding="utf-8")
+            config = {"arduino_workspace_path": str(root), "arduino_fqbn": ""}
+            checkpoint_path = Path(tmp) / "checkpoints.json"
+
+            with patch("talos.checkpoints.CHECKPOINT_PATH", checkpoint_path):
+                created = create_before_save_checkpoint(config, "Blink.ino")
+                self.assertTrue(created["ok"])
+                write_workspace_file(config, "Blink.ino", "saved\n")
+                marked = mark_checkpoint_saved(created["checkpoint"]["id"], "saved\n")
+                self.assertTrue(marked["ok"])
+                self.assertIsNotNone(latest_saved_checkpoint(config, "Blink.ino")["checkpoint"])
+
+                rolled_back = rollback_last_checkpoint(config, "Blink.ino")
+                self.assertTrue(rolled_back["ok"])
+                self.assertEqual(target.read_text(encoding="utf-8"), "before\n")
+
+                created = create_before_save_checkpoint(config, "Blink.ino")
+                write_workspace_file(config, "Blink.ino", "saved again\n")
+                mark_checkpoint_saved(created["checkpoint"]["id"], "saved again\n")
+                target.write_text("external change\n", encoding="utf-8")
+                blocked = rollback_last_checkpoint(config, "Blink.ino")
+                self.assertFalse(blocked["ok"])
+                self.assertIn("changed after Talos saved", blocked["error"])
 
 if __name__ == "__main__":
     unittest.main()

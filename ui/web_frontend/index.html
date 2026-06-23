@@ -13,7 +13,7 @@
     </script>
     <link rel="stylesheet" href="/styles.css" />
   </head>
-  <body>
+  <body class="native-window">
     <div class="app-chrome pywebview-drag-region">
       <div class="chrome-title pywebview-drag-region">
         <span class="chrome-mark">T</span>
@@ -148,6 +148,8 @@
                   </div>
                   <div class="editor-command-controls">
                     <button id="saveFileBtn" class="icon-button" type="button" disabled>Save File</button>
+                    <button id="saveAndVerifyBtn" class="button" type="button" disabled>Save &amp; Verify</button>
+                    <button id="rollbackFileBtn" class="icon-button" type="button" title="Restore the file before Talos's last save" disabled>Rollback</button>
                     <button id="verifyArduinoBtn" class="button primary">Verify Sandbox</button>
                     <button id="toggleCodexBtn" class="icon-button active" type="button" title="Toggle Codex panel" aria-label="Toggle Codex panel">Codex</button>
                   </div>
@@ -161,6 +163,7 @@
                     <span id="codexReviewLabel">Codex patch ready for review</span>
                   </div>
                   <div class="panel-actions codex-review-actions">
+                    <button id="verifyCodexPatchBtn" class="icon-button" type="button">Verify Change</button>
                     <button id="rejectCodexTurnBtn" class="icon-button" type="button">Reject Turn</button>
                     <button id="applyCodexTurnBtn" class="button" type="button">Apply Turn</button>
                     <button id="rejectCodexPatchBtn" class="icon-button" type="button">Reject</button>
@@ -173,7 +176,10 @@
                       <span class="codex-review-kicker">External change detected</span>
                       <strong id="codexConflictLabel">Conflict requires resolution</strong>
                     </div>
-                    <span id="codexConflictTime" class="conflict-time"></span>
+                    <div class="codex-conflict-actions">
+                      <span id="codexConflictTime" class="conflict-time"></span>
+                      <button id="keepExternalConflictBtn" class="button" type="button">Keep Arduino Version</button>
+                    </div>
                   </header>
                   <div class="codex-conflict-grid">
                     <section>
