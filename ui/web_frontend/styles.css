@@ -1061,6 +1061,7 @@ textarea:focus {
   padding: 0 12px;
   background: var(--canvas-subtle);
   text-transform: none;
+  container-type: inline-size;
 }
 
 .codex-review-bar {
@@ -1203,6 +1204,88 @@ textarea:focus {
 .editor-command-controls {
   padding-left: 10px;
   border-left: 1px solid var(--line);
+}
+
+.editor-more {
+  position: relative;
+  display: none;
+}
+
+.editor-more-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  display: grid;
+  width: 168px;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  box-shadow: 0 8px 24px rgba(27, 31, 36, 0.18);
+}
+
+.editor-more-menu[hidden] {
+  display: none;
+}
+
+.editor-more-menu button {
+  min-height: 30px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 4px;
+  color: var(--text);
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.editor-more-menu button:hover:not(:disabled) {
+  background: var(--accent-subtle);
+}
+
+.editor-more-menu button:disabled {
+  color: var(--disabled);
+  cursor: not-allowed;
+}
+
+@container (max-width: 800px) {
+  .editor-tabbar {
+    gap: 6px;
+    padding: 0 8px;
+  }
+
+  .editor-tab {
+    flex: 1 1 0;
+    min-width: 0;
+    max-width: none;
+  }
+
+  .editor-mode-controls,
+  .editor-command-controls > #saveFileBtn,
+  .editor-command-controls > #saveAndVerifyBtn,
+  .editor-command-controls > #rollbackFileBtn {
+    display: none;
+  }
+
+  .editor-command-controls {
+    gap: 5px;
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .editor-more {
+    display: block;
+  }
+
+  .editor-actions .button,
+  .editor-actions .icon-button {
+    min-height: 28px;
+    padding: 3px 8px;
+    white-space: nowrap;
+  }
 }
 
 .editor-mode-badge {
