@@ -20,6 +20,7 @@ dist/
 # App runtime state
 config/run_history.json
 config/checkpoints.json
+config/backups/
 tmp*/
 .talos_sandbox/
 .talos_staging/

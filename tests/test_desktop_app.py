@@ -1,10 +1,14 @@
+import json
 import re
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from talos import native_bridge
+from talos import checkpoints as checkpoint_store
+from talos import core, native_bridge
+from talos import run_history as run_history_store
+from talos.arduino_events import ArduinoEventWatcher, is_arduino_window_title
 from talos.arduino import (
     boards_by_window_title,
     copy_workspace_to_sandbox,
@@ -80,6 +84,18 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("Talos staging copy", prompt)
         self.assertIn("Source tabs (2): Blink.ino, motor.cpp", prompt)
         self.assertIn("Verified libraries: Wire 1.0.0", prompt)
+
+    def test_arduino_event_filter_and_debounce_only_signal_arduino_windows(self) -> None:
+        signals: list[str] = []
+        watcher = ArduinoEventWatcher(signals.append, debounce_seconds=60)
+
+        watcher._signal("Untitled - Notepad")
+        watcher._signal("Blink.ino | Arduino IDE 2.3.4")
+        watcher._signal("Blink.ino | Arduino IDE 2.3.4")
+
+        self.assertFalse(is_arduino_window_title("Untitled - Notepad"))
+        self.assertTrue(is_arduino_window_title("Blink.ino | Arduino IDE 2.3.4"))
+        self.assertEqual(signals, ["window"])
 
     def test_codex_prompt_includes_per_sketch_environment_profile(self) -> None:
         prompt = build_codex_prompt(
@@ -370,6 +386,8 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("bindCodexSplitter", script)
         self.assertIn("saveEnvironmentProfile", script)
         self.assertIn("/api/arduino_profile", script)
+        self.assertIn("watchArduinoEvents", script)
+        self.assertIn("/api/arduino_events", script)
         self.assertIn("renderActiveFileRow", script)
         self.assertIn("CODEX_WIDTH_KEY", script)
         self.assertNotIn("applyWindowMetrics", script)
@@ -1027,6 +1045,54 @@ class TalosArduinoTests(unittest.TestCase):
             mapped = workspace_map(config)
             self.assertEqual(mapped["environment_profile"]["baud_rate"], 921600)
             self.assertEqual(mapped["environment_profile"]["libraries"], ["Wire", "ArduinoJson"])
+
+    def test_legacy_user_state_is_backed_up_and_migrated_without_losing_records(self) -> None:
+        with TemporaryDirectory() as tmp:
+            config_dir = Path(tmp) / "config"
+            config_dir.mkdir()
+            config_path = config_dir / "config.json"
+            legacy_config = {
+                "theme": "dark",
+                "arduino_workspace_path": r"C:\Sketches\Blink",
+                "arduino_profiles": {"c:\\sketches\\blink": {"fqbn": "arduino:avr:uno"}},
+            }
+            config_path.write_text(json.dumps(legacy_config), encoding="utf-8")
+
+            with patch.object(core, "CONFIG_PATH", config_path):
+                migrated = core.load_config()
+
+            self.assertEqual(migrated["schema_version"], core.CONFIG_SCHEMA_VERSION)
+            self.assertEqual(migrated["theme"], "dark")
+            self.assertIn("c:\\sketches\\blink", migrated["arduino_profiles"])
+            self.assertTrue(list((config_dir / "backups").glob("config.migration.*.json")))
+
+            checkpoint_path = config_dir / "checkpoints.json"
+            checkpoint_path.write_text(json.dumps({"checkpoints": [{"id": "legacy-checkpoint"}]}), encoding="utf-8")
+            with patch.object(checkpoint_store, "CHECKPOINT_PATH", checkpoint_path):
+                checkpoints = checkpoint_store._load()
+            self.assertEqual(checkpoints[0]["id"], "legacy-checkpoint")
+            self.assertEqual(json.loads(checkpoint_path.read_text(encoding="utf-8"))["schema_version"], 1)
+
+            history_path = config_dir / "run_history.json"
+            history_path.write_text(json.dumps({"events": [{"id": "legacy-history"}]}), encoding="utf-8")
+            with patch.object(run_history_store, "RUN_HISTORY_PATH", history_path):
+                events = run_history_store._load_events()
+            self.assertEqual(events[0]["id"], "legacy-history")
+            self.assertEqual(json.loads(history_path.read_text(encoding="utf-8"))["schema_version"], 1)
+            self.assertTrue(list((config_dir / "backups").glob("*.json")))
+
+    def test_future_schema_is_not_downgraded_or_overwritten(self) -> None:
+        with TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / "config.json"
+            future = {"schema_version": core.CONFIG_SCHEMA_VERSION + 1, "theme": "dark", "future_setting": True}
+            config_path.write_text(json.dumps(future), encoding="utf-8")
+
+            with patch.object(core, "CONFIG_PATH", config_path):
+                loaded = core.load_config()
+
+            self.assertEqual(loaded["schema_version"], core.CONFIG_SCHEMA_VERSION + 1)
+            self.assertTrue(loaded["future_setting"])
+            self.assertEqual(json.loads(config_path.read_text(encoding="utf-8")), future)
 
     def test_arduino_verify_requires_fqbn_before_compile(self) -> None:
         with TemporaryDirectory() as tmp:

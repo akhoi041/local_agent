@@ -32,6 +32,7 @@ from talos.arduino import (
     write_workspace_file,
 )
 from talos.codex_bridge import CODEX_BRIDGE
+from talos.arduino_events import ArduinoEventWatcher
 from talos.checkpoints import (
     create_before_save_checkpoint,
     discard_checkpoint,
@@ -60,11 +61,45 @@ ASSET_ROOT = Path(getattr(sys, "_MEIPASS", ROOT))
 FRONTEND = ASSET_ROOT / "web_frontend" if getattr(sys, "frozen", False) else ROOT / "ui" / "web_frontend"
 EVENTS: list[str] = []
 EVENT_LOCK = threading.Lock()
+ARDUINO_SIGNAL_LOCK = threading.Lock()
+ARDUINO_SIGNAL_REVISION = 0
+ARDUINO_SIGNAL_TIME = ""
+ARDUINO_EVENT_WATCHER: ArduinoEventWatcher | None = None
 
 def log_event(message: str) -> None:
     with EVENT_LOCK:
         EVENTS.append(message)
         del EVENTS[:-200]
+
+
+def notify_arduino_event(reason: str = "window") -> None:
+    global ARDUINO_SIGNAL_REVISION, ARDUINO_SIGNAL_TIME
+    with ARDUINO_SIGNAL_LOCK:
+        ARDUINO_SIGNAL_REVISION += 1
+        ARDUINO_SIGNAL_TIME = now()
+
+
+def arduino_event_status() -> dict[str, Any]:
+    with ARDUINO_SIGNAL_LOCK:
+        return {
+            "revision": ARDUINO_SIGNAL_REVISION,
+            "time": ARDUINO_SIGNAL_TIME,
+            "event_assisted": bool(ARDUINO_EVENT_WATCHER and ARDUINO_EVENT_WATCHER.available),
+        }
+
+
+def start_arduino_event_watcher() -> None:
+    global ARDUINO_EVENT_WATCHER
+    if ARDUINO_EVENT_WATCHER is None:
+        ARDUINO_EVENT_WATCHER = ArduinoEventWatcher(notify_arduino_event)
+        ARDUINO_EVENT_WATCHER.start()
+
+
+def stop_arduino_event_watcher() -> None:
+    global ARDUINO_EVENT_WATCHER
+    if ARDUINO_EVENT_WATCHER is not None:
+        ARDUINO_EVENT_WATCHER.stop()
+    ARDUINO_EVENT_WATCHER = None
 
 def state_payload() -> dict[str, Any]:
     config = load_config()
@@ -109,9 +144,11 @@ def state_payload() -> dict[str, Any]:
             titles=window_titles,
         ),
         "arduino_projects": arduino_projects,
+        "arduino_events": arduino_event_status(),
         "tools": [
             "GET /api/state",
             "GET /api/arduino_context",
+            "GET /api/arduino_events?since=...",
             "GET /api/arduino_profile",
             "GET /api/arduino_projects",
             "GET /api/arduino_file?path=...",
@@ -168,6 +205,9 @@ class LocalAgentWebHandler(BaseHTTPRequestHandler):
                 "arduino": summary,
                 "workspace_map": workspace_map(config, latest_verify_for_workspace(str(summary.get("path") or ""))),
             })
+            return
+        if parsed.path == "/api/arduino_events":
+            self.send_json({"ok": True, **arduino_event_status()})
             return
         if parsed.path == "/api/arduino_profile":
             config = load_config()
@@ -495,12 +535,14 @@ def main() -> None:
 
     port = find_port(args.host, args.port)
     server = ThreadingHTTPServer((args.host, port), LocalAgentWebHandler)
+    start_arduino_event_watcher()
     print(f"Local Agent Web UI: http://{args.host}:{port}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
+        stop_arduino_event_watcher()
         CODEX_BRIDGE.shutdown()
         server.server_close()
 

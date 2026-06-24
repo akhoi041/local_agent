@@ -1,6 +1,8 @@
 const state = {
   arduinoDirty: false,
   arduinoVerifyRunning: false,
+  arduinoEventRevision: 0,
+  arduinoEventPolling: false,
   refreshPromise: null,
   arduinoFqbnFull: "",
   arduinoBoardName: "",
@@ -63,6 +65,7 @@ const CODEX_BUSY_REFRESH_MS = 400;
 const CODEX_IDLE_REFRESH_MS = 3000;
 const CODEX_HIDDEN_REFRESH_MS = 8000;
 const ACTIVE_FILE_POLL_MS = 700;
+const ARDUINO_EVENT_POLL_MS = 300;
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -1686,6 +1689,7 @@ function render(payload) {
   const projects = payload.arduino_projects || [];
   const arduino = payload.arduino || {};
   state.workspaceMap = payload.arduino_workspace_map || {};
+  state.arduinoEventRevision = Math.max(state.arduinoEventRevision, Number(payload.arduino_events?.revision || 0));
   const selectedPath = normalizedWindowsPath(arduino.path);
   const selectedProject = projects.find((project) => (
     normalizedWindowsPath(project.path) === selectedPath && project.fqbn === arduino.fqbn
@@ -1737,6 +1741,23 @@ function maybeRefresh() {
   if (document.hidden) return;
   const interval = activeViewId() === "workspace" ? FAST_REFRESH_MS : IDLE_REFRESH_MS;
   if (Date.now() - state.lastRefreshAt >= interval) refresh();
+}
+
+async function watchArduinoEvents() {
+  if (document.hidden || activeViewId() !== "workspace" || state.arduinoEventPolling) return;
+  state.arduinoEventPolling = true;
+  try {
+    const signal = await api(`/api/arduino_events?since=${state.arduinoEventRevision}`);
+    const revision = Number(signal.revision || 0);
+    if (revision > state.arduinoEventRevision) {
+      state.arduinoEventRevision = revision;
+      await refresh();
+    }
+  } catch (_error) {
+    // Normal state polling remains the fallback when event assistance is unavailable.
+  } finally {
+    state.arduinoEventPolling = false;
+  }
 }
 
 async function saveArduinoWorkspace() {
@@ -1959,5 +1980,6 @@ if (["dashboard", "workspace", "logs", "settings"].includes(requestedView)) {
 }
 refresh();
 setInterval(maybeRefresh, REFRESH_TICK_MS);
+setInterval(watchArduinoEvents, ARDUINO_EVENT_POLL_MS);
 setInterval(checkActiveFileOnDisk, ACTIVE_FILE_POLL_MS);
 refreshCodex();

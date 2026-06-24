@@ -16,13 +16,13 @@ Talos = local AI control layer between Codex and external IDEs/apps, starting wi
 ## Current Position
 
 ```text
-Current active stage: Stage 9 - Mandatory pre-commercial improvements
+Current active stage: Stage 9 - Final optimization and release readiness
 Next major stage: Stage 10 - Commercial app packaging
 ```
 
-Stages 1 through 7 are complete. Talos can detect Arduino sketches and boards, present structured verify results, safely read or edit source files, host a real Codex app-server conversation beside the editor, stage Codex changes outside the original sketch, use native C for speed-sensitive Windows detection, and protect real sketches with conflicts, checkpoints, rollback, and staged sandbox verification.
+Stages 0 through 8 are complete. Talos can detect Arduino sketches and boards, present structured verify results, safely read or edit source files, host a real Codex app-server conversation beside the editor, stage Codex changes outside the original sketch, use native C for speed-sensitive Windows detection, protect real sketches with conflicts, checkpoints, rollback, and staged sandbox verification, and document the repeatable Arduino MVP workflow.
 
-Stage 6 established Change Workspace as a review-and-control surface rather than a competing Arduino editor. Stage 7 completed the safe change lifecycle, and Stage 8 documented the repeatable Arduino MVP evidence. Active work is Stage 9: complete the mandatory improvements across Stages 1-7. Commercial packaging begins in Stage 10 only after every Stage 9 improvement is complete. MATLAB and other app integrations remain paused.
+Stage 6 established Change Workspace as a review-and-control surface rather than a competing Arduino editor. Stage 7 completed the safe change lifecycle, and Stage 8 documented the repeatable Arduino MVP evidence. Active work is Stage 9: optimize and validate the completed Arduino foundation for the 0.1.0 Beta release. Commercial packaging begins in Stage 10 only after every Stage 9 release gate is complete. MATLAB and other app integrations remain paused.
 
 ## Delivery Order
 
@@ -30,7 +30,7 @@ Stage 6 established Change Workspace as a review-and-control surface rather than
 2. Stage 6 establishes user ownership and review controls in Change Workspace.
 3. Stage 7 makes the resulting change flow safe against external edits and recoverable on failure.
 4. Stage 8 proves the current Arduino workflow through context, profiles, and repeatable MVP evidence.
-5. Stage 9 completes every mandatory pre-commercial improvement registered against Stages 1-7.
+5. Stage 9 optimizes and validates the completed Stages 0-8 foundation for the 0.1.0 Beta release.
 6. Stage 10 may begin only after every Stage 9 item is checked. It packages the workflow proven by Stages 8 and 9 and does not introduce new Arduino behavior.
 
 ## Arduino MVP Exit Criteria
@@ -210,44 +210,33 @@ Purpose: prove the completed safe change loop as a repeatable Arduino workflow a
 
 Exit condition: Talos can repeatedly detect an Arduino sketch, guide a Codex change through review and verification, save it safely, and demonstrate the complete loop in a documented MVP smoke test.
 
-## Stage 9 - Mandatory Pre-Commercial Improvements
+## Stage 9 - Final Optimization And Release Readiness
 
-Purpose: complete every registered improvement to the Stage 1-7 foundations before any commercial packaging work begins.
+Purpose: optimize and validate the completed Stage 0-8 Arduino foundation before commercial packaging. These are release-readiness gates for the current 0.1.0 Beta, not a claim that prior stages were unfinished.
 
-**Commercialization gate:** every checkbox in this stage is mandatory. Stage 10 must not start while any Stage 9 checkbox remains open.
+**Commercialization gate:** every checkbox in this stage is mandatory. Stage 10 must not start while any Stage 9 release gate remains open.
 
-- [ ] [Stage 1] Add an event-assisted Arduino window/process refresh path, retaining polling as a safe fallback for missed events.
-- [ ] [Stage 2] Add compile cancellation and workspace-hash caching with clear cache invalidation and timing telemetry.
-- [ ] [Stage 3] Harden Save File with atomic write and file-change debounce so Arduino IDE and Talos do not race during normal editing.
-- [ ] [Stage 4] Add Codex reconnect/retry status for transient app-server failures without replaying a user turn automatically.
-- [ ] [Stage 5] Add a native C benchmark and build/fallback verification to measure detection performance across supported Windows environments.
-- [x] [Stage 6] Use native Windows chrome for standard system resize, drag, minimize, maximize, and restore behavior; use the highlighted Explorer file as the active-file signal instead of a redundant editor tab.
-- [ ] [Stage 6] Improve diff/hunk scanning and persist unfinished Change Workspace reviews across Talos restart, with an explicit restore/discard decision.
-- [ ] [Stage 7] Add an explicit manual three-way merge resolution that starts from the current Arduino file and retains Keep Arduino Version as the non-destructive default.
-- [ ] [Stage 7] Add checkpoint retention/cleanup policy and expose a short rollback history without weakening the external-change guard.
-- [ ] Add a recovery smoke test: restart Talos during a pending review, reconnect Codex, and confirm no external Arduino changes are overwritten.
+- [x] [Stage 0] Add versioned configuration validation and migration/backup for user settings, workspace profiles, checkpoints, and run history so an update cannot silently discard local state.
+- [x] [Stage 1] Optimize Arduino window/process refresh with event assistance while retaining polling as the safe fallback for missed events.
+- [ ] [Stage 2] Optimize compile responsiveness with cancellation, workspace-hash caching, clear cache invalidation, and timing telemetry.
+- [ ] [Stage 3] Optimize Save File coordination with atomic writes and file-change debounce so Arduino IDE and Talos do not race during normal editing.
+- [ ] [Stage 4] Optimize Codex resilience with reconnect/retry status for transient app-server failures without replaying a user turn automatically.
+- [ ] [Stage 4] Expose a compact pre-send context preview that identifies the workspace map, active file, profile, and verify data included in each Codex turn.
+- [ ] [Stage 5] Validate native detection performance with a benchmark and build/fallback verification across supported Windows environments.
+- [x] [Stage 6] Optimize desktop usability with native Windows chrome, standard resize/drag/minimize/maximize/restore behavior, and Explorer-based active-file signaling.
+- [ ] [Stage 6] Optimize Change Review with faster diff/hunk scanning and persisted unfinished reviews, offering an explicit restore/discard decision after Talos restarts.
+- [ ] [Stage 7] Add an optional three-way merge draft that starts from the current Arduino file, requires editor review and Save File before disk writes, and retains Keep Arduino Version as the non-destructive default.
+- [ ] [Stage 7] Optimize checkpoint operations with retention/cleanup policy and a short rollback history without weakening the external-change guard.
+- [ ] [Stage 8] Validate the selected sketch profile before verify, including FQBN and build flags/properties, surface profile readiness clearly, then record a versioned MVP smoke-test result with its workspace map, profile, verify summary, and any blocked cases as release evidence.
+- [ ] Validate release recovery: restart Talos during a pending review, reconnect Codex, and confirm no external Arduino changes are overwritten.
 
-Exit condition: every registered Stage 1-7 improvement is complete, automated where practical, and verified by the recovery smoke test.
-
-## Mandatory Pre-Commercial Improvement Register
-
-This register is binding rather than advisory. Its rows map to the required Stage 9 checkboxes and must all be complete before Stage 10.
-
-| Foundation | Mandatory Stage 9 release gate | Expected impact |
-| --- | --- | --- |
-| Stage 1 - Detection | Event-assisted refresh with polling fallback. | Medium: adds a faster signal path without replacing the proven polling path. |
-| Stage 2 - Verify | Cancellation, hash cache, telemetry. | Low-medium: extends compile orchestration and output status. |
-| Stage 3 - Files | Atomic writes and debounce. | Medium: strengthens file coordination without changing workspace scoping. |
-| Stage 4 - Codex | Reconnect and retry status. | Low: extends resilience without changing Codex ownership rules. |
-| Stage 5 - Native C | Benchmark plus build/fallback checks. | Low: adds measurement and validation around the existing DLL boundary. |
-| Stage 6 - Change Workspace | Native window sizing, Explorer-based active-file signaling, faster diff scanning, and restart restore/discard. | Medium: restores standard desktop behavior while extending review persistence and keeping Arduino as source owner. |
-| Stage 7 - Safety | Manual three-way merge and checkpoint retention. | High: adds an explicit merge path; it must preserve existing conflict and rollback guards. |
+Exit condition: every 0.1.0 Beta optimization gate is complete, automated where practical, and validated by the recovery smoke test without weakening the completed Stage 0-8 contracts.
 
 ## Stage 10 - Commercial App Packaging
 
 Purpose: convert the proven Arduino workflow into an installable, supportable Beta product.
 
-**Entry gate:** all Stage 8 and Stage 9 items must be complete, including recorded passing MVP and recovery smoke-test runs, before any Stage 10 implementation work starts.
+**Entry gate:** all Stage 8 evidence and Stage 9 optimization gates must be complete, including recorded passing MVP and recovery smoke-test runs, before any Stage 10 implementation work starts.
 
 - [x] Define the commercial app identity: final name, publisher, version format, support URL, and release channel.
 - [ ] Create a dedicated Talos icon set, including `.ico` and source PNG sizes for Windows packaging.

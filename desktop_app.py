@@ -18,13 +18,20 @@ def run_desktop_shell() -> None:
         )
         return
 
-    from talos.server import CODEX_BRIDGE, LocalAgentWebHandler, find_port
+    from talos.server import (
+        CODEX_BRIDGE,
+        LocalAgentWebHandler,
+        find_port,
+        start_arduino_event_watcher,
+        stop_arduino_event_watcher,
+    )
 
     app_name = load_app_identity()["display_name"]
     host = "127.0.0.1"
     port = find_port(host, 8787)
     server = ThreadingHTTPServer((host, port), LocalAgentWebHandler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
+    start_arduino_event_watcher()
     window_ref: dict[str, Any] = {"window": None, "maximized": False}
 
     class WindowApi:
@@ -69,6 +76,7 @@ def run_desktop_shell() -> None:
                 window.destroy()
 
     def on_closed() -> None:
+        stop_arduino_event_watcher()
         CODEX_BRIDGE.shutdown()
         server.shutdown()
         server.server_close()

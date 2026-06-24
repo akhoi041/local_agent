@@ -4,15 +4,23 @@ import threading
 import uuid
 from typing import Any
 
-from talos.core import ROOT, now, read_json_file, write_json_file
+from talos.core import ROOT, migrate_state_document, now, read_json_file, write_json_file
 
 RUN_HISTORY_PATH = ROOT / "config" / "run_history.json"
 RUN_HISTORY_LIMIT = 40
+RUN_HISTORY_SCHEMA_VERSION = 1
 RUN_HISTORY_LOCK = threading.Lock()
 
 def _load_events() -> list[dict[str, Any]]:
     data = read_json_file(RUN_HISTORY_PATH, {})
-    events = data.get("events") if isinstance(data, dict) else []
+    state = migrate_state_document(
+        RUN_HISTORY_PATH,
+        data,
+        collection_key="events",
+        target_schema_version=RUN_HISTORY_SCHEMA_VERSION,
+        label="history-migration",
+    )
+    events = state["events"]
     return [event for event in (events or []) if isinstance(event, dict)][-RUN_HISTORY_LIMIT:]
 
 def _store_event(event: dict[str, Any]) -> dict[str, Any]:
@@ -148,7 +156,10 @@ def _upsert_patch_event(events: list[dict[str, Any]], patch: dict[str, Any]) -> 
     return event
 
 def _store_events(events: list[dict[str, Any]]) -> None:
-    write_json_file(RUN_HISTORY_PATH, {"events": events[-RUN_HISTORY_LIMIT:]})
+    write_json_file(RUN_HISTORY_PATH, {
+        "schema_version": RUN_HISTORY_SCHEMA_VERSION,
+        "events": events[-RUN_HISTORY_LIMIT:],
+    })
 
 def run_history() -> list[dict[str, Any]]:
     with RUN_HISTORY_LOCK:

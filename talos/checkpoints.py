@@ -6,10 +6,11 @@ import uuid
 from typing import Any
 
 from talos.arduino import configured_workspace, read_workspace_file, write_workspace_file
-from talos.core import ROOT, now, read_json_file, write_json_file
+from talos.core import ROOT, migrate_state_document, now, read_json_file, write_json_file
 
 CHECKPOINT_PATH = ROOT / "config" / "checkpoints.json"
 CHECKPOINT_LIMIT = 80
+CHECKPOINT_SCHEMA_VERSION = 1
 CHECKPOINT_LOCK = threading.Lock()
 
 def _hash(content: str) -> str:
@@ -17,11 +18,21 @@ def _hash(content: str) -> str:
 
 def _load() -> list[dict[str, Any]]:
     data = read_json_file(CHECKPOINT_PATH, {})
-    checkpoints = data.get("checkpoints") if isinstance(data, dict) else []
+    state = migrate_state_document(
+        CHECKPOINT_PATH,
+        data,
+        collection_key="checkpoints",
+        target_schema_version=CHECKPOINT_SCHEMA_VERSION,
+        label="checkpoint-migration",
+    )
+    checkpoints = state["checkpoints"]
     return [item for item in (checkpoints or []) if isinstance(item, dict)][-CHECKPOINT_LIMIT:]
 
 def _store(checkpoints: list[dict[str, Any]]) -> None:
-    write_json_file(CHECKPOINT_PATH, {"checkpoints": checkpoints[-CHECKPOINT_LIMIT:]})
+    write_json_file(CHECKPOINT_PATH, {
+        "schema_version": CHECKPOINT_SCHEMA_VERSION,
+        "checkpoints": checkpoints[-CHECKPOINT_LIMIT:],
+    })
 
 def _public(checkpoint: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in checkpoint.items() if key != "content"}
