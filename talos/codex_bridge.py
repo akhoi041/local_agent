@@ -102,6 +102,40 @@ def build_codex_prompt(
         f"- Main sketch: {workspace.get('main_sketch') or 'unknown'}",
         f"- Board FQBN: {workspace.get('fqbn') or 'not detected'}",
     ]
+    workspace_map = workspace.get("map") if isinstance(workspace.get("map"), dict) else {}
+    profile = workspace_map.get("environment_profile") if isinstance(workspace_map.get("environment_profile"), dict) else {}
+    serial_port = str(profile.get("serial_port") or "")
+    baud_rate = int(profile.get("baud_rate") or 0)
+    if serial_port or baud_rate:
+        serial_context = serial_port or "not set"
+        if baud_rate:
+            serial_context += f" @ {baud_rate} baud"
+        context.append(f"- Serial profile: {serial_context}")
+    build_flags = profile.get("build_flags") if isinstance(profile.get("build_flags"), list) else []
+    if build_flags:
+        context.append(f"- Build flags: {', '.join(str(item) for item in build_flags[:12])}")
+    build_properties = profile.get("build_properties") if isinstance(profile.get("build_properties"), list) else []
+    if build_properties:
+        context.append(f"- Build properties: {', '.join(str(item) for item in build_properties[:6])}")
+    profile_libraries = profile.get("libraries") if isinstance(profile.get("libraries"), list) else []
+    if profile_libraries:
+        context.append(f"- Profile libraries: {', '.join(str(item) for item in profile_libraries[:12])}")
+    source_tabs = workspace_map.get("source_tabs") if isinstance(workspace_map.get("source_tabs"), list) else []
+    if source_tabs:
+        names = [str(tab.get("path") or "") for tab in source_tabs[:12] if isinstance(tab, dict)]
+        extra = max(0, int(workspace_map.get("source_tab_count") or len(names)) - len(names))
+        context.append(f"- Source tabs ({workspace_map.get('source_tab_count') or len(names)}): {', '.join(names)}{' ...' if extra else ''}")
+    diagnostics = workspace_map.get("diagnostics") if isinstance(workspace_map.get("diagnostics"), dict) else {}
+    libraries = diagnostics.get("libraries") if isinstance(diagnostics.get("libraries"), list) else []
+    if libraries:
+        names = [f"{item.get('name', '')} {item.get('version', '')}".strip() for item in libraries[:8] if isinstance(item, dict)]
+        context.append(f"- Verified libraries: {', '.join(name for name in names if name)}")
+    platforms = diagnostics.get("platforms") if isinstance(diagnostics.get("platforms"), list) else []
+    if platforms:
+        names = [f"{item.get('name', '')} {item.get('version', '')}".strip() for item in platforms[:4] if isinstance(item, dict)]
+        context.append(f"- Verified platforms: {', '.join(name for name in names if name)}")
+    if diagnostics.get("status"):
+        context.append(f"- Latest verify: {diagnostics.get('status')} ({diagnostics.get('time') or 'unknown time'})")
     if active_file.get("path"):
         context.append(f"- Active file: {active_file['path']}")
     sections.append("\n".join(context))

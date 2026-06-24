@@ -22,9 +22,12 @@ from talos.arduino import (
     arduino_ide_status,
     delete_workspace_file,
     discover_arduino_projects,
+    environment_profile,
     read_workspace_file,
     run_arduino_compile,
+    save_environment_profile,
     workspace_context,
+    workspace_map,
     workspace_summary,
     write_workspace_file,
 )
@@ -49,6 +52,7 @@ from talos.run_history import (
     record_patch_verification,
     record_rollback,
     record_verify,
+    latest_verify_for_workspace,
     run_history,
 )
 
@@ -82,6 +86,8 @@ def state_payload() -> dict[str, Any]:
         workspace_boards=list_arduino_workspace_boards(),
     )
     arduino_summary = workspace_summary(config)
+    arduino_profile = environment_profile(config, str(arduino_summary.get("path") or ""))
+    arduino_map = workspace_map(config, latest_verify_for_workspace(str(arduino_summary.get("path") or "")))
     return {
         "name": app_identity["display_name"],
         "role": "Codex local tool server",
@@ -92,8 +98,11 @@ def state_payload() -> dict[str, Any]:
             "theme": config.get("theme", "light"),
             "arduino_workspace_path": config.get("arduino_workspace_path", ""),
             "arduino_fqbn": config.get("arduino_fqbn", ""),
+            "arduino_profiles": config.get("arduino_profiles", {}),
         },
         "arduino": arduino_summary,
+        "arduino_profile": arduino_profile,
+        "arduino_workspace_map": arduino_map,
         "arduino_ide": arduino_ide_status(
             processes=ide_processes,
             tool_processes=tool_processes,
@@ -103,6 +112,7 @@ def state_payload() -> dict[str, Any]:
         "tools": [
             "GET /api/state",
             "GET /api/arduino_context",
+            "GET /api/arduino_profile",
             "GET /api/arduino_projects",
             "GET /api/arduino_file?path=...",
             "GET /api/arduino_checkpoint?path=...",
@@ -110,6 +120,7 @@ def state_payload() -> dict[str, Any]:
             "POST /api/arduino_rollback",
             "POST /api/arduino_delete",
             "POST /api/arduino_verify",
+            "POST /api/arduino_profile",
             "GET /api/codex_status",
             "GET /api/run_history",
             "POST /api/codex_message",
@@ -150,7 +161,18 @@ class LocalAgentWebHandler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/arduino_context":
             config = load_config()
-            self.send_json({"ok": True, "context": workspace_context(config), "arduino": workspace_summary(config)})
+            summary = workspace_summary(config)
+            self.send_json({
+                "ok": True,
+                "context": workspace_context(config),
+                "arduino": summary,
+                "workspace_map": workspace_map(config, latest_verify_for_workspace(str(summary.get("path") or ""))),
+            })
+            return
+        if parsed.path == "/api/arduino_profile":
+            config = load_config()
+            workspace_path = query.get("path", [str(config.get("arduino_workspace_path") or "")])[0]
+            self.send_json({"ok": True, "profile": environment_profile(config, workspace_path)})
             return
         if parsed.path == "/api/arduino_projects":
             config = load_config()
@@ -194,6 +216,21 @@ class LocalAgentWebHandler(BaseHTTPRequestHandler):
             summary = workspace_summary(config)
             log_event(f"{now()} configured Arduino workspace: {summary.get('path') or 'none'}")
             self.send_json({"ok": summary["valid"], "arduino": summary})
+            return
+        if self.path == "/api/arduino_profile":
+            config = load_config()
+            workspace_path = str(payload.get("path", config.get("arduino_workspace_path", ""))).strip()
+            result = save_environment_profile(config, workspace_path, payload)
+            if not result.get("ok"):
+                self.send_json(result, HTTPStatus.BAD_REQUEST)
+                return
+            if str(config.get("arduino_workspace_path") or "").strip() == workspace_path:
+                profile_fqbn = str(result["profile"].get("fqbn") or "")
+                if profile_fqbn:
+                    config["arduino_fqbn"] = profile_fqbn
+            save_config(config)
+            log_event(f"{now()} saved Arduino environment profile: {result.get('path')}")
+            self.send_json(result)
             return
         if self.path == "/api/arduino_verify":
             config = load_config()
@@ -252,6 +289,10 @@ class LocalAgentWebHandler(BaseHTTPRequestHandler):
         if self.path == "/api/codex_message":
             config = load_config()
             workspace = workspace_summary(config)
+            workspace["map"] = workspace_map(
+                config,
+                latest_verify_for_workspace(str(workspace.get("path") or "")),
+            )
             active_file = payload.get("active_file")
             if not isinstance(active_file, dict):
                 active_file = {}

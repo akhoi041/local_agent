@@ -5,6 +5,7 @@
   --rail-collapsed-width: 58px;
   --rail-expanded-width: 232px;
   --explorer-pane-width: clamp(248px, 16vw, 304px);
+  --codex-pane-width: clamp(320px, 25vw, 460px);
   --pane-splitter-width: 4px;
   --bg: #ffffff;
   --canvas-subtle: #f6f8fa;
@@ -863,7 +864,8 @@ textarea:focus {
     minmax(240px, var(--explorer-pane-width))
     var(--pane-splitter-width)
     minmax(520px, 1.55fr)
-    minmax(352px, 0.95fr);
+    var(--pane-splitter-width)
+    minmax(280px, var(--codex-pane-width));
   width: 100%;
   max-width: none;
   justify-self: stretch;
@@ -879,7 +881,14 @@ textarea:focus {
     var(--explorer-pane-width)
     var(--pane-splitter-width)
     minmax(520px, 1fr)
+    0
     0;
+}
+
+.ide-workbench.codex-hidden .codex-splitter {
+  min-width: 0;
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .pane-splitter {
@@ -996,6 +1005,28 @@ textarea:focus {
 .workspace-context label {
   font-size: 11px;
   text-transform: uppercase;
+}
+
+.environment-profile {
+  margin-top: 8px;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.environment-profile summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.environment-profile[open] summary {
+  margin-bottom: 8px;
+}
+
+.environment-profile textarea {
+  min-height: 42px;
+  resize: vertical;
 }
 
 .workspace-context input {
@@ -2492,7 +2523,8 @@ input[type="checkbox"] {
       minmax(220px, var(--explorer-pane-width))
       var(--pane-splitter-width)
       minmax(420px, 1.4fr)
-      minmax(292px, 0.9fr);
+      var(--pane-splitter-width)
+      minmax(260px, var(--codex-pane-width));
   }
 
   .ide-workbench.codex-hidden {
@@ -2500,6 +2532,7 @@ input[type="checkbox"] {
       minmax(220px, var(--explorer-pane-width))
       var(--pane-splitter-width)
       minmax(420px, 1fr)
+      0
       0;
   }
 

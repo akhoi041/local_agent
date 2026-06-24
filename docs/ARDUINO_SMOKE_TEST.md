@@ -29,46 +29,47 @@ void loop() {
 
 Optional second-pass test: add a `.h` or `.cpp` tab in the same sketch folder and include it from the `.ino` file.
 
-## Steps
+## Setup
 
-1. Open Arduino IDE.
-2. Open the saved test sketch in Arduino IDE.
-3. Select a real board in Arduino IDE.
-4. Start Talos:
+1. Create two saved sketches with different folder names. Use different boards when available.
+2. Keep one sketch small and add a `.h` or `.cpp` tab to the other.
+3. Open both sketches in separate Arduino IDE windows.
+4. Select a real board in each Arduino IDE window.
+5. Start Talos:
 
 ```powershell
 .\scripts\launch_desktop.ps1
 ```
 
-5. In Talos, open the Arduino workspace view.
-6. Confirm the open sketch appears in Explorer.
-7. Select the sketch.
-8. Confirm the Sketch Folder points to the saved sketch folder.
-9. Confirm Board shows the selected board name or FQBN.
-10. Select the main `.ino` file in the Files list.
-11. Make a tiny safe edit, such as changing `delay(1000);` to `delay(500);`.
-12. Save the file from Talos.
-13. Click Verify Sandbox.
-14. Confirm Verify Output shows one current result only, not old passed cards mixed into the current result.
-15. Confirm the sandbox path is under `.talos_sandbox\arduino`.
-16. Confirm the real sketch folder was not used as the compile target.
-17. Open the Codex panel.
-18. Ask Codex to review or make a small safe patch.
-19. If edits are allowed, confirm Talos records the changed file.
-20. Confirm Talos automatically verifies the sandbox again after the Codex patch.
-21. Confirm the final verify result is visible and copyable.
+6. In Talos, open the Arduino workspace view and leave the Codex panel visible.
+
+## MVP Smoke-Test Matrix
+
+Mark every row `PASS`, `FAIL`, or `BLOCKED`; record the evidence in the result log. Stop before any save that would overwrite code you do not intend to change.
+
+| ID | Scenario | Steps | Expected result and evidence |
+| --- | --- | --- | --- |
+| D1 | Multiple Arduino windows | Refresh Explorer with both IDE windows open, then select each sketch in turn. | Both sketches appear as separate candidates. Sketch folder and board switch with the selection; no selection reverts during refresh. Screenshot or note both names and boards. |
+| D2 | Source-tab discovery | Select the sketch containing `.ino`, `.h`, and `.cpp` files. | Files list contains every source tab and opens the selected file in Change Workspace. Note the source-tab count. |
+| P1 | Environment profile | Expand **Environment profile**, set serial port, baud rate, a harmless build flag such as `-DTEST_SMOKE`, and library metadata; save. Select the other sketch, then return. | Values are restored only for the original sketch. Its FQBN is used for verify and Codex context. Record the profile values. |
+| V1 | Sandbox verify | Click **Verify Sandbox**. | Output resets to one current result, command compiles beneath `.talos_sandbox\arduino`, and does not compile the real sketch folder. Copy the result or record status/timings. |
+| C1 | Staged Codex change | Ask Codex for a small change with edits enabled. Open the resulting Change Review. | The real Arduino file remains unchanged. The review identifies changed file(s) and displays a colored diff. Record patch ID or timeline entry. |
+| C2 | Hunk decision | For a multi-hunk patch, apply one hunk and reject another. | Only accepted hunk content reaches the Talos editor; rejected content does not. Save is still required before Arduino IDE changes. Record selected hunk outcomes. |
+| C3 | Staged verification | Before saving a pending change, click **Verify Change**. | Talos compiles a merged sandbox copy of the staged change. The real Arduino file timestamp/content remains unchanged. Record pass/fail. |
+| S1 | Save and verify | Apply a reviewed change to the Talos editor, then use **Save & Verify**. | Talos creates a checkpoint, writes only the chosen source file to the real sketch, then runs a new sandbox verify. Timeline shows save and verify events. |
+| R1 | Rollback | After a successful Talos save, click **Rollback** for that file. | The file returns to its pre-save checkpoint only when it has not been changed externally. Record the restored content marker. |
+| X1 | External-change conflict | Keep a Codex patch staged. Edit the same file in Arduino IDE or another editor and save, then refresh Talos. | Talos shows the three-way conflict view and does not overwrite the external change. **Keep Arduino Version** preserves disk content and rejects the conflicting patch. |
+| O1 | Output and history | Run another verify after the above cases, then open **History**. | Verify Output contains only the latest run; History contains prior events. Copy Issues and Copy All are selectable and copyable. |
 
 ## Pass Criteria
 
+- Every matrix row D1 through O1 is `PASS`, or any `BLOCKED` row has a documented hardware/tooling reason.
 - Arduino IDE is detected without manually typing the sketch path.
 - The selected sketch does not jump back to another sketch during refresh.
-- Files in the sketch folder, including `.ino`, `.h`, and `.cpp`, appear in the Files list.
 - File edits stay scoped inside the selected sketch folder.
 - Verify Sandbox compiles a copied sandbox folder, not the original folder.
-- Verify Output resets on each run and shows only the current verify result.
-- Codex receives the selected workspace, active file, and latest verify result.
-- Codex edits, when allowed, are applied through Talos-controlled file writes.
-- A Codex patch triggers another sandbox verify.
+- Codex changes remain staged until an explicit review/apply/save decision.
+- Conflict and rollback paths refuse to silently overwrite external work.
 
 ## Fail Conditions
 
@@ -86,10 +87,13 @@ Record the latest manual run here:
 ```text
 Date:
 Arduino IDE version:
-Board:
-Sketch:
+Sketches and boards:
 Talos native available:
-Verify result:
-Codex patch result:
-Notes:
+Profile values:
+Matrix results (D1, D2, P1, V1, C1, C2, C3, S1, R1, X1, O1):
+Verify result and timings:
+Codex patch / hunk result:
+Conflict / rollback result:
+Evidence location (screenshots or copied output):
+Notes and blocked cases:
 ```

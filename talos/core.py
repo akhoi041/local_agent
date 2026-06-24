@@ -31,6 +31,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "theme": "light",
     "arduino_workspace_path": "",
     "arduino_fqbn": "",
+    "arduino_profiles": {},
 }
 
 def read_json_file(path: Path, fallback: Any, encoding: str = "utf-8") -> Any:

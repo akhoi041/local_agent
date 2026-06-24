@@ -4,9 +4,18 @@ param(
 
 $ErrorActionPreference = "Stop"
 $root = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
-$targets = @((Join-Path $root ".talos_sandbox"))
+$targets = @()
+$sandboxRoot = Join-Path $root ".talos_sandbox"
+if (Test-Path -LiteralPath $sandboxRoot) {
+    $targets += Get-ChildItem -LiteralPath $sandboxRoot -Directory -Force | ForEach-Object { $_.FullName }
+    $targets += $sandboxRoot
+}
 if (-not $KeepStaging) {
-    $targets += Join-Path $root ".talos_staging"
+    $stagingRoot = Join-Path $root ".talos_staging"
+    if (Test-Path -LiteralPath $stagingRoot) {
+        $targets += Get-ChildItem -LiteralPath $stagingRoot -Directory -Force | ForEach-Object { $_.FullName }
+        $targets += $stagingRoot
+    }
 }
 $targets += Get-ChildItem -LiteralPath $root -Directory -Force -Filter "pytest-cache-files-*" |
     ForEach-Object { $_.FullName }

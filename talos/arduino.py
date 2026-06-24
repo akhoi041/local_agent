@@ -57,10 +57,87 @@ COMPILE_ISSUE_RE = re.compile(
     re.IGNORECASE,
 )
 
-def arduino_config(config: dict[str, Any]) -> dict[str, str]:
+def resolve_workspace(path_text: str) -> Path | None:
+    path_text = path_text.strip().strip('"')
+    if not path_text:
+        return None
+    try:
+        return Path(path_text).expanduser().resolve()
+    except OSError:
+        return None
+
+
+def workspace_profile_key(path_text: str) -> str:
+    workspace = resolve_workspace(path_text)
+    return str(workspace).lower() if workspace is not None else ""
+
+
+def normalize_environment_profile(profile: dict[str, Any] | None = None) -> dict[str, Any]:
+    profile = profile if isinstance(profile, dict) else {}
+    try:
+        baud_rate = int(profile.get("baud_rate") or 0)
+    except (TypeError, ValueError):
+        baud_rate = 0
+    libraries = profile.get("libraries")
+    if isinstance(libraries, str):
+        libraries = libraries.replace("\r", "").replace(",", "\n").split("\n")
+    library_names = []
+    for library in libraries if isinstance(libraries, list) else []:
+        name = str(library).strip()
+        if name and name not in library_names:
+            library_names.append(name)
+    build_properties = profile.get("build_properties")
+    if isinstance(build_properties, str):
+        build_properties = build_properties.replace("\r", "").split("\n")
+    properties = []
+    for property_text in build_properties if isinstance(build_properties, list) else []:
+        value = str(property_text).strip()
+        if value and "=" in value and value not in properties:
+            properties.append(value)
+    build_flags = profile.get("build_flags")
+    if isinstance(build_flags, str):
+        build_flags = build_flags.replace("\r", "").split("\n")
+    flags = []
+    for flag in build_flags if isinstance(build_flags, list) else []:
+        value = str(flag).strip()
+        if value and value not in flags:
+            flags.append(value)
     return {
-        "workspace_path": str(config.get("arduino_workspace_path", "")).strip(),
-        "fqbn": str(config.get("arduino_fqbn", "")).strip(),
+        "fqbn": str(profile.get("fqbn") or "").strip(),
+        "serial_port": str(profile.get("serial_port") or "").strip(),
+        "baud_rate": baud_rate if 0 < baud_rate <= 4_000_000 else 0,
+        "build_flags": flags[:32],
+        "build_properties": properties[:16],
+        "libraries": library_names[:32],
+    }
+
+
+def environment_profile(config: dict[str, Any], workspace_path: str | None = None) -> dict[str, Any]:
+    path_text = workspace_path if workspace_path is not None else str(config.get("arduino_workspace_path") or "")
+    key = workspace_profile_key(path_text)
+    profiles = config.get("arduino_profiles")
+    profile = profiles.get(key) if key and isinstance(profiles, dict) else None
+    return normalize_environment_profile(profile)
+
+
+def save_environment_profile(config: dict[str, Any], workspace_path: str, profile: dict[str, Any]) -> dict[str, Any]:
+    workspace = resolve_workspace(workspace_path)
+    if workspace is None or not workspace.exists() or not workspace.is_dir():
+        return {"ok": False, "error": "Choose a valid Arduino sketch folder before saving its environment profile."}
+    normalized = normalize_environment_profile(profile)
+    profiles = config.get("arduino_profiles")
+    profiles = dict(profiles) if isinstance(profiles, dict) else {}
+    profiles[str(workspace).lower()] = {"path": str(workspace), **normalized}
+    config["arduino_profiles"] = profiles
+    return {"ok": True, "path": str(workspace), "profile": normalized}
+
+
+def arduino_config(config: dict[str, Any]) -> dict[str, str]:
+    workspace_path = str(config.get("arduino_workspace_path", "")).strip()
+    profile = environment_profile(config, workspace_path)
+    return {
+        "workspace_path": workspace_path,
+        "fqbn": str(profile.get("fqbn") or "") or str(config.get("arduino_fqbn", "")).strip(),
     }
 
 def is_source_file(path: Path) -> bool:
@@ -546,15 +623,6 @@ def discover_arduino_projects(
                     projects.append(apply_project_board(project, boards, workspace_board_map))
     return projects
 
-def resolve_workspace(path_text: str) -> Path | None:
-    path_text = path_text.strip().strip('"')
-    if not path_text:
-        return None
-    try:
-        return Path(path_text).expanduser().resolve()
-    except OSError:
-        return None
-
 def configured_workspace(config: dict[str, Any]) -> Path | None:
     workspace = resolve_workspace(arduino_config(config)["workspace_path"])
     if workspace is None or not workspace.exists() or not workspace.is_dir():
@@ -700,6 +768,40 @@ def workspace_summary(config: dict[str, Any]) -> dict[str, Any]:
         "main_sketch": main_sketch.relative_to(workspace).as_posix() if main_sketch else "",
         "files": [file_row(workspace, path) for path in files],
         "message": "Arduino sketch folder ready." if main_sketch else "No .ino file found in this folder.",
+    }
+
+
+def workspace_map(config: dict[str, Any], latest_verify: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Return compact Arduino workspace metadata suitable for a Codex prompt or UI chip."""
+    summary = workspace_summary(config)
+    files = summary.get("files") if isinstance(summary.get("files"), list) else []
+    verify = latest_verify if isinstance(latest_verify, dict) else {}
+    result = verify.get("result") if isinstance(verify.get("result"), dict) else {}
+    profile = environment_profile(config, str(summary.get("path") or ""))
+    source_tabs = [
+        {
+            "path": str(file.get("path") or ""),
+            "lines": int(file.get("lines") or 0),
+            "bytes": int(file.get("bytes") or 0),
+        }
+        for file in files[:24]
+        if isinstance(file, dict)
+    ]
+    return {
+        "valid": bool(summary.get("valid")),
+        "workspace": str(summary.get("path") or ""),
+        "main_sketch": str(summary.get("main_sketch") or ""),
+        "board": {"fqbn": str(summary.get("fqbn") or "")},
+        "environment_profile": profile,
+        "source_tabs": source_tabs,
+        "source_tab_count": len(files),
+        "diagnostics": {
+            "status": str(verify.get("status") or ""),
+            "time": str(verify.get("time") or ""),
+            "issues": list(result.get("issues") or [])[:12],
+            "libraries": list(result.get("libraries") or [])[:12],
+            "platforms": list(result.get("platforms") or [])[:6],
+        },
     }
 
 def workspace_context(config: dict[str, Any], max_bytes: int = MAX_CONTEXT_BYTES) -> str:
@@ -909,7 +1011,13 @@ def run_arduino_compile(
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(content, encoding="utf-8", newline="\n")
     step_started_at = mark("sandbox_copy", step_started_at)
-    command = [cli, "compile", "--fqbn", summary["fqbn"], str(sandbox)]
+    profile = environment_profile(config, str(summary.get("path") or ""))
+    command = [cli, "compile", "--fqbn", summary["fqbn"]]
+    if profile["build_flags"]:
+        command.extend(["--build-property", f"compiler.cpp.extra_flags={' '.join(profile['build_flags'])}"])
+    for build_property in profile["build_properties"]:
+        command.extend(["--build-property", build_property])
+    command.append(str(sandbox))
     try:
         completed = subprocess.run(
             command,

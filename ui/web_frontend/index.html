@@ -108,6 +108,17 @@
                   <button id="saveArduinoBtn" class="button ghost">Save Workspace</button>
                 </div>
                 <p id="arduinoStatus" class="status-text">No Arduino sketch folder configured.</p>
+                <details id="environmentProfile" class="environment-profile">
+                  <summary>Environment profile</summary>
+                  <label>Serial port<input id="profileSerialPortInput" placeholder="COM3" /></label>
+                  <label>Baud rate<input id="profileBaudRateInput" type="number" min="1" max="4000000" step="1" placeholder="115200" /></label>
+                  <label>Build flags<textarea id="profileBuildPropertiesInput" rows="2" placeholder="-DDEBUG"></textarea></label>
+                  <label>Library metadata<textarea id="profileLibrariesInput" rows="2" placeholder="Wire&#10;ArduinoJson"></textarea></label>
+                  <div class="explorer-actions">
+                    <button id="saveEnvironmentProfileBtn" class="button ghost" type="button">Save Profile</button>
+                  </div>
+                  <p id="environmentProfileStatus" class="status-text">Saved per sketch.</p>
+                </details>
               </section>
 
               <section class="ide-explorer-section files-section">
@@ -218,6 +229,15 @@
               </section>
             </main>
 
+            <div
+              id="codexSplitter"
+              class="pane-splitter codex-splitter"
+              role="separator"
+              aria-label="Resize Codex panel"
+              aria-orientation="vertical"
+              tabindex="0"
+            ></div>
+
             <aside id="codexPanel" class="codex-panel history-mode" aria-label="Codex chat">
               <div class="codex-head">
                 <div class="codex-identity">
@@ -235,6 +255,7 @@
               </div>
               <div id="codexContext" class="codex-context">
                 <span>Workspace</span>
+                <span id="codexWorkspaceMap">Workspace map</span>
                 <span>Active file</span>
                 <span>Verify output</span>
               </div>

@@ -16,13 +16,13 @@ Talos = local AI control layer between Codex and external IDEs/apps, starting wi
 ## Current Position
 
 ```text
-Current active stage: Stage 8 - Arduino operating workflow and MVP evidence
-Next major stage: Stage 9 - Mandatory pre-commercial improvements
+Current active stage: Stage 9 - Mandatory pre-commercial improvements
+Next major stage: Stage 10 - Commercial app packaging
 ```
 
 Stages 1 through 7 are complete. Talos can detect Arduino sketches and boards, present structured verify results, safely read or edit source files, host a real Codex app-server conversation beside the editor, stage Codex changes outside the original sketch, use native C for speed-sensitive Windows detection, and protect real sketches with conflicts, checkpoints, rollback, and staged sandbox verification.
 
-Stage 6 established Change Workspace as a review-and-control surface rather than a competing Arduino editor. Stage 7 completed the safe change lifecycle. Active work is Stage 8: prove the current Arduino workflow and collect MVP evidence. Stage 9 then completes the mandatory improvements across Stages 1-7. Commercial packaging begins in Stage 10 only after every Stage 9 improvement is complete. MATLAB and other app integrations remain paused.
+Stage 6 established Change Workspace as a review-and-control surface rather than a competing Arduino editor. Stage 7 completed the safe change lifecycle, and Stage 8 documented the repeatable Arduino MVP evidence. Active work is Stage 9: complete the mandatory improvements across Stages 1-7. Commercial packaging begins in Stage 10 only after every Stage 9 improvement is complete. MATLAB and other app integrations remain paused.
 
 ## Delivery Order
 
@@ -69,6 +69,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\pipeline_status.ps1
 - [x] Require pipeline updates when a pipeline-related task is completed.
 - [x] Keep disposable sandbox, staging, and test-cache artifacts out of version control and provide a safe cleanup command.
 
+Exit condition: the pipeline has a runnable status command, every completed delivery is recorded here, and disposable runtime artifacts can be safely removed without touching source or user configuration.
+
 ## Stage 1 - Arduino Detection Stability
 
 - [x] Detect Arduino IDE process.
@@ -88,6 +90,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\pipeline_status.ps1
 - [x] Map each Arduino window to its own board through the IDE process tree.
 - [x] Prevent stale auto-refresh responses from reverting a newly selected sketch.
 
+Exit condition: Talos reliably lists only live, saved Arduino sketches, maps each selected sketch to its current board when available, and retains a responsive polling fallback when native detection is unavailable.
+
 ## Stage 2 - Verify Output Cleanup
 
 - [x] Strip ANSI escape codes from Arduino CLI output.
@@ -104,6 +108,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\pipeline_status.ps1
 - [x] Show verify timing breakdown and skip common build/cache folders during sandbox copy.
 - [x] Keep Verify Output and run history mutually exclusive so old passed cards do not leak into the current verify result.
 
+Exit condition: a sandbox compile produces clean, copyable structured diagnostics, memory/library/platform information, timing data, and only the current result in Verify Output.
+
 ## Stage 3 - Arduino File Workflow
 
 - [x] Expose scoped backend APIs to read, write, and delete workspace files.
@@ -118,6 +124,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\pipeline_status.ps1
 - [x] Add a compact hover-expand navigation rail with a persisted pin state.
 - [x] Collapse the unpinned navigation rail immediately when the pointer leaves.
 - [x] Polish the IDE workbench with editor line numbers and a focused Codex welcome/composer layout.
+
+Exit condition: every Talos file operation is constrained to the selected sketch, supported source files are discoverable and usable, and the workbench remains navigable without replacing Arduino IDE as the source owner.
 
 ## Stage 4 - Codex Debug Loop
 
@@ -145,6 +153,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\pipeline_status.ps1
 - [x] Stage Codex file changes outside the Arduino sketch, show a color diff, then apply into the Talos editor or reject explicitly; only Save File updates Arduino IDE.
 - [x] Replace the persistent virtual-patch UI with an internal staging workspace and focused Codex Change Review.
 
+Exit condition: a locally authenticated Codex thread can receive bounded Arduino context, stage focused changes through Talos, and recover from cancellation or timeout without blocking the workbench or writing directly to the real sketch.
+
 ## Stage 5 - Native C Expansion
 
 - [x] Native C extracts `.ino` names from Arduino IDE titles.
@@ -155,6 +165,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\pipeline_status.ps1
 - [x] Add native build/check command to normal verification flow.
 - [x] Reduce dependence on PowerShell/CIM for hot-path detection when native exports are available.
 - [x] Document the Arduino end-to-end smoke test.
+
+Exit condition: the native DLL builds and exposes the current process/window APIs, detection uses those APIs on the hot path, and Python retains a tested fallback when native loading is unavailable.
 
 ## Stage 6 - Change Workspace Ownership
 
@@ -192,9 +204,9 @@ Exit condition: every staged change is either safely saved, rejected, rolled bac
 
 Purpose: prove the completed safe change loop as a repeatable Arduino workflow and collect the baseline evidence required before improvement work begins.
 
-- [ ] Build a compact workspace map for Codex: main sketch, related source tabs, board profile, libraries, and latest diagnostics.
-- [ ] Add per-sketch environment profiles for FQBN, serial port, baud rate, build flags, and library metadata.
-- [ ] Add a manual MVP smoke-test matrix covering multi-window detection, staging, hunk apply, conflict, rollback, staged verify, and Save And Verify.
+- [x] Build a compact workspace map for Codex: main sketch, related source tabs, board profile, libraries, and latest diagnostics.
+- [x] Add per-sketch environment profiles for FQBN, serial port, baud rate, build flags, and library metadata.
+- [x] Add a manual MVP smoke-test matrix covering multi-window detection, staging, hunk apply, conflict, rollback, staged verify, and Save And Verify in `docs/ARDUINO_SMOKE_TEST.md`.
 
 Exit condition: Talos can repeatedly detect an Arduino sketch, guide a Codex change through review and verification, save it safely, and demonstrate the complete loop in a documented MVP smoke test.
 
@@ -249,6 +261,8 @@ Purpose: convert the proven Arduino workflow into an installable, supportable Be
 - [ ] Define the code-signing path for commercial distribution, even if signing is initially documented rather than automated.
 - [ ] Smoke-test the installed app outside the repository: launch, detect Arduino IDE, edit sketch, verify sandbox, ask Codex, apply patch, verify again.
 - [ ] Produce a distribution checklist with artifact names, hashes, installer test result, rollback/uninstall test, and known limitations.
+
+Exit condition: a signed or explicitly unsigned Beta installer can be built from a clean tree, installed outside the repository, launch Talos with its branding and native assets, pass the Arduino smoke test, and uninstall cleanly with documented release evidence.
 
 ## Future Backlog - Other Apps
 

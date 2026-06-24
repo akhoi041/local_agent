@@ -159,3 +159,17 @@ def _store_events(events: list[dict[str, Any]]) -> None:
 def run_history() -> list[dict[str, Any]]:
     with RUN_HISTORY_LOCK:
         return list(reversed(_load_events()))
+
+
+def latest_verify_for_workspace(workspace: str) -> dict[str, Any] | None:
+    target = str(workspace or "")
+    if not target:
+        return None
+    with RUN_HISTORY_LOCK:
+        return next(
+            (
+                event for event in reversed(_load_events())
+                if event.get("type") == "verify" and event.get("workspace") == target
+            ),
+            None,
+        )

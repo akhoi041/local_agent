@@ -1,3 +1,4 @@
+import re
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -9,12 +10,15 @@ from talos.arduino import (
     copy_workspace_to_sandbox,
     delete_workspace_file,
     discover_arduino_projects,
+    environment_profile,
     extract_ino_names,
     format_compile_issue_context,
     parse_compile_output,
     read_workspace_file,
     run_arduino_compile,
+    save_environment_profile,
     workspace_context,
+    workspace_map,
     workspace_summary,
     write_workspace_file,
 )
@@ -54,6 +58,15 @@ class TalosArduinoTests(unittest.TestCase):
                 "path": r"C:\Sketch\Blink",
                 "main_sketch": "Blink.ino",
                 "fqbn": "arduino:avr:uno",
+                "map": {
+                    "source_tab_count": 2,
+                    "source_tabs": [{"path": "Blink.ino"}, {"path": "motor.cpp"}],
+                    "diagnostics": {
+                        "status": "passed",
+                        "libraries": [{"name": "Wire", "version": "1.0.0"}],
+                        "platforms": [{"name": "arduino:avr", "version": "1.8.6"}],
+                    },
+                },
             },
             {"path": "Blink.ino", "content": "void setup() {}\n"},
             "ERROR Blink.ino:2:1 - expected declaration",
@@ -65,6 +78,28 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("void setup()", prompt)
         self.assertIn("ERROR Blink.ino:2:1", prompt)
         self.assertIn("Talos staging copy", prompt)
+        self.assertIn("Source tabs (2): Blink.ino, motor.cpp", prompt)
+        self.assertIn("Verified libraries: Wire 1.0.0", prompt)
+
+    def test_codex_prompt_includes_per_sketch_environment_profile(self) -> None:
+        prompt = build_codex_prompt(
+            "Review this sketch.",
+            {
+                "path": r"C:\Sketch\Blink",
+                "map": {
+                    "environment_profile": {
+                        "serial_port": "COM7",
+                        "baud_rate": 115200,
+                        "build_flags": ["-DDEBUG"],
+                        "libraries": ["Wire", "ArduinoJson"],
+                    },
+                },
+            },
+        )
+
+        self.assertIn("Serial profile: COM7 @ 115200 baud", prompt)
+        self.assertIn("Build flags: -DDEBUG", prompt)
+        self.assertIn("Profile libraries: Wire, ArduinoJson", prompt)
 
     def test_codex_prompt_can_be_read_only(self) -> None:
         prompt = build_codex_prompt("Review only.", allow_edits=False)
@@ -257,6 +292,8 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn('id="editorModeBadge"', html)
         self.assertIn('id="boardInfoBtn"', html)
         self.assertIn('id="boardInfoPanel"', html)
+        self.assertIn('id="environmentProfile"', html)
+        self.assertIn('id="saveEnvironmentProfileBtn"', html)
         self.assertIn('id="editorLineNumbers"', html)
         self.assertIn("data-codex-prompt", html)
         self.assertIn('id="codexAllowEdits"', html)
@@ -268,7 +305,7 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn('id="codexHistoryCount"', html)
         self.assertIn('id="runHistoryTab"', html)
         self.assertIn('id="explorerSplitter"', html)
-        self.assertNotIn('id="codexSplitter"', html)
+        self.assertIn('id="codexSplitter"', html)
 
         script = (Path(__file__).parents[1] / "ui" / "web_frontend" / "app.js").read_text(encoding="utf-8")
         self.assertIn("patch_event_revision", script)
@@ -330,8 +367,11 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("showCodexTasks(true)", script)
         self.assertNotIn("toggleCodexHistory", script)
         self.assertIn("bindExplorerSplitter", script)
+        self.assertIn("bindCodexSplitter", script)
+        self.assertIn("saveEnvironmentProfile", script)
+        self.assertIn("/api/arduino_profile", script)
         self.assertIn("renderActiveFileRow", script)
-        self.assertNotIn("CODEX_WIDTH_KEY", script)
+        self.assertIn("CODEX_WIDTH_KEY", script)
         self.assertNotIn("applyWindowMetrics", script)
         self.assertNotIn("--native-window-width", script)
 
@@ -341,9 +381,9 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("justify-self: stretch;", styles)
         self.assertIn("inset: 0;", styles)
         self.assertIn("border-left: 1px solid var(--line);", styles)
-        self.assertIn("minmax(352px, 0.95fr)", styles)
+        self.assertIn("minmax(280px, var(--codex-pane-width))", styles)
         self.assertIn("@media (max-width: 1240px)", styles)
-        self.assertIn("minmax(292px, 0.9fr)", styles)
+        self.assertIn("minmax(260px, var(--codex-pane-width))", styles)
         self.assertIn("grid-template-columns: minmax(0, 1fr);", styles)
         self.assertIn("grid-template-areas:", styles)
         self.assertIn("grid-column: 1 / -1;", styles)
@@ -357,7 +397,7 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("[hidden]", styles)
         self.assertIn("display: none !important;", styles)
         self.assertIn("cursor: pointer;", styles)
-        self.assertNotIn("--codex-panel-width", styles)
+        self.assertIn("--codex-pane-width", styles)
 
         check_script = (Path(__file__).parents[1] / "scripts" / "check.ps1").read_text(encoding="utf-8")
         self.assertIn("build_native.ps1", check_script)
@@ -370,6 +410,19 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("Codex", smoke_test)
         self.assertIn("Pass Criteria", smoke_test)
         self.assertIn("Fail Conditions", smoke_test)
+        self.assertIn("MVP Smoke-Test Matrix", smoke_test)
+        self.assertIn("Hunk decision", smoke_test)
+        self.assertIn("External-change conflict", smoke_test)
+        self.assertIn("Save and verify", smoke_test)
+
+    def test_pipeline_defines_exit_condition_for_every_stage(self) -> None:
+        pipeline = (Path(__file__).parents[1] / "docs" / "TALOS_PIPELINE.md").read_text(encoding="utf-8")
+        stages = re.split(r"(?=^## Stage \d+ - )", pipeline, flags=re.MULTILINE)
+        stage_sections = [section for section in stages if section.startswith("## Stage ")]
+
+        self.assertEqual(len(stage_sections), 11)
+        for section in stage_sections:
+            self.assertIn("Exit condition:", section, section.splitlines()[0])
 
     def test_codex_thread_summary_prefers_name_and_supports_unix_time(self) -> None:
         summary = normalize_codex_thread(
@@ -925,6 +978,55 @@ class TalosArduinoTests(unittest.TestCase):
 
             self.assertIn("Arduino workspace context", context)
             self.assertIn("--- Sensor.ino ---", context)
+
+    def test_workspace_map_includes_board_tabs_and_latest_diagnostics(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp) / "Sensor"
+            root.mkdir()
+            (root / "Sensor.ino").write_text("void setup() {}\n", encoding="utf-8")
+            (root / "motor.cpp").write_text("void motor() {}\n", encoding="utf-8")
+
+            result = workspace_map(
+                {"arduino_workspace_path": str(root), "arduino_fqbn": "arduino:avr:uno"},
+                {"status": "passed", "time": "2026-06-24", "result": {
+                    "issues": [{"message": "warning"}],
+                    "libraries": [{"name": "Wire", "version": "1.0.0"}],
+                    "platforms": [{"name": "arduino:avr", "version": "1.8.6"}],
+                }},
+            )
+
+            self.assertTrue(result["valid"])
+            self.assertEqual(result["main_sketch"], "Sensor.ino")
+            self.assertEqual(result["board"]["fqbn"], "arduino:avr:uno")
+            self.assertEqual(result["source_tab_count"], 2)
+            self.assertEqual(result["diagnostics"]["status"], "passed")
+            self.assertEqual(result["diagnostics"]["libraries"][0]["name"], "Wire")
+
+    def test_environment_profile_is_isolated_per_resolved_sketch_folder(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            first = root / "First"
+            second = root / "Second"
+            first.mkdir()
+            second.mkdir()
+            config = {"arduino_profiles": {}, "arduino_workspace_path": str(first), "arduino_fqbn": "arduino:avr:uno"}
+
+            saved = save_environment_profile(config, str(first), {
+                "fqbn": "esp32:esp32:esp32",
+                "serial_port": "COM5",
+                "baud_rate": "921600",
+                "build_flags": ["-DDEBUG"],
+                "libraries": "Wire\nArduinoJson",
+            })
+
+            self.assertTrue(saved["ok"])
+            self.assertEqual(environment_profile(config, str(first))["serial_port"], "COM5")
+            self.assertEqual(environment_profile(config, str(second))["libraries"], [])
+            self.assertEqual(workspace_summary(config)["fqbn"], "esp32:esp32:esp32")
+
+            mapped = workspace_map(config)
+            self.assertEqual(mapped["environment_profile"]["baud_rate"], 921600)
+            self.assertEqual(mapped["environment_profile"]["libraries"], ["Wire", "ArduinoJson"])
 
     def test_arduino_verify_requires_fqbn_before_compile(self) -> None:
         with TemporaryDirectory() as tmp:

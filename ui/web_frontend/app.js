@@ -12,6 +12,8 @@ const state = {
   workspaceMutationRunning: false,
   workspaceSelectionRunning: false,
   selectedWorkspacePath: "",
+  workspaceMap: {},
+  environmentProfile: {},
   activeFileByWorkspace: {},
   activeFilePath: "",
   editorOriginalContent: "",
@@ -53,6 +55,7 @@ const THEME_KEY = "talos-theme";
 const RAIL_PIN_KEY = "talos-rail-pinned";
 const CODEX_PANEL_KEY = "talos-codex-panel-open";
 const EXPLORER_WIDTH_KEY = "talos-explorer-pane-width";
+const CODEX_WIDTH_KEY = "talos-codex-pane-width";
 const FAST_REFRESH_MS = 1000;
 const IDLE_REFRESH_MS = 5000;
 const REFRESH_TICK_MS = 250;
@@ -107,11 +110,20 @@ function restorePaneWidths() {
   if (Number.isFinite(explorer) && explorer > 0) {
     root.style.setProperty("--explorer-pane-width", `${clampPaneWidth(explorer, 240, 420)}px`);
   }
+  const codex = Number(localStorage.getItem(CODEX_WIDTH_KEY));
+  if (Number.isFinite(codex) && codex > 0) {
+    root.style.setProperty("--codex-pane-width", `${clampPaneWidth(codex, 280, 680)}px`);
+  }
 }
 
 function resetExplorerWidth() {
   document.documentElement.style.removeProperty("--explorer-pane-width");
   localStorage.removeItem(EXPLORER_WIDTH_KEY);
+}
+
+function resetCodexWidth() {
+  document.documentElement.style.removeProperty("--codex-pane-width");
+  localStorage.removeItem(CODEX_WIDTH_KEY);
 }
 
 function bindExplorerSplitter(selector) {
@@ -133,6 +145,41 @@ function bindExplorerSplitter(selector) {
       const width = clampPaneWidth(clientX - bounds.left, 240, maximum);
       document.documentElement.style.setProperty("--explorer-pane-width", `${Math.round(width)}px`);
       localStorage.setItem(EXPLORER_WIDTH_KEY, String(Math.round(width)));
+    };
+    const move = (moveEvent) => update(moveEvent.clientX);
+    const finish = () => {
+      splitter.classList.remove("dragging");
+      splitter.removeEventListener("pointermove", move);
+      splitter.removeEventListener("pointerup", finish);
+      splitter.removeEventListener("pointercancel", finish);
+    };
+    splitter.addEventListener("pointermove", move);
+    splitter.addEventListener("pointerup", finish);
+    splitter.addEventListener("pointercancel", finish);
+    update(event.clientX);
+  });
+}
+
+function bindCodexSplitter(selector) {
+  const splitter = $(selector);
+  if (!splitter) return;
+  splitter.addEventListener("dblclick", resetCodexWidth);
+  splitter.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0 || window.innerWidth <= 900 || !codexPanelOpen()) return;
+    const workbench = splitter.closest(".ide-workbench");
+    if (!workbench) return;
+    event.preventDefault();
+    splitter.setPointerCapture(event.pointerId);
+    splitter.classList.add("dragging");
+    const bounds = workbench.getBoundingClientRect();
+    const update = (clientX) => {
+      const available = bounds.width;
+      const minimumEditor = Math.min(520, Math.max(360, available * 0.32));
+      const explorerWidth = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--explorer-pane-width")) || 248;
+      const maximum = Math.max(280, available - explorerWidth - minimumEditor - 12);
+      const width = clampPaneWidth(bounds.right - clientX, 280, maximum);
+      document.documentElement.style.setProperty("--codex-pane-width", `${Math.round(width)}px`);
+      localStorage.setItem(CODEX_WIDTH_KEY, String(Math.round(width)));
     };
     const move = (moveEvent) => update(moveEvent.clientX);
     const finish = () => {
@@ -1280,11 +1327,49 @@ function renderArduino(arduino, force = false, ide = {}) {
   renderCodexContext();
 }
 
+function profileLines(value) {
+  return String(value || "").split(/[,\n]/).map((item) => item.trim()).filter(Boolean);
+}
+
+function renderEnvironmentProfile(profile = {}) {
+  state.environmentProfile = profile && typeof profile === "object" ? profile : {};
+  $("#profileSerialPortInput").value = state.environmentProfile.serial_port || "";
+  $("#profileBaudRateInput").value = state.environmentProfile.baud_rate || "";
+  $("#profileBuildPropertiesInput").value = (state.environmentProfile.build_flags || []).join("\n");
+  $("#profileLibrariesInput").value = (state.environmentProfile.libraries || []).join("\n");
+  $("#saveEnvironmentProfileBtn").disabled = !state.selectedWorkspacePath;
+}
+
+async function saveEnvironmentProfile() {
+  const path = $("#arduinoPathInput").value;
+  if (!path) return;
+  const status = $("#environmentProfileStatus");
+  status.textContent = "Saving environment profile...";
+  const result = await api("/api/arduino_profile", {
+    method: "POST",
+    body: JSON.stringify({
+      path,
+      fqbn: state.arduinoFqbnFull || $("#arduinoFqbnInput").value,
+      serial_port: $("#profileSerialPortInput").value,
+      baud_rate: $("#profileBaudRateInput").value,
+      build_flags: profileLines($("#profileBuildPropertiesInput").value),
+      libraries: profileLines($("#profileLibrariesInput").value),
+    }),
+  });
+  renderEnvironmentProfile(result.profile || {});
+  status.textContent = "Environment profile saved for this sketch.";
+  await refreshAfterWorkspaceMutation();
+}
+
 function renderCodexContext() {
   const chips = $$("#codexContext span");
   chips[0]?.classList.toggle("ready", Boolean(state.selectedWorkspacePath));
-  chips[1]?.classList.toggle("ready", Boolean(state.activeFilePath));
-  chips[2]?.classList.toggle(
+  chips[1]?.classList.toggle("ready", Boolean(state.workspaceMap.valid));
+  chips[1]?.setAttribute("title", state.workspaceMap.valid
+    ? `${Number(state.workspaceMap.source_tab_count || 0)} source tab(s) | ${state.workspaceMap.main_sketch || "no main sketch"}`
+    : "Workspace map unavailable");
+  chips[2]?.classList.toggle("ready", Boolean(state.activeFilePath));
+  chips[3]?.classList.toggle(
     "ready",
     Boolean(state.lastIssueText || (state.lastVerifyText && !state.lastVerifyText.startsWith("Sandbox compile"))),
   );
@@ -1600,6 +1685,7 @@ function render(payload) {
   hydrateAppIdentity(payload.app || {});
   const projects = payload.arduino_projects || [];
   const arduino = payload.arduino || {};
+  state.workspaceMap = payload.arduino_workspace_map || {};
   const selectedPath = normalizedWindowsPath(arduino.path);
   const selectedProject = projects.find((project) => (
     normalizedWindowsPath(project.path) === selectedPath && project.fqbn === arduino.fqbn
@@ -1611,6 +1697,7 @@ function render(payload) {
   $("#toolList").textContent = (payload.tools || []).join("\n");
   renderStats(payload);
   renderArduino(arduino, false, selectedProject);
+  renderEnvironmentProfile(payload.arduino_profile || state.workspaceMap.environment_profile || {});
   renderArduinoProjects(projects);
   $("#logText").textContent = (payload.events || []).join("\n");
 }
@@ -1756,6 +1843,7 @@ function bindEvents() {
   applyCodexPanel(codexPanelOpen());
   showCodexTasks(true);
   bindExplorerSplitter("#explorerSplitter");
+  bindCodexSplitter("#codexSplitter");
   $$(".nav").forEach((button) => button.addEventListener("click", () => setView(button.dataset.view)));
   $("#pinRailBtn").addEventListener("click", () => applyRailPinned(!railPinned()));
   $("#refreshBtn").addEventListener("click", refresh);
@@ -1764,6 +1852,9 @@ function bindEvents() {
     await saveArduinoWorkspace();
     await refreshAfterWorkspaceMutation();
   });
+  $("#saveEnvironmentProfileBtn").addEventListener("click", () => saveEnvironmentProfile().catch((error) => {
+    $("#environmentProfileStatus").textContent = error.message;
+  }));
   $("#verifyArduinoBtn").addEventListener("click", () => verifyArduinoWorkspace());
   $("#verifyOutputTab").addEventListener("click", () => setOutputView("verify"));
   $("#runHistoryTab").addEventListener("click", async () => {
