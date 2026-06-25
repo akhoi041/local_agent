@@ -14,7 +14,6 @@ if str(ROOT) not in sys.path:
 
 from talos import native_bridge as nb
 
-
 def measure(name: str, loader: Callable[[], Any], iterations: int) -> dict[str, Any]:
     durations: list[float] = []
     count = 0
@@ -40,7 +39,6 @@ def measure(name: str, loader: Callable[[], Any], iterations: int) -> dict[str, 
         "error": error,
     }
 
-
 def fallback_status() -> dict[str, bool]:
     return {
         "window_rows_win32": callable(getattr(nb, "list_window_rows_win32", None)),
@@ -50,7 +48,6 @@ def fallback_status() -> dict[str, bool]:
         "tool_processes_powershell": callable(getattr(nb, "list_arduino_tool_processes_powershell", None)),
         "tool_processes_wmic": callable(getattr(nb, "list_arduino_tool_processes_wmic", None)),
     }
-
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Benchmark Talos native Windows detection hot paths.")
@@ -112,7 +109,6 @@ def main() -> int:
                 print(f"- {failure}")
 
     return 0 if payload["ok"] else 1
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

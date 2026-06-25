@@ -73,13 +73,11 @@ def log_event(message: str) -> None:
         EVENTS.append(message)
         del EVENTS[:-200]
 
-
 def notify_arduino_event(reason: str = "window") -> None:
     global ARDUINO_SIGNAL_REVISION, ARDUINO_SIGNAL_TIME
     with ARDUINO_SIGNAL_LOCK:
         ARDUINO_SIGNAL_REVISION += 1
         ARDUINO_SIGNAL_TIME = now()
-
 
 def arduino_event_status() -> dict[str, Any]:
     with ARDUINO_SIGNAL_LOCK:
@@ -89,13 +87,11 @@ def arduino_event_status() -> dict[str, Any]:
             "event_assisted": bool(ARDUINO_EVENT_WATCHER and ARDUINO_EVENT_WATCHER.available),
         }
 
-
 def start_arduino_event_watcher() -> None:
     global ARDUINO_EVENT_WATCHER
     if ARDUINO_EVENT_WATCHER is None:
         ARDUINO_EVENT_WATCHER = ArduinoEventWatcher(notify_arduino_event)
         ARDUINO_EVENT_WATCHER.start()
-
 
 def stop_arduino_event_watcher() -> None:
     global ARDUINO_EVENT_WATCHER

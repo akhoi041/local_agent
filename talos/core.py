@@ -37,7 +37,6 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "arduino_profiles": {},
 }
 
-
 def _read_json(path: Path, fallback: Any, encoding: str = "utf-8") -> tuple[Any, bool]:
     if not path.exists():
         return fallback, True
@@ -65,7 +64,6 @@ def write_json_file(path: Path, data: Any) -> None:
         except OSError:
             pass
 
-
 def backup_json_file(path: Path, label: str) -> Path | None:
     """Preserve the original user state before a schema migration changes it."""
     if not path.exists() or not path.is_file():
@@ -80,13 +78,11 @@ def backup_json_file(path: Path, label: str) -> Path | None:
         return None
     return backup_path
 
-
 def schema_version(value: Any) -> int:
     try:
         return max(0, int(value))
     except (TypeError, ValueError):
         return 0
-
 
 def migrate_state_document(
     path: Path,
@@ -114,7 +110,6 @@ def migrate_state_document(
         except OSError:
             pass
     return migrated
-
 
 def _normalize_config(data: Any) -> dict[str, Any]:
     source = dict(data) if isinstance(data, dict) else {}

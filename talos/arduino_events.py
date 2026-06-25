@@ -17,11 +17,9 @@ WINEVENT_OUTOFCONTEXT = 0
 WINEVENT_SKIPOWNPROCESS = 0x0002
 WM_QUIT = 0x0012
 
-
 def is_arduino_window_title(title: str) -> bool:
     normalized = str(title or "").casefold()
     return "arduino ide" in normalized or ("arduino" in normalized and ".ino" in normalized)
-
 
 class ArduinoEventWatcher:
     """Listen for Arduino window changes and notify Talos without replacing polling."""

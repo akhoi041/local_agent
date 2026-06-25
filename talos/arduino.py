@@ -1027,13 +1027,11 @@ def store_compile_result(cache_key: str, result: dict[str, Any]) -> None:
         while len(VERIFY_CACHE) > VERIFY_CACHE_LIMIT:
             VERIFY_CACHE.pop(next(iter(VERIFY_CACHE)))
 
-
 def clear_arduino_compile_cache() -> int:
     with VERIFY_CACHE_LOCK:
         count = len(VERIFY_CACHE)
         VERIFY_CACHE.clear()
     return count
-
 
 def cancel_arduino_compile() -> dict[str, Any]:
     global ACTIVE_COMPILE_CANCELLED
