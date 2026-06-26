@@ -5,5 +5,8 @@
   "version": "0.1.0",
   "channel": "Beta",
   "support": "",
-  "icon_source": "talos_icon.png"
+  "app_id": "T-Engine.Talos.Beta",
+  "icon_source": "talos_icon.png",
+  "icon_ico": "assets/icons/talos.ico",
+  "icon_png_dir": "assets/icons"
 }

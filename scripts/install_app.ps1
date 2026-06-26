@@ -1,8 +1,14 @@
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $root = Split-Path -Parent $scriptDir
-$appName = "Talos"
+$identityPath = Join-Path $root "config\app_identity.json"
+$identity = Get-Content -LiteralPath $identityPath -Raw | ConvertFrom-Json
+$appName = $identity.display_name
 $sourceExe = Join-Path $root "dist\$appName.exe"
 $installDir = Join-Path $env:LOCALAPPDATA "Programs\$appName"
+$installExe = Join-Path $installDir "$appName.exe"
+$sourceIconDir = Join-Path $root $identity.icon_png_dir
+$installIconDir = Join-Path $installDir $identity.icon_png_dir
+$installIcon = Join-Path $installDir $identity.icon_ico
 
 if (-not (Test-Path -LiteralPath $sourceExe)) {
   Write-Host "Build output not found. Run .\scripts\build_app.ps1 first."
@@ -15,20 +21,26 @@ if (Test-Path -LiteralPath $installDir) {
 
 New-Item -ItemType Directory -Path $installDir -Force | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $installDir "config") -Force | Out-Null
-Copy-Item -LiteralPath $sourceExe -Destination (Join-Path $installDir "$appName.exe") -Force
-Copy-Item -LiteralPath (Join-Path $root "config\config.json") -Destination (Join-Path $installDir "config\config.json") -Force
+New-Item -ItemType Directory -Path $installIconDir -Force | Out-Null
+Copy-Item -LiteralPath $sourceExe -Destination $installExe -Force
+Copy-Item -LiteralPath (Join-Path $root "config\default_config.json") -Destination (Join-Path $installDir "config\config.json") -Force
+Copy-Item -LiteralPath $identityPath -Destination (Join-Path $installDir "config\app_identity.json") -Force
+Copy-Item -LiteralPath (Join-Path $sourceIconDir "*") -Destination $installIconDir -Force
 Copy-Item -LiteralPath (Join-Path $root "docs\README.md") -Destination (Join-Path $installDir "README.md") -Force
 
 $desktop = [Environment]::GetFolderPath("Desktop")
 $shortcutPath = Join-Path $desktop "$appName.lnk"
 $shell = New-Object -ComObject WScript.Shell
 $shortcut = $shell.CreateShortcut($shortcutPath)
-$shortcut.TargetPath = Join-Path $installDir "$appName.exe"
+$shortcut.TargetPath = $installExe
 $shortcut.WorkingDirectory = $installDir
-$shortcut.Description = "Talos"
+$shortcut.Description = $identity.display_name
+if (Test-Path -LiteralPath $installIcon) {
+  $shortcut.IconLocation = $installIcon
+}
 $shortcut.Save()
 
 Write-Host "Installed:"
-Write-Host (Join-Path $installDir "$appName.exe")
+Write-Host $installExe
 Write-Host "Shortcut:"
 Write-Host $shortcutPath

@@ -12,9 +12,12 @@ if getattr(sys, "frozen", False):
     ROOT = Path(sys.executable).resolve().parent
 else:
     ROOT = Path(__file__).resolve().parent.parent
+BUNDLE_ROOT = Path(getattr(sys, "_MEIPASS", ROOT))
 
 CONFIG_PATH = ROOT / "config" / "config.json"
 APP_IDENTITY_PATH = ROOT / "config" / "app_identity.json"
+DEFAULT_CONFIG_PATH = BUNDLE_ROOT / "config" / "default_config.json"
+BUNDLED_APP_IDENTITY_PATH = BUNDLE_ROOT / "config" / "app_identity.json"
 CONFIG_SCHEMA_VERSION = 1
 WEBVIEW_MIN_WIDTH = 520
 WEBVIEW_MIN_HEIGHT = 420
@@ -26,7 +29,10 @@ DEFAULT_APP_IDENTITY: dict[str, str] = {
     "version": "0.1.0",
     "channel": "Beta",
     "support": "",
+    "app_id": "T-Engine.Talos.Beta",
     "icon_source": "talos_icon.png",
+    "icon_ico": "assets/icons/talos.ico",
+    "icon_png_dir": "assets/icons",
 }
 
 DEFAULT_CONFIG: dict[str, Any] = {
@@ -126,7 +132,8 @@ def _normalize_config(data: Any) -> dict[str, Any]:
     return config
 
 def load_config() -> dict[str, Any]:
-    data, valid = _read_json(CONFIG_PATH, {}, encoding="utf-8-sig")
+    fallback = read_json_file(DEFAULT_CONFIG_PATH, {}, encoding="utf-8-sig")
+    data, valid = _read_json(CONFIG_PATH, fallback, encoding="utf-8-sig")
     config = _normalize_config(data)
     can_migrate = not isinstance(data, dict) or schema_version(data.get("schema_version")) <= CONFIG_SCHEMA_VERSION
     if CONFIG_PATH.exists() and can_migrate and (not valid or config != data):
@@ -141,7 +148,8 @@ def save_config(config: dict[str, Any]) -> None:
     write_json_file(CONFIG_PATH, _normalize_config(config))
 
 def load_app_identity() -> dict[str, str]:
-    data = read_json_file(APP_IDENTITY_PATH, {}, encoding="utf-8-sig")
+    fallback = read_json_file(BUNDLED_APP_IDENTITY_PATH, {}, encoding="utf-8-sig")
+    data = read_json_file(APP_IDENTITY_PATH, fallback, encoding="utf-8-sig")
     identity = DEFAULT_APP_IDENTITY | data if isinstance(data, dict) else DEFAULT_APP_IDENTITY.copy()
     return {key: str(value).strip() for key, value in identity.items()}
 

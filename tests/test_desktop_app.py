@@ -589,6 +589,24 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("External-change conflict", smoke_test)
         self.assertIn("Save and verify", smoke_test)
 
+    def test_stage_10_icon_is_wired_into_desktop_build_and_shortcut(self) -> None:
+        root = Path(__file__).parents[1]
+        desktop_shell = (root / "desktop_app.py").read_text(encoding="utf-8")
+        build_script = (root / "scripts" / "build_app.ps1").read_text(encoding="utf-8")
+        install_script = (root / "scripts" / "install_app.ps1").read_text(encoding="utf-8")
+
+        self.assertIn("_set_windows_app_id(app_identity)", desktop_shell)
+        self.assertIn("webview.start(debug=\"--debug-webview\" in sys.argv, icon=icon_path)", desktop_shell)
+        self.assertIn("--icon", build_script)
+        self.assertIn("assets\\icons;assets\\icons", build_script)
+        self.assertIn("config\\app_identity.json;config", build_script)
+        self.assertIn("config\\default_config.json;config", build_script)
+        self.assertIn(".venv\\Scripts\\python.exe", build_script)
+        self.assertIn("IconLocation", install_script)
+        self.assertIn("config\\app_identity.json", install_script)
+        self.assertIn("config\\default_config.json", install_script)
+        self.assertNotIn("config\\config.json\") -Destination", install_script)
+
     def test_pipeline_defines_exit_condition_for_every_stage(self) -> None:
         pipeline = (Path(__file__).parents[1] / "docs" / "TALOS_PIPELINE.md").read_text(encoding="utf-8")
         stages = re.split(r"(?=^## Stage \d+ - )", pipeline, flags=re.MULTILINE)
@@ -597,6 +615,31 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertEqual(len(stage_sections), 11)
         for section in stage_sections:
             self.assertIn("Exit condition:", section, section.splitlines()[0])
+
+    def test_stage_10_icon_set_exists_for_windows_packaging(self) -> None:
+        from PIL import Image
+
+        root = Path(__file__).parents[1]
+        identity = json.loads((root / "config" / "app_identity.json").read_text(encoding="utf-8"))
+        icon_dir = root / identity["icon_png_dir"]
+
+        self.assertEqual(identity["icon_ico"], "assets/icons/talos.ico")
+        self.assertTrue((root / identity["icon_source"]).exists())
+        self.assertTrue((root / identity["icon_ico"]).exists())
+
+        for size in (16, 24, 32, 48, 64, 128, 256):
+            with Image.open(icon_dir / f"talos_{size}.png") as icon:
+                self.assertEqual(icon.size, (size, size))
+                self.assertEqual(icon.mode, "RGBA")
+
+    def test_stage_10_default_config_is_packaging_safe(self) -> None:
+        root = Path(__file__).parents[1]
+        default_config = json.loads((root / "config" / "default_config.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(default_config["schema_version"], 1)
+        self.assertEqual(default_config["arduino_workspace_path"], "")
+        self.assertEqual(default_config["arduino_fqbn"], "")
+        self.assertEqual(default_config["arduino_profiles"], {})
 
     def test_codex_thread_summary_prefers_name_and_supports_unix_time(self) -> None:
         summary = normalize_codex_thread(

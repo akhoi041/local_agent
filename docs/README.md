@@ -29,12 +29,31 @@ Important endpoints:
 GET  /api/health
 GET  /api/state
 GET  /api/arduino_context
+GET  /api/arduino_events?since=...
+GET  /api/arduino_profile
 GET  /api/arduino_projects
 GET  /api/arduino_file?path=Blink.ino
+GET  /api/arduino_checkpoint?path=Blink.ino
 POST /api/arduino_workspace
 POST /api/arduino_file
+POST /api/arduino_rollback
 POST /api/arduino_delete
 POST /api/arduino_verify
+POST /api/arduino_verify_cancel
+POST /api/arduino_verify_cache_clear
+POST /api/arduino_profile
+POST /api/release_evidence
+GET  /api/codex_status
+GET  /api/run_history
+POST /api/codex_message
+POST /api/codex_reconnect
+POST /api/codex_cancel
+POST /api/codex_review_patch
+POST /api/codex_apply_patch
+POST /api/codex_keep_external
+POST /api/codex_merge_draft
+POST /api/codex_verify_patch
+POST /api/codex_save_patch
 ```
 
 Example write request:
@@ -68,16 +87,21 @@ talos/native_bridge.py  ctypes bridge to the native library
 talos/run_history.py    Local verify and change activity history
 native/talos_native.c   Native Windows app-discovery logic
 ui/web_frontend/        Desktop UI assets
+assets/icons/           Generated Talos Windows icon set
 config/config.json      Runtime configuration
+config/default_config.json Clean packaged runtime defaults
 config/app_identity.json Product identity and packaging metadata
 config/requirements.txt Build/runtime Python dependencies
 scripts/build_app.ps1   Build one-file Windows executable
+scripts/build_icons.py  Generate PNG and ICO app icons from talos_icon.png
 scripts/build_native.ps1 Build the native Windows helper
+scripts/benchmark_native.py Measure native detection and fallback availability
 scripts/check.ps1       Rebuild and run the normal verification flow
 scripts/clean_runtime.ps1 Remove disposable sandbox, staging, and test cache data
 scripts/install_app.ps1 Install built app to LocalAppData and create desktop shortcut
 scripts/launch_desktop.ps1 Open source app or installed app
 scripts/pipeline_status.ps1 Show pipeline progress
+scripts/smoke_release_recovery.py Validate restart/recovery safety for pending Codex reviews
 tests/                  Regression tests
 docs/                   README and license
 ```
@@ -138,13 +162,19 @@ Build the native C helper when a C compiler is available:
 .\scripts\build_native.ps1
 ```
 
+Regenerate app icons after changing `talos_icon.png`:
+
+```powershell
+python -B scripts\build_icons.py
+```
+
 Run the normal project verification flow:
 
 ```powershell
 .\scripts\check.ps1
 ```
 
-This rebuilds the native DLL, checks that the current Python bridge can load the expected native exports, runs the regression tests, and prints the pipeline status.
+This rebuilds the native DLL, checks that the current Python bridge can load the expected native exports, benchmarks native detection, runs the regression tests, validates restart/recovery safety for pending Codex reviews, and prints the pipeline status.
 
 Run the manual Arduino MVP smoke test before treating Arduino support as ready:
 
