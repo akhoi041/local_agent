@@ -101,7 +101,7 @@ def normalize_environment_profile(profile: dict[str, Any] | None = None) -> dict
     properties = []
     for property_text in build_properties if isinstance(build_properties, list) else []:
         value = str(property_text).strip()
-        if value and "=" in value and value not in properties:
+        if value and value not in properties:
             properties.append(value)
     build_flags = profile.get("build_flags")
     if isinstance(build_flags, str):
@@ -831,6 +831,48 @@ def workspace_map(config: dict[str, Any], latest_verify: dict[str, Any] | None =
         },
     }
 
+def profile_readiness(config: dict[str, Any]) -> dict[str, Any]:
+    """Return release-readiness status for the selected Arduino workspace profile."""
+    summary = workspace_summary(config)
+    profile = environment_profile(config, str(summary.get("path") or ""))
+    issues: list[dict[str, str]] = []
+    warnings: list[dict[str, str]] = []
+
+    if not summary.get("valid"):
+        issues.append({
+            "code": "workspace_not_ready",
+            "message": str(summary.get("message") or "Select a valid Arduino sketch folder."),
+        })
+    if not str(summary.get("fqbn") or "").strip():
+        issues.append({"code": "missing_fqbn", "message": "Select or save a board FQBN before verify."})
+    for build_property in profile.get("build_properties") or []:
+        if "=" not in str(build_property):
+            issues.append({
+                "code": "invalid_build_property",
+                "message": f"Build property must use key=value syntax: {build_property}",
+            })
+    if not str(profile.get("serial_port") or "").strip():
+        warnings.append({
+            "code": "missing_serial_port",
+            "message": "Serial port is not required for compile, but record it for hardware release evidence.",
+        })
+    if not int(profile.get("baud_rate") or 0):
+        warnings.append({
+            "code": "missing_baud_rate",
+            "message": "Baud rate is not required for compile, but record it for serial debugging evidence.",
+        })
+
+    return {
+        "schema_version": 1,
+        "ready": not issues,
+        "issues": issues,
+        "warnings": warnings,
+        "workspace": str(summary.get("path") or ""),
+        "main_sketch": str(summary.get("main_sketch") or ""),
+        "fqbn": str(summary.get("fqbn") or ""),
+        "profile": profile,
+    }
+
 def workspace_context(config: dict[str, Any], max_bytes: int = MAX_CONTEXT_BYTES) -> str:
     summary = workspace_summary(config)
     if not summary["valid"]:
@@ -1069,15 +1111,31 @@ def run_arduino_compile(
 
     step_started_at = time.perf_counter()
     summary = workspace_summary(config)
+    readiness = profile_readiness(config)
     step_started_at = mark("prepare", step_started_at)
     if not summary["valid"]:
-        return with_total({"ok": False, "status": "not_ready", "summary": summary, "output": summary["message"]})
+        return with_total({
+            "ok": False,
+            "status": "not_ready",
+            "summary": summary,
+            "profile_readiness": readiness,
+            "output": summary["message"],
+        })
     if not summary["fqbn"]:
         return with_total({
             "ok": False,
             "status": "missing_fqbn",
             "summary": summary,
+            "profile_readiness": readiness,
             "output": "Set an Arduino FQBN first, for example arduino:avr:uno.",
+        })
+    if not readiness["ready"]:
+        return with_total({
+            "ok": False,
+            "status": "profile_not_ready",
+            "summary": summary,
+            "profile_readiness": readiness,
+            "output": "; ".join(item["message"] for item in readiness["issues"]),
         })
     cli = find_arduino_cli()
     step_started_at = mark("cli_lookup", step_started_at)
@@ -1086,6 +1144,7 @@ def run_arduino_compile(
             "ok": False,
             "status": "missing_cli",
             "summary": summary,
+            "profile_readiness": readiness,
             "output": "arduino-cli was not found in PATH or in the Arduino IDE bundled resources folder.",
         })
     workspace = Path(summary["path"])
@@ -1136,6 +1195,7 @@ def run_arduino_compile(
                 "ok": False,
                 "status": "busy",
                 "summary": summary,
+                "profile_readiness": readiness,
                 "sandbox": str(sandbox),
                 "command": " ".join(command),
                 "output": "Another Arduino compile is already running.",
@@ -1155,6 +1215,7 @@ def run_arduino_compile(
                 "ok": False,
                 "status": "launch_failed",
                 "summary": summary,
+                "profile_readiness": readiness,
                 "sandbox": str(sandbox),
                 "command": " ".join(command),
                 "output": f"Could not start arduino-cli: {error}",
@@ -1171,6 +1232,7 @@ def run_arduino_compile(
             "ok": False,
             "status": "timeout",
             "summary": summary,
+            "profile_readiness": readiness,
             "sandbox": str(sandbox),
             "command": " ".join(command),
             "output": parsed["output"] or f"arduino-cli compile timed out after {timeout} seconds.",
@@ -1194,6 +1256,7 @@ def run_arduino_compile(
         "status": "cancelled" if cancelled else "passed" if process.returncode == 0 else "failed",
         "returncode": process.returncode,
         "summary": summary,
+        "profile_readiness": readiness,
         "sandbox": str(sandbox),
         "command": " ".join(command),
         "output": (

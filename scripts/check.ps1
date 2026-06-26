@@ -41,5 +41,12 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host ""
+Write-Host "== Release recovery smoke test =="
+python -B scripts\smoke_release_recovery.py
+if ($LASTEXITCODE -ne 0) {
+  throw "Release recovery smoke test failed with exit code $LASTEXITCODE"
+}
+
+Write-Host ""
 Write-Host "== Pipeline status =="
 & (Join-Path $root "scripts\pipeline_status.ps1")

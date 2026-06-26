@@ -10,6 +10,8 @@ from talos.core import ROOT, migrate_state_document, now, read_json_file, write_
 
 CHECKPOINT_PATH = ROOT / "config" / "checkpoints.json"
 CHECKPOINT_LIMIT = 80
+CHECKPOINT_HISTORY_LIMIT = 5
+CHECKPOINT_PER_FILE_LIMIT = 8
 CHECKPOINT_SCHEMA_VERSION = 1
 CHECKPOINT_LOCK = threading.Lock()
 
@@ -29,9 +31,28 @@ def _load() -> list[dict[str, Any]]:
     return [item for item in (checkpoints or []) if isinstance(item, dict)][-CHECKPOINT_LIMIT:]
 
 def _store(checkpoints: list[dict[str, Any]]) -> None:
+    retained: list[dict[str, Any]] = []
+    saved_counts: dict[tuple[str, str], int] = {}
+    for checkpoint in reversed(checkpoints):
+        key = (str(checkpoint.get("workspace") or ""), str(checkpoint.get("path") or ""))
+        state = str(checkpoint.get("state") or "")
+        if state == "pending":
+            retained.append(checkpoint)
+            continue
+        if state == "saved":
+            saved_counts[key] = saved_counts.get(key, 0) + 1
+            if saved_counts[key] > CHECKPOINT_PER_FILE_LIMIT:
+                continue
+        retained.append(checkpoint)
+    retained.reverse()
     write_json_file(CHECKPOINT_PATH, {
         "schema_version": CHECKPOINT_SCHEMA_VERSION,
-        "checkpoints": checkpoints[-CHECKPOINT_LIMIT:],
+        "retention": {
+            "global_limit": CHECKPOINT_LIMIT,
+            "per_file_saved_limit": CHECKPOINT_PER_FILE_LIMIT,
+            "history_limit": CHECKPOINT_HISTORY_LIMIT,
+        },
+        "checkpoints": retained[-CHECKPOINT_LIMIT:],
     })
 
 def _public(checkpoint: dict[str, Any]) -> dict[str, Any]:
@@ -84,16 +105,22 @@ def latest_saved_checkpoint(config: dict[str, Any], relative_path: str) -> dict[
     workspace = _workspace_path(config)
     path = str(current["path"])
     with CHECKPOINT_LOCK:
-        checkpoint = next(
-            (
-                item for item in reversed(_load())
-                if item.get("workspace") == workspace
-                and item.get("path") == path
-                and item.get("state") == "saved"
-            ),
-            None,
-        )
-    return {"ok": True, "checkpoint": _public(checkpoint) if checkpoint else None}
+        history = [
+            item for item in reversed(_load())
+            if item.get("workspace") == workspace
+            and item.get("path") == path
+            and item.get("state") == "saved"
+        ][:CHECKPOINT_HISTORY_LIMIT]
+    checkpoint = history[0] if history else None
+    return {
+        "ok": True,
+        "checkpoint": _public(checkpoint) if checkpoint else None,
+        "history": [_public(item) for item in history],
+        "retention": {
+            "history_limit": CHECKPOINT_HISTORY_LIMIT,
+            "per_file_saved_limit": CHECKPOINT_PER_FILE_LIMIT,
+        },
+    }
 
 def rollback_last_checkpoint(config: dict[str, Any], relative_path: str) -> dict[str, Any]:
     latest = latest_saved_checkpoint(config, relative_path)

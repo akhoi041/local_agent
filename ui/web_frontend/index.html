@@ -113,10 +113,12 @@
                   <label>Serial port<input id="profileSerialPortInput" placeholder="COM3" /></label>
                   <label>Baud rate<input id="profileBaudRateInput" type="number" min="1" max="4000000" step="1" placeholder="115200" /></label>
                   <label>Build flags<textarea id="profileBuildPropertiesInput" rows="2" placeholder="-DDEBUG"></textarea></label>
+                  <label>Build properties<textarea id="profileBuildPropertyInput" rows="2" placeholder="build.extra_flags=-DDEBUG"></textarea></label>
                   <label>Library metadata<textarea id="profileLibrariesInput" rows="2" placeholder="Wire&#10;ArduinoJson"></textarea></label>
                   <div class="explorer-actions">
                     <button id="saveEnvironmentProfileBtn" class="button ghost" type="button">Save Profile</button>
                   </div>
+                  <p id="profileReadinessStatus" class="status-text">Profile readiness unknown.</p>
                   <p id="environmentProfileStatus" class="status-text">Saved per sketch.</p>
                 </details>
               </section>
@@ -181,6 +183,16 @@
                     <button id="applyCodexPatchBtn" class="button primary" type="button">Apply To Editor</button>
                   </div>
                 </div>
+                <div id="codexReviewRecovery" class="codex-review-recovery" hidden>
+                  <div>
+                    <span class="codex-review-kicker">Recovered review</span>
+                    <strong id="codexReviewRecoveryLabel">Unfinished Codex review found</strong>
+                  </div>
+                  <div class="panel-actions">
+                    <button id="discardCodexReviewsBtn" class="icon-button" type="button">Discard</button>
+                    <button id="restoreCodexReviewsBtn" class="button primary" type="button">Restore</button>
+                  </div>
+                </div>
                 <div id="codexConflictView" class="codex-conflict-view" hidden>
                   <header>
                     <div>
@@ -189,6 +201,7 @@
                     </div>
                     <div class="codex-conflict-actions">
                       <span id="codexConflictTime" class="conflict-time"></span>
+                      <button id="draftConflictMergeBtn" class="icon-button" type="button">Draft Merge</button>
                       <button id="keepExternalConflictBtn" class="button" type="button">Keep Arduino Version</button>
                     </div>
                   </header>
@@ -224,6 +237,7 @@
                   <div class="panel-actions">
                     <button id="copyIssuesBtn" class="icon-button" type="button" title="Copy compile issues only" aria-label="Copy compile issues only" disabled>Copy Issues</button>
                     <button id="copyVerifyBtn" class="icon-button" type="button" title="Copy full verify output" aria-label="Copy full verify output">Copy All</button>
+                    <button id="recordEvidenceBtn" class="icon-button" type="button" title="Record release evidence from latest verify" aria-label="Record release evidence" disabled>Record Evidence</button>
                   </div>
                 </div>
                 <div id="arduinoOutput" class="verify-output empty">Sandbox compile has not been run.</div>

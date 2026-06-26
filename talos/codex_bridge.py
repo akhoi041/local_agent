@@ -11,13 +11,15 @@ from difflib import SequenceMatcher, unified_diff
 from pathlib import Path
 from typing import Any
 
-from talos.core import ROOT, load_app_identity, now
+from talos.core import ROOT, load_app_identity, migrate_state_document, now, read_json_file, write_json_file
 from talos.arduino import is_source_file
 
 CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 PATCH_IGNORED_DIRS = {".git", ".talos_sandbox", "__pycache__", "build", "dist"}
 PATCH_FILE_LIMIT = 2_000_000
 STAGING_ROOT = ROOT / ".talos_staging"
+REVIEW_STATE_PATH = ROOT / "config" / "codex_reviews.json"
+REVIEW_STATE_SCHEMA_VERSION = 1
 THREAD_SANDBOX_MODE = "workspace-write"
 CODEX_TURN_TIMEOUT_SECONDS = 300
 CODEX_THREAD_REFRESH_SECONDS = 15
@@ -227,8 +229,34 @@ def prepare_staging_workspace(source_workspace: str | Path) -> Path:
     return staging.resolve()
 
 def build_patch_hunks(before: str, after: str) -> list[dict[str, Any]]:
+    if before == after:
+        return []
     before_lines = before.splitlines()
     after_lines = after.splitlines()
+    if not before_lines and after_lines:
+        return [{
+            "id": "hunk-1",
+            "kind": "insert",
+            "old_start": 0,
+            "old_end": 0,
+            "new_start": 0,
+            "new_end": len(after_lines),
+            "old_lines": [],
+            "new_lines": after_lines,
+            "review_status": "staged",
+        }]
+    if before_lines and not after_lines:
+        return [{
+            "id": "hunk-1",
+            "kind": "delete",
+            "old_start": 0,
+            "old_end": len(before_lines),
+            "new_start": 0,
+            "new_end": 0,
+            "old_lines": before_lines,
+            "new_lines": [],
+            "review_status": "staged",
+        }]
     hunks: list[dict[str, Any]] = []
     matcher = SequenceMatcher(a=before_lines, b=after_lines, autojunk=False)
     for index, (kind, old_start, old_end, new_start, new_end) in enumerate(matcher.get_opcodes(), start=1):
@@ -311,8 +339,40 @@ def staged_patch_files(
         )
     return files
 
+def unfinished_review_patches(patches: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    pending = {"staged", "reviewing", "applied-to-editor", "conflict"}
+    return [
+        patch for patch in patches
+        if str(patch.get("review_status") or "staged") in pending
+        or any(str(file.get("review_status") or "staged") in pending for file in patch.get("files") or [])
+    ][-20:]
+
+def load_persisted_reviews() -> list[dict[str, Any]]:
+    data = read_json_file(REVIEW_STATE_PATH, {})
+    state = migrate_state_document(
+        REVIEW_STATE_PATH,
+        data,
+        collection_key="patches",
+        target_schema_version=REVIEW_STATE_SCHEMA_VERSION,
+        label="codex-review-migration",
+    )
+    patches = [item for item in state.get("patches", []) if isinstance(item, dict)]
+    return unfinished_review_patches(patches)
+
+def store_persisted_reviews(patches: list[dict[str, Any]]) -> None:
+    pending = unfinished_review_patches(patches)
+    write_json_file(
+        REVIEW_STATE_PATH,
+        {
+            "schema_version": REVIEW_STATE_SCHEMA_VERSION,
+            "updated_at": now(),
+            "patches": pending,
+        },
+    )
+
 class CodexBridge:
-    def __init__(self) -> None:
+    def __init__(self, persist_reviews: bool = True) -> None:
+        self._persist_reviews_enabled = persist_reviews
         self._process: subprocess.Popen[str] | None = None
         self._reader: threading.Thread | None = None
         self._stderr_reader: threading.Thread | None = None
@@ -331,9 +391,10 @@ class CodexBridge:
         self._turn_running = False
         self._turn_id = ""
         self._assistant_message_id = ""
-        self._patches: list[dict[str, Any]] = []
-        self._patch_revision = 0
+        self._patches: list[dict[str, Any]] = load_persisted_reviews() if persist_reviews else []
+        self._patch_revision = 1 if self._patches else 0
         self._patch_event_revision = 0
+        self._review_recovery_pending = bool(self._patches)
         self._turn_workspace = ""
         self._turn_staging_workspace = ""
         self._turn_track_changes = False
@@ -379,6 +440,11 @@ class CodexBridge:
                 "patches": list(self._patches[-20:]),
                 "patch_revision": self._patch_revision,
                 "patch_event_revision": self._patch_event_revision,
+                "review_recovery": {
+                    "pending": self._review_recovery_pending,
+                    "count": len(unfinished_review_patches(self._patches)),
+                    "updated_at": now(),
+                },
                 "pending_patch": {
                     "workspace": self._turn_workspace,
                     "files": list(self._turn_protocol_changes.values()),
@@ -578,6 +644,7 @@ class CodexBridge:
             self._refresh_editor_content(file)
             self._sync_patch_status(patch)
             self._append_activity(f"Applied Codex change to Talos editor: {target}.")
+            self._persist_reviews_locked()
             return {"ok": True, "patch": dict(patch), "file": dict(file)}
 
     def review_patch(self, patch_id: str, workspace: str, relative_path: str) -> dict[str, Any]:
@@ -598,6 +665,7 @@ class CodexBridge:
                         hunk["review_status"] = "reviewing"
                 self._sync_patch_status(patch)
                 self._append_activity(f"Reviewing staged Codex change: {target}.")
+                self._persist_reviews_locked()
             return {"ok": True, "patch": dict(patch), "file": dict(file)}
 
     def apply_hunk(self, patch_id: str, workspace: str, relative_path: str, hunk_id: str) -> dict[str, Any]:
@@ -613,6 +681,7 @@ class CodexBridge:
             self._refresh_editor_content(file)
             self._sync_patch_status(patch)
             self._append_activity(f"Applied Codex hunk to Talos editor: {relative_path} ({hunk_id}).")
+            self._persist_reviews_locked()
             return {"ok": True, "patch": dict(patch), "file": dict(file), "hunk": dict(hunk)}
 
     def reject_hunk(self, patch_id: str, workspace: str, relative_path: str, hunk_id: str) -> dict[str, Any]:
@@ -628,6 +697,7 @@ class CodexBridge:
             self._refresh_editor_content(file)
             self._sync_patch_status(patch)
             self._append_activity(f"Rejected Codex hunk: {relative_path} ({hunk_id}).")
+            self._persist_reviews_locked()
             return {"ok": True, "patch": dict(patch), "file": dict(file), "hunk": dict(hunk)}
 
     def apply_all(self, patch_id: str, workspace: str) -> dict[str, Any]:
@@ -650,6 +720,7 @@ class CodexBridge:
                 self._refresh_editor_content(file)
             self._sync_patch_status(patch)
             self._append_activity(f"Applied {changed} Codex change hunk(s) to Talos editors.")
+            self._persist_reviews_locked()
             return {"ok": True, "patch": dict(patch), "changed": changed}
 
     def reject_all(self, patch_id: str, workspace: str) -> dict[str, Any]:
@@ -670,6 +741,7 @@ class CodexBridge:
                 self._refresh_editor_content(file)
             self._sync_patch_status(patch)
             self._append_activity(f"Rejected {changed} pending Codex change hunk(s).")
+            self._persist_reviews_locked()
             return {"ok": True, "patch": dict(patch), "changed": changed}
 
     def mark_patch_saved(self, workspace: str, relative_path: str) -> dict[str, Any]:
@@ -684,6 +756,7 @@ class CodexBridge:
                 file["review_status"] = "saved"
                 self._sync_patch_status(patch)
                 self._append_activity(f"Saved Codex change to Arduino workspace: {target}.")
+                self._persist_reviews_locked()
                 return {"ok": True, "saved": True, "patch": dict(patch), "file": dict(file)}
             return {"ok": True, "saved": False}
 
@@ -704,6 +777,7 @@ class CodexBridge:
             self._refresh_editor_content(file)
             self._sync_patch_status(patch)
             self._append_activity(f"Rejected Codex change: {target}.")
+            self._persist_reviews_locked()
             return {"ok": True, "patch": dict(patch), "file": dict(file)}
 
     def keep_external_conflict(self, patch_id: str, workspace: str, relative_path: str) -> dict[str, Any]:
@@ -724,6 +798,38 @@ class CodexBridge:
             file.pop("editor_content", None)
             self._sync_patch_status(patch)
             self._append_activity(f"Kept external Arduino file and rejected Codex change: {target}.")
+            self._persist_reviews_locked()
+            return {"ok": True, "patch": dict(patch), "file": dict(file)}
+
+    def draft_conflict_merge(self, patch_id: str, workspace: str, relative_path: str) -> dict[str, Any]:
+        """Create an editor-only merge draft. The Arduino file is not written here."""
+        with self._lock:
+            patch, file, error = self._reviewable_file(patch_id, workspace, relative_path)
+            if error:
+                return {"ok": False, "error": error}
+            if file.get("review_status") != "conflict":
+                return {"ok": False, "error": "This Codex change is not in conflict."}
+            current = str(file.get("conflict_current_content") or "")
+            proposed = str(file.get("content") or "")
+            target = str(relative_path or "").replace("\\", "/")
+            draft = (
+                f"/* TALOS MERGE DRAFT: review before Save File. Source: {target} */\n"
+                "<<<<<<< Arduino current\n"
+                f"{current}{'' if current.endswith(chr(10)) or not current else chr(10)}"
+                "======= Codex proposed\n"
+                f"{proposed}{'' if proposed.endswith(chr(10)) or not proposed else chr(10)}"
+                ">>>>>>> Codex staged\n"
+            )
+            file["review_status"] = "applied-to-editor"
+            file["conflict_resolution"] = "merge-draft"
+            file["conflict_resolved_at"] = now()
+            file["editor_content"] = draft
+            for hunk in file.get("hunks") or []:
+                if hunk.get("review_status") == "conflict":
+                    hunk["review_status"] = "applied-to-editor"
+            self._sync_patch_status(patch)
+            self._append_activity(f"Created three-way merge draft in Talos editor: {target}.")
+            self._persist_reviews_locked()
             return {"ok": True, "patch": dict(patch), "file": dict(file)}
 
     def staged_sandbox_overrides(self, patch_id: str, workspace: str) -> dict[str, Any]:
@@ -771,6 +877,7 @@ class CodexBridge:
         return patch if Path(str(patch.get("workspace") or "")).resolve() == Path(workspace).resolve() else None
 
     def _detect_external_conflicts(self) -> None:
+        changed = False
         for patch in self._patches:
             workspace = Path(str(patch.get("workspace") or "")).resolve()
             for file in patch.get("files") or []:
@@ -795,8 +902,11 @@ class CodexBridge:
                     if hunk.get("review_status") in {"staged", "reviewing", "applied-to-editor"}:
                         hunk["review_status"] = "conflict"
                 file.pop("editor_content", None)
+                changed = True
                 self._append_activity(f"External source change requires conflict resolution: {file.get('path', '')}.")
             self._sync_patch_status(patch)
+        if changed:
+            self._persist_reviews_locked()
 
     @staticmethod
     def _refresh_editor_content(file: dict[str, Any]) -> None:
@@ -855,6 +965,8 @@ class CodexBridge:
             self._activity.clear()
             self._patches.clear()
             self._patch_revision += 1
+            self._review_recovery_pending = False
+            self._persist_reviews_locked()
             self._append_activity("Ready for a new Codex thread.")
         return {"ok": True}
 
@@ -891,6 +1003,8 @@ class CodexBridge:
             self._messages = messages
             self._patches = []
             self._patch_revision += 1
+            self._review_recovery_pending = False
+            self._persist_reviews_locked()
             self._activity.clear()
             self._append_activity("Loaded Codex conversation history.")
             self._remote_threads = [
@@ -1254,8 +1368,32 @@ class CodexBridge:
             }
             self._patches.append(patch)
             del self._patches[:-20]
+            self._review_recovery_pending = False
+            self._persist_reviews_locked()
             self._append_activity(f"Prepared Codex patch review across {len(files)} file(s).")
         self._clear_turn_patch_state()
+
+    def restore_reviews(self) -> dict[str, Any]:
+        with self._lock:
+            restored = unfinished_review_patches(self._patches)
+            self._review_recovery_pending = False
+            self._patch_revision += 1 if restored else 0
+            self._persist_reviews_locked()
+            self._append_activity(f"Restored {len(restored)} unfinished Codex review(s).")
+            return {"ok": True, "restored": len(restored), "patches": list(restored)}
+
+    def discard_reviews(self) -> dict[str, Any]:
+        with self._lock:
+            discarded = len(unfinished_review_patches(self._patches))
+            self._patches = [
+                patch for patch in self._patches
+                if patch not in unfinished_review_patches(self._patches)
+            ]
+            self._review_recovery_pending = False
+            self._patch_revision += 1
+            self._persist_reviews_locked()
+            self._append_activity(f"Discarded {discarded} unfinished Codex review(s).")
+            return {"ok": True, "discarded": discarded}
 
     def _clear_turn_patch_state(self) -> None:
         self._turn_workspace = ""
@@ -1265,6 +1403,14 @@ class CodexBridge:
         self._turn_protocol_changes = {}
         self._turn_protocol_revision = 0
         self._turn_diff = ""
+
+    def _persist_reviews_locked(self) -> None:
+        if not self._persist_reviews_enabled:
+            return
+        pending = unfinished_review_patches(self._patches)
+        if not pending:
+            self._review_recovery_pending = False
+        store_persisted_reviews(self._patches)
 
     def _append_activity(self, text: str) -> None:
         self._activity.append(f"{now()} {text}")

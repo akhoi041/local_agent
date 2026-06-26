@@ -22,6 +22,7 @@ from talos.arduino import (
     extract_ino_names,
     format_compile_issue_context,
     parse_compile_output,
+    profile_readiness,
     read_workspace_file,
     run_arduino_compile,
     save_environment_profile,
@@ -55,7 +56,7 @@ from talos.checkpoints import (
     mark_checkpoint_saved,
     rollback_last_checkpoint,
 )
-from talos.run_history import record_patch, record_patch_transition, record_verify, run_history
+from talos.run_history import record_patch, record_patch_transition, record_release_evidence, record_verify, run_history
 from talos.server import state_payload
 
 class TalosArduinoTests(unittest.TestCase):
@@ -153,7 +154,7 @@ class TalosArduinoTests(unittest.TestCase):
             staging = Path(tmp) / "staging"
             root.mkdir()
             staging.mkdir()
-            bridge = CodexBridge()
+            bridge = CodexBridge(persist_reviews=False)
             bridge._turn_workspace = str(root)
             bridge._turn_staging_workspace = str(staging)
             bridge._turn_track_changes = True
@@ -172,7 +173,7 @@ class TalosArduinoTests(unittest.TestCase):
             self.assertFalse((root / "created.ino").exists())
 
     def test_codex_thread_changes_do_not_emit_patch_events(self) -> None:
-        bridge = CodexBridge()
+        bridge = CodexBridge(persist_reviews=False)
         bridge.new_thread()
 
         status = bridge.status(start=False)
@@ -183,7 +184,7 @@ class TalosArduinoTests(unittest.TestCase):
             root = Path(tmp)
             target = root / "Sketch.ino"
             target.write_text("old\n", encoding="utf-8")
-            bridge = CodexBridge()
+            bridge = CodexBridge(persist_reviews=False)
             bridge._patches.append(
                 {
                     "id": "patch-1",
@@ -219,7 +220,7 @@ class TalosArduinoTests(unittest.TestCase):
             after = "FIRST\nkeep\nSECOND\n"
             hunks = build_patch_hunks(before, after)
             self.assertEqual(len(hunks), 2)
-            bridge = CodexBridge()
+            bridge = CodexBridge(persist_reviews=False)
             bridge._patches.append(
                 {
                     "id": "patch-hunks",
@@ -251,6 +252,92 @@ class TalosArduinoTests(unittest.TestCase):
             self.assertEqual(file["review_status"], "applied-to-editor")
             self.assertEqual(file["editor_content"], after)
 
+    def test_codex_hunk_builder_fast_paths_add_delete_and_equal_files(self) -> None:
+        self.assertEqual(build_patch_hunks("same\n", "same\n"), [])
+        added = build_patch_hunks("", "one\ntwo\n")
+        deleted = build_patch_hunks("one\ntwo\n", "")
+
+        self.assertEqual(added[0]["kind"], "insert")
+        self.assertEqual(added[0]["new_lines"], ["one", "two"])
+        self.assertEqual(deleted[0]["kind"], "delete")
+        self.assertEqual(deleted[0]["old_lines"], ["one", "two"])
+
+    def test_codex_unfinished_reviews_persist_until_restored_or_discarded(self) -> None:
+        with TemporaryDirectory() as tmp:
+            review_path = Path(tmp) / "codex_reviews.json"
+            workspace = Path(tmp) / "Sketch"
+            workspace.mkdir()
+            patch_item = {
+                "id": "patch-restore",
+                "workspace": str(workspace),
+                "review_status": "reviewing",
+                "files": [{"path": "Sketch.ino", "kind": "update", "review_status": "reviewing"}],
+            }
+
+            with patch("talos.codex_bridge.REVIEW_STATE_PATH", review_path):
+                bridge = CodexBridge()
+                bridge._patches.append(patch_item)
+                bridge._persist_reviews_locked()
+
+                restored_bridge = CodexBridge()
+                status = restored_bridge.status(start=False)
+                self.assertTrue(status["review_recovery"]["pending"])
+                self.assertEqual(status["review_recovery"]["count"], 1)
+
+                restored = restored_bridge.restore_reviews()
+                self.assertTrue(restored["ok"])
+                self.assertEqual(restored["restored"], 1)
+                self.assertFalse(restored_bridge.status(start=False)["review_recovery"]["pending"])
+
+                discarded = restored_bridge.discard_reviews()
+                self.assertTrue(discarded["ok"])
+                self.assertEqual(discarded["discarded"], 1)
+                self.assertEqual(restored_bridge.status(start=False)["patches"], [])
+
+    def test_release_recovery_keeps_external_arduino_change_after_restart(self) -> None:
+        with TemporaryDirectory() as tmp:
+            review_path = Path(tmp) / "codex_reviews.json"
+            workspace = Path(tmp) / "RecoverySketch"
+            staging = Path(tmp) / "RecoverySketch_staging"
+            workspace.mkdir()
+            staging.mkdir()
+            source_file = workspace / "RecoverySketch.ino"
+            source_file.write_text("before\n", encoding="utf-8")
+            (staging / "RecoverySketch.ino").write_text("codex change\n", encoding="utf-8")
+            files = staged_patch_files(workspace, staging, [{"path": "RecoverySketch.ino", "kind": "update"}])
+
+            with patch("talos.codex_bridge.REVIEW_STATE_PATH", review_path):
+                bridge = CodexBridge()
+                bridge._patches.append({
+                    "id": "patch-recovery-smoke",
+                    "workspace": str(workspace),
+                    "staging_workspace": str(staging),
+                    "review_status": "staged",
+                    "files": files,
+                })
+                bridge._persist_reviews_locked()
+
+                restarted_bridge = CodexBridge()
+                recovery = restarted_bridge.status(start=False)["review_recovery"]
+                self.assertTrue(recovery["pending"])
+                self.assertEqual(recovery["count"], 1)
+
+                restored = restarted_bridge.restore_reviews()
+                self.assertEqual(restored["restored"], 1)
+                source_file.write_text("external arduino edit\n", encoding="utf-8")
+
+                conflict_status = restarted_bridge.status(start=False)
+                self.assertEqual(conflict_status["patches"][0]["files"][0]["review_status"], "conflict")
+                kept = restarted_bridge.keep_external_conflict(
+                    "patch-recovery-smoke",
+                    str(workspace),
+                    "RecoverySketch.ino",
+                )
+
+            self.assertTrue(kept["ok"])
+            self.assertEqual(kept["file"]["conflict_resolution"], "kept-external")
+            self.assertEqual(source_file.read_text(encoding="utf-8"), "external arduino edit\n")
+
     def test_external_workspace_change_marks_staged_codex_file_as_conflict(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp) / "source"
@@ -260,7 +347,7 @@ class TalosArduinoTests(unittest.TestCase):
             (root / "Sketch.ino").write_text("before\n", encoding="utf-8")
             (staging / "Sketch.ino").write_text("codex change\n", encoding="utf-8")
             files = staged_patch_files(root, staging, [{"path": "Sketch.ino", "kind": "update"}])
-            bridge = CodexBridge()
+            bridge = CodexBridge(persist_reviews=False)
             bridge._patches.append({
                 "id": "patch-conflict",
                 "workspace": str(root),
@@ -282,11 +369,40 @@ class TalosArduinoTests(unittest.TestCase):
             self.assertEqual(resolved["file"]["conflict_resolution"], "kept-external")
             self.assertEqual((root / "Sketch.ino").read_text(encoding="utf-8"), "external edit\n")
 
+    def test_conflict_can_create_editor_only_three_way_merge_draft(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp) / "source"
+            staging = Path(tmp) / "staging"
+            root.mkdir()
+            staging.mkdir()
+            (root / "Sketch.ino").write_text("base\n", encoding="utf-8")
+            (staging / "Sketch.ino").write_text("codex\n", encoding="utf-8")
+            files = staged_patch_files(root, staging, [{"path": "Sketch.ino", "kind": "update"}])
+            bridge = CodexBridge(persist_reviews=False)
+            bridge._patches.append({
+                "id": "patch-merge",
+                "workspace": str(root),
+                "review_status": "staged",
+                "files": files,
+            })
+            (root / "Sketch.ino").write_text("arduino\n", encoding="utf-8")
+            bridge.status(start=False)
+
+            result = bridge.draft_conflict_merge("patch-merge", str(root), "Sketch.ino")
+
+            self.assertTrue(result["ok"])
+            self.assertEqual((root / "Sketch.ino").read_text(encoding="utf-8"), "arduino\n")
+            self.assertEqual(result["file"]["review_status"], "applied-to-editor")
+            self.assertEqual(result["file"]["conflict_resolution"], "merge-draft")
+            self.assertIn("<<<<<<< Arduino current", result["file"]["editor_content"])
+            self.assertIn("arduino", result["file"]["editor_content"])
+            self.assertIn("codex", result["file"]["editor_content"])
+
     def test_staged_patch_sandbox_overrides_use_pending_codex_content_only(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp) / "Sketch"
             root.mkdir()
-            bridge = CodexBridge()
+            bridge = CodexBridge(persist_reviews=False)
             bridge._patches.append({
                 "id": "patch-verify",
                 "workspace": str(root),
@@ -322,10 +438,17 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn('id="codexDiffPreview"', html)
         self.assertIn('id="codexContextPreview"', html)
         self.assertIn('id="codexContextPreviewText"', html)
+        self.assertIn('id="codexReviewRecovery"', html)
+        self.assertIn('id="restoreCodexReviewsBtn"', html)
+        self.assertIn('id="discardCodexReviewsBtn"', html)
+        self.assertIn('id="draftConflictMergeBtn"', html)
         self.assertNotIn('id="codexHistoryBtn"', html)
         self.assertIn('id="codexBackBtn"', html)
         self.assertIn('id="codexHistoryCount"', html)
         self.assertIn('id="runHistoryTab"', html)
+        self.assertIn('id="profileBuildPropertyInput"', html)
+        self.assertIn('id="profileReadinessStatus"', html)
+        self.assertIn('id="recordEvidenceBtn"', html)
         self.assertIn('id="explorerSplitter"', html)
         self.assertIn('id="codexSplitter"', html)
 
@@ -362,6 +485,10 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("keepExternalConflict", script)
         self.assertIn("buildCodexContextPreview", script)
         self.assertIn("renderCodexContextPreview", script)
+        self.assertIn("renderCodexReviewRecovery", script)
+        self.assertIn("/api/codex_restore_reviews", script)
+        self.assertIn("/api/codex_discard_reviews", script)
+        self.assertIn("/api/codex_merge_draft", script)
         self.assertIn("/api/codex_keep_external", script)
         self.assertIn('id="codexConflictView"', html)
         self.assertIn('id="keepExternalConflictBtn"', html)
@@ -394,12 +521,21 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("bindCodexSplitter", script)
         self.assertIn("saveEnvironmentProfile", script)
         self.assertIn("/api/arduino_profile", script)
+        self.assertIn("renderProfileReadiness", script)
+        self.assertIn("recordReleaseEvidence", script)
+        self.assertIn("/api/release_evidence", script)
         self.assertIn("watchArduinoEvents", script)
         self.assertIn("/api/arduino_events", script)
         self.assertIn("renderActiveFileRow", script)
         self.assertIn("CODEX_WIDTH_KEY", script)
         self.assertNotIn("applyWindowMetrics", script)
         self.assertNotIn("--native-window-width", script)
+
+        server = (Path(__file__).parents[1] / "talos" / "server.py").read_text(encoding="utf-8")
+        self.assertIn("/api/codex_restore_reviews", server)
+        self.assertIn("/api/codex_discard_reviews", server)
+        self.assertIn("/api/codex_merge_draft", server)
+        self.assertIn("/api/release_evidence", server)
 
         styles = (Path(__file__).parents[1] / "ui" / "web_frontend" / "styles.css").read_text(encoding="utf-8")
         self.assertNotIn("width: 100vw;", styles)
@@ -431,12 +567,17 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("_HAS_NATIVE_PROCESS_ROWS", check_script)
         self.assertIn("benchmark_native.py", check_script)
         self.assertIn("unittest tests.test_desktop_app", check_script)
+        self.assertIn("smoke_release_recovery.py", check_script)
 
         benchmark_script = (Path(__file__).parents[1] / "scripts" / "benchmark_native.py").read_text(encoding="utf-8")
         self.assertIn("list_window_rows", benchmark_script)
         self.assertIn("list_arduino_process_rows_native", benchmark_script)
         self.assertIn("fallback_status", benchmark_script)
         self.assertIn("list_arduino_tool_processes_wmic", benchmark_script)
+
+        recovery_script = (Path(__file__).parents[1] / "scripts" / "smoke_release_recovery.py").read_text(encoding="utf-8")
+        self.assertIn("restart-pending-review-external-change-guard", recovery_script)
+        self.assertIn("keep_external_conflict", recovery_script)
 
         smoke_test = (Path(__file__).parents[1] / "docs" / "ARDUINO_SMOKE_TEST.md").read_text(encoding="utf-8")
         self.assertIn("Verify Sandbox", smoke_test)
@@ -541,8 +682,37 @@ class TalosArduinoTests(unittest.TestCase):
             self.assertEqual(events[0]["files"][0]["hunks"], 2)
             self.assertEqual(events[0]["timeline"][-1]["action"], "saved")
 
+    def test_run_history_records_versioned_release_evidence(self) -> None:
+        with TemporaryDirectory() as tmp:
+            history_path = Path(tmp) / "run_history.json"
+            with patch("talos.run_history.RUN_HISTORY_PATH", history_path):
+                record_release_evidence(
+                    {
+                        "workspace": r"C:\Sketch",
+                        "main_sketch": "Sketch.ino",
+                        "source_tab_count": 2,
+                    },
+                    {"ready": True, "issues": [], "warnings": []},
+                    {
+                        "ok": True,
+                        "status": "passed",
+                        "summary": {"path": r"C:\Sketch", "main_sketch": "Sketch.ino"},
+                        "memory": {"program": {"percent": 12}},
+                        "timings": {"total": 1.25},
+                    },
+                    ["none"],
+                )
+                events = run_history()
+
+            self.assertEqual(events[0]["type"], "release_evidence")
+            self.assertEqual(events[0]["schema_version"], 1)
+            self.assertEqual(events[0]["release"], "0.1.0-beta")
+            self.assertTrue(events[0]["profile_ready"])
+            self.assertEqual(events[0]["verify_summary"]["memory"]["program"]["percent"], 12)
+            self.assertEqual(events[0]["blocked_cases"], ["none"])
+
     def test_codex_status_starts_runtime_without_blocking_for_handshake(self) -> None:
-        bridge = CodexBridge()
+        bridge = CodexBridge(persist_reviews=False)
 
         with patch.object(bridge, "start_async") as start_async:
             status = bridge.status()
@@ -552,7 +722,7 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertFalse(status["ok"])
 
     def test_codex_start_respects_reconnect_cooldown(self) -> None:
-        bridge = CodexBridge()
+        bridge = CodexBridge(persist_reviews=False)
         bridge._next_retry_at = time.monotonic() + 60
 
         with patch("talos.codex_bridge.threading.Thread") as thread:
@@ -562,7 +732,7 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertEqual(thread.call_count, 1)
 
     def test_codex_reconnect_does_not_replay_interrupted_turn(self) -> None:
-        bridge = CodexBridge()
+        bridge = CodexBridge(persist_reviews=False)
         bridge._turn_running = True
         bridge._turn_id = "turn-1"
         bridge._turn_workspace = r"C:\Sketch"
@@ -825,6 +995,8 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertEqual(payload["app"]["version"], "0.1.0")
         self.assertEqual(payload["app"]["channel"], "Beta")
         self.assertTrue(payload["arduino_ide"]["running"])
+        self.assertIn("arduino_profile_readiness", payload)
+        self.assertIn("POST /api/release_evidence", payload["tools"])
 
     def test_arduino_discovery_does_not_include_configured_folder_without_open_ide_signal(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -1088,6 +1260,33 @@ class TalosArduinoTests(unittest.TestCase):
             self.assertEqual(mapped["environment_profile"]["baud_rate"], 921600)
             self.assertEqual(mapped["environment_profile"]["libraries"], ["Wire", "ArduinoJson"])
 
+    def test_profile_readiness_validates_fqbn_and_build_properties(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp) / "Blink"
+            root.mkdir()
+            (root / "Blink.ino").write_text("void setup() {}\n", encoding="utf-8")
+            config = {"arduino_profiles": {}, "arduino_workspace_path": str(root), "arduino_fqbn": ""}
+
+            missing = profile_readiness(config)
+            self.assertFalse(missing["ready"])
+            self.assertEqual(missing["issues"][0]["code"], "missing_fqbn")
+
+            save_environment_profile(config, str(root), {
+                "fqbn": "arduino:avr:uno",
+                "build_properties": ["bad-property"],
+            })
+            invalid = profile_readiness(config)
+            self.assertFalse(invalid["ready"])
+            self.assertEqual(invalid["issues"][0]["code"], "invalid_build_property")
+
+            save_environment_profile(config, str(root), {
+                "fqbn": "arduino:avr:uno",
+                "build_properties": ["compiler.cpp.extra_flags=-DDEBUG"],
+            })
+            ready = profile_readiness(config)
+            self.assertTrue(ready["ready"])
+            self.assertEqual(ready["fqbn"], "arduino:avr:uno")
+
     def test_legacy_user_state_is_backed_up_and_migrated_without_losing_records(self) -> None:
         with TemporaryDirectory() as tmp:
             config_dir = Path(tmp) / "config"
@@ -1300,7 +1499,10 @@ class TalosArduinoTests(unittest.TestCase):
                 write_workspace_file(config, "Blink.ino", "saved\n")
                 marked = mark_checkpoint_saved(created["checkpoint"]["id"], "saved\n")
                 self.assertTrue(marked["ok"])
-                self.assertIsNotNone(latest_saved_checkpoint(config, "Blink.ino")["checkpoint"])
+                latest = latest_saved_checkpoint(config, "Blink.ino")
+                self.assertIsNotNone(latest["checkpoint"])
+                self.assertEqual(len(latest["history"]), 1)
+                self.assertEqual(latest["retention"]["history_limit"], 5)
 
                 rolled_back = rollback_last_checkpoint(config, "Blink.ino")
                 self.assertTrue(rolled_back["ok"])
@@ -1312,7 +1514,29 @@ class TalosArduinoTests(unittest.TestCase):
                 target.write_text("external change\n", encoding="utf-8")
                 blocked = rollback_last_checkpoint(config, "Blink.ino")
                 self.assertFalse(blocked["ok"])
-                self.assertIn("changed after Talos saved", blocked["error"])
+
+    def test_checkpoint_retention_keeps_short_rollback_history(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp) / "Blink"
+            root.mkdir()
+            target = root / "Blink.ino"
+            target.write_text("start\n", encoding="utf-8")
+            config = {"arduino_workspace_path": str(root), "arduino_fqbn": ""}
+            checkpoint_path = Path(tmp) / "checkpoints.json"
+
+            with patch("talos.checkpoints.CHECKPOINT_PATH", checkpoint_path):
+                for index in range(10):
+                    target.write_text(f"before {index}\n", encoding="utf-8")
+                    created = create_before_save_checkpoint(config, "Blink.ino")
+                    write_workspace_file(config, "Blink.ino", f"saved {index}\n")
+                    mark_checkpoint_saved(created["checkpoint"]["id"], f"saved {index}\n")
+
+                latest = latest_saved_checkpoint(config, "Blink.ino")
+                stored = json.loads(checkpoint_path.read_text(encoding="utf-8"))["checkpoints"]
+
+                self.assertEqual(len(latest["history"]), 5)
+                self.assertLessEqual(len(stored), 8)
+                self.assertEqual(latest["checkpoint"]["saved_sha256"], stored[-1]["saved_sha256"])
 
 if __name__ == "__main__":
     unittest.main()

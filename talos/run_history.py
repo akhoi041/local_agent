@@ -53,7 +53,45 @@ def record_verify(result: dict[str, Any], source: str = "manual") -> dict[str, A
             "platforms": result.get("platforms") or [],
             "issues": result.get("issues") or [],
             "issue_context": str(result.get("issue_context") or "")[:12000],
+            "profile_readiness": result.get("profile_readiness") or {},
+            "timings": result.get("timings") or {},
+            "cache": result.get("cache") or {},
         },
+    }
+    return _store_event(event)
+
+def record_release_evidence(
+    workspace_map: dict[str, Any],
+    profile_readiness: dict[str, Any],
+    verify_result: dict[str, Any],
+    blocked_cases: list[str] | None = None,
+) -> dict[str, Any]:
+    summary = verify_result.get("summary") if isinstance(verify_result.get("summary"), dict) else {}
+    result = verify_result.get("result") if isinstance(verify_result.get("result"), dict) else verify_result
+    event = {
+        "id": f"release-evidence-{uuid.uuid4().hex}",
+        "type": "release_evidence",
+        "schema_version": 1,
+        "release": "0.1.0-beta",
+        "time": now(),
+        "workspace": str(workspace_map.get("workspace") or summary.get("path") or ""),
+        "main_sketch": str(workspace_map.get("main_sketch") or summary.get("main_sketch") or ""),
+        "status": str(result.get("status") or ("passed" if result.get("ok") else "failed")),
+        "ok": bool(result.get("ok")),
+        "profile_ready": bool(profile_readiness.get("ready")),
+        "workspace_map": workspace_map,
+        "profile_readiness": profile_readiness,
+        "verify_summary": {
+            "status": str(result.get("status") or ""),
+            "ok": bool(result.get("ok")),
+            "memory": result.get("memory") or {},
+            "libraries": result.get("libraries") or [],
+            "platforms": result.get("platforms") or [],
+            "issues": result.get("issues") or [],
+            "timings": result.get("timings") or {},
+            "cache": result.get("cache") or {},
+        },
+        "blocked_cases": [str(item) for item in (blocked_cases or []) if str(item).strip()],
     }
     return _store_event(event)
 

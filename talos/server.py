@@ -25,6 +25,7 @@ from talos.arduino import (
     delete_workspace_file,
     discover_arduino_projects,
     environment_profile,
+    profile_readiness,
     read_workspace_file,
     run_arduino_compile,
     save_environment_profile,
@@ -53,6 +54,7 @@ from talos.native_bridge import (
 from talos.run_history import (
     record_patch_transition,
     record_patch_verification,
+    record_release_evidence,
     record_rollback,
     record_verify,
     latest_verify_for_workspace,
@@ -120,6 +122,7 @@ def state_payload() -> dict[str, Any]:
     )
     arduino_summary = workspace_summary(config)
     arduino_profile = environment_profile(config, str(arduino_summary.get("path") or ""))
+    arduino_profile_readiness = profile_readiness(config)
     arduino_map = workspace_map(config, latest_verify_for_workspace(str(arduino_summary.get("path") or "")))
     return {
         "name": app_identity["display_name"],
@@ -135,6 +138,7 @@ def state_payload() -> dict[str, Any]:
         },
         "arduino": arduino_summary,
         "arduino_profile": arduino_profile,
+        "arduino_profile_readiness": arduino_profile_readiness,
         "arduino_workspace_map": arduino_map,
         "arduino_ide": arduino_ide_status(
             processes=ide_processes,
@@ -158,10 +162,13 @@ def state_payload() -> dict[str, Any]:
             "POST /api/arduino_verify_cancel",
             "POST /api/arduino_verify_cache_clear",
             "POST /api/arduino_profile",
+            "POST /api/release_evidence",
             "GET /api/codex_status",
             "GET /api/run_history",
             "POST /api/codex_reconnect",
             "POST /api/codex_message",
+            "POST /api/codex_restore_reviews",
+            "POST /api/codex_discard_reviews",
             "POST /api/codex_review_patch",
             "POST /api/codex_apply_patch",
             "POST /api/codex_apply_hunk",
@@ -172,6 +179,7 @@ def state_payload() -> dict[str, Any]:
             "POST /api/codex_save_patch",
             "POST /api/codex_reject_patch",
             "POST /api/codex_keep_external",
+            "POST /api/codex_merge_draft",
             "POST /api/codex_cancel",
             "POST /api/codex_thread",
             "POST /api/codex_conversation",
@@ -299,6 +307,26 @@ class LocalAgentWebHandler(BaseHTTPRequestHandler):
             log_event(f"{now()} cleared Arduino compile cache ({cleared} entries)")
             self.send_json({"ok": True, "cleared": cleared})
             return
+        if self.path == "/api/release_evidence":
+            config = load_config()
+            summary = workspace_summary(config)
+            workspace = str(summary.get("path") or "")
+            latest_verify = latest_verify_for_workspace(workspace)
+            verify_result = payload.get("verify_result") if isinstance(payload.get("verify_result"), dict) else latest_verify
+            if not isinstance(verify_result, dict):
+                self.send_json({"ok": False, "error": "Run Verify Sandbox before recording release evidence."}, HTTPStatus.BAD_REQUEST)
+                return
+            readiness = profile_readiness(config)
+            arduino_map = workspace_map(config, latest_verify)
+            evidence = record_release_evidence(
+                arduino_map,
+                readiness,
+                verify_result,
+                payload.get("blocked_cases") if isinstance(payload.get("blocked_cases"), list) else [],
+            )
+            log_event(f"{now()} recorded Arduino release evidence: {evidence.get('status')}")
+            self.send_json({"ok": True, "evidence": evidence})
+            return
         if self.path == "/api/arduino_file":
             config = load_config()
             checkpoint_result = create_before_save_checkpoint(config, str(payload.get("path", "")))
@@ -363,6 +391,18 @@ class LocalAgentWebHandler(BaseHTTPRequestHandler):
             result = CODEX_BRIDGE.reconnect()
             if result.get("ok"):
                 log_event(f"{now()} Codex reconnect requested")
+            self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
+            return
+        if self.path == "/api/codex_restore_reviews":
+            result = CODEX_BRIDGE.restore_reviews()
+            if result.get("ok"):
+                log_event(f"{now()} restored unfinished Codex reviews")
+            self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
+            return
+        if self.path == "/api/codex_discard_reviews":
+            result = CODEX_BRIDGE.discard_reviews()
+            if result.get("ok"):
+                log_event(f"{now()} discarded unfinished Codex reviews")
             self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
             return
         if self.path == "/api/codex_apply_patch":
@@ -474,6 +514,18 @@ class LocalAgentWebHandler(BaseHTTPRequestHandler):
             if result.get("ok"):
                 record_patch_transition(result.get("patch") or {}, "kept-external", str(payload.get("path") or ""))
                 log_event(f"{now()} kept external Arduino file for Codex conflict: {payload.get('path', '')}")
+            self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
+            return
+        if self.path == "/api/codex_merge_draft":
+            workspace = workspace_summary(load_config())
+            result = CODEX_BRIDGE.draft_conflict_merge(
+                str(payload.get("id", "")),
+                str(workspace.get("path") or ""),
+                str(payload.get("path", "")),
+            )
+            if result.get("ok"):
+                record_patch_transition(result.get("patch") or {}, "merge-draft", str(payload.get("path") or ""))
+                log_event(f"{now()} created Codex merge draft: {payload.get('path', '')}")
             self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
             return
         if self.path == "/api/codex_thread":

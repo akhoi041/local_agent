@@ -1029,6 +1029,14 @@ textarea:focus {
   resize: vertical;
 }
 
+.status-text.warning {
+  color: #9a6700;
+}
+
+.status-text.blocked {
+  color: #cf222e;
+}
+
 .workspace-context input {
   min-height: 30px;
   margin-top: 4px;
@@ -1264,6 +1272,22 @@ textarea:focus {
 .codex-review-actions {
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+
+.codex-review-recovery {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--accent-subtle);
+}
+
+.codex-review-recovery strong {
+  display: block;
+  color: var(--text);
+  font-size: 13px;
 }
 
 .editor-actions .icon-button.active {

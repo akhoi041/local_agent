@@ -16,6 +16,8 @@ const state = {
   selectedWorkspacePath: "",
   workspaceMap: {},
   environmentProfile: {},
+  profileReadiness: {},
+  lastVerifyResult: null,
   activeFileByWorkspace: {},
   activeFilePath: "",
   editorOriginalContent: "",
@@ -427,6 +429,7 @@ function setOutputView(view) {
   $("#runHistoryTab").setAttribute("aria-selected", String(historyVisible));
   $("#copyIssuesBtn").hidden = historyVisible;
   $("#copyVerifyBtn").hidden = historyVisible;
+  $("#recordEvidenceBtn").hidden = historyVisible;
 }
 
 function renderRunHistory(events = []) {
@@ -453,6 +456,16 @@ function renderRunHistory(events = []) {
               <ol class="patch-timeline">
                 ${timeline.map((entry) => `<li><strong>${escapeHtml(String(entry.action || "updated").replaceAll("-", " "))}</strong><span>${escapeHtml(entry.path || entry.detail?.status || "")} ${escapeHtml(entry.time || "")}</span></li>`).join("")}
               </ol>
+            </article>`;
+        }
+        if (event.type === "release_evidence") {
+          return `
+            <article class="run-history-item verify ${event.ok ? "passed" : "failed"}">
+              <span class="run-history-badge">EVIDENCE</span>
+              <span class="run-history-copy">
+                <strong>${escapeHtml(event.main_sketch || "Arduino MVP")}</strong>
+                <span>${escapeHtml(event.release || "0.1.0-beta")} | profile ${event.profile_ready ? "ready" : "blocked"} | ${escapeHtml(event.time || "")}</span>
+              </span>
             </article>`;
         }
         const source = event.source === "codex_patch" ? "After Codex patch" : "Manual verify";
@@ -522,13 +535,16 @@ function setEditorDirty(dirty) {
   $("#rollbackFileBtn").disabled = !state.activeFilePath || !state.lastCheckpoint || state.editorSaving || conflicted;
 }
 
-function setCheckpoint(checkpoint = null) {
+function setCheckpoint(checkpoint = null, history = [], retention = {}) {
   state.lastCheckpoint = checkpoint || null;
   const button = $("#rollbackFileBtn");
   const available = Boolean(state.activeFilePath && state.lastCheckpoint && !state.editorSaving && !state.conflictedFilePaths.has(state.activeFilePath));
+  const historyText = history.length
+    ? ` | ${history.length}/${Number(retention.history_limit || history.length)} rollback point(s) retained`
+    : "";
   button.disabled = !available;
   button.title = available
-    ? `Restore ${state.activeFilePath} to its state before Talos saved it at ${state.lastCheckpoint.created_at || "the last checkpoint"}`
+    ? `Restore ${state.activeFilePath} to its state before Talos saved it at ${state.lastCheckpoint.created_at || "the last checkpoint"}${historyText}`
     : "No safe Talos checkpoint is available for this file";
 }
 
@@ -539,7 +555,7 @@ async function refreshCheckpoint() {
   }
   try {
     const result = await api(`/api/arduino_checkpoint?path=${encodeURIComponent(state.activeFilePath)}`);
-    setCheckpoint(result.checkpoint);
+    setCheckpoint(result.checkpoint, result.history || [], result.retention || {});
   } catch (_error) {
     setCheckpoint();
   }
@@ -1054,6 +1070,33 @@ async function keepExternalConflict() {
   }
 }
 
+async function draftConflictMerge() {
+  const patch = state.codexPatches.find((item) => (
+    normalizedWindowsPath(item.workspace || "") === normalizedWindowsPath(state.selectedWorkspacePath)
+    && (item.files || []).some((file) => file.path === state.activeFilePath && file.review_status === "conflict")
+  ));
+  if (!patch?.id || !state.activeFilePath) return;
+  try {
+    const result = await api("/api/codex_merge_draft", {
+      method: "POST",
+      body: JSON.stringify({ id: patch.id, path: state.activeFilePath }),
+    });
+    const file = result.file || {};
+    $("#sourceEditor").value = String(file.editor_content || "");
+    renderEditorLineNumbers();
+    state.conflictedFilePaths.delete(state.activeFilePath);
+    setCodexConflictMode();
+    setEditorDirty($("#sourceEditor").value !== state.editorOriginalContent);
+    state.localEditMode = true;
+    updateEditorAccess();
+    $("#editorStatus").textContent = "Three-way merge draft created in Talos. Review it, then Save File to update Arduino IDE.";
+    $("#codexStatus").textContent = "Merge draft is ready in the Talos editor; Arduino IDE has not been changed.";
+    await refreshCodex();
+  } catch (error) {
+    $("#codexStatus").textContent = `Could not create merge draft: ${error.message}`;
+  }
+}
+
 function setCodexReviewMode(patch = null) {
   setCodexConflictMode();
   state.codexReviewPatch = patch;
@@ -1140,6 +1183,13 @@ function refreshCodexReview(patches = []) {
       $("#codexStatus").textContent = `Change review could not be recorded: ${error.message}`;
     });
   }
+}
+
+function renderCodexReviewRecovery(recovery = {}) {
+  const pending = Boolean(recovery.pending && Number(recovery.count || 0) > 0);
+  $("#codexReviewRecovery").hidden = !pending;
+  if (!pending) return;
+  $("#codexReviewRecoveryLabel").textContent = `${Number(recovery.count || 0)} unfinished Codex review(s) can be restored.`;
 }
 
 async function applyCodexPatch(patch = state.codexReviewPatch) {
@@ -1316,6 +1366,8 @@ function renderArduino(arduino, force = false, ide = {}) {
       state.activeFileByWorkspace[currentWorkspacePath] = state.activeFilePath;
     }
     state.selectedWorkspacePath = arduino.path || "";
+    state.lastVerifyResult = null;
+    $("#recordEvidenceBtn").disabled = true;
     resetEditor(arduino.valid ? "Select a source file." : "No valid workspace selected.");
   }
   if (!state.arduinoDirty || force) {
@@ -1372,9 +1424,30 @@ function renderEnvironmentProfile(profile = {}) {
   $("#profileSerialPortInput").value = state.environmentProfile.serial_port || "";
   $("#profileBaudRateInput").value = state.environmentProfile.baud_rate || "";
   $("#profileBuildPropertiesInput").value = (state.environmentProfile.build_flags || []).join("\n");
+  $("#profileBuildPropertyInput").value = (state.environmentProfile.build_properties || []).join("\n");
   $("#profileLibrariesInput").value = (state.environmentProfile.libraries || []).join("\n");
   $("#saveEnvironmentProfileBtn").disabled = !state.selectedWorkspacePath;
+  renderProfileReadiness(state.profileReadiness);
   renderCodexContextPreview();
+}
+
+function renderProfileReadiness(readiness = {}) {
+  state.profileReadiness = readiness && typeof readiness === "object" ? readiness : {};
+  const status = $("#profileReadinessStatus");
+  if (!status) return;
+  const issues = state.profileReadiness.issues || [];
+  const warnings = state.profileReadiness.warnings || [];
+  status.classList.toggle("blocked", issues.length > 0);
+  status.classList.toggle("warning", !issues.length && warnings.length > 0);
+  if (issues.length) {
+    status.textContent = `Profile blocked: ${issues[0].message}`;
+  } else if (warnings.length) {
+    status.textContent = `Profile ready with ${warnings.length} note(s).`;
+  } else if (state.profileReadiness.ready) {
+    status.textContent = "Profile ready for verify and release evidence.";
+  } else {
+    status.textContent = "Profile readiness unknown.";
+  }
 }
 
 async function saveEnvironmentProfile() {
@@ -1390,6 +1463,7 @@ async function saveEnvironmentProfile() {
       serial_port: $("#profileSerialPortInput").value,
       baud_rate: $("#profileBaudRateInput").value,
       build_flags: profileLines($("#profileBuildPropertiesInput").value),
+      build_properties: profileLines($("#profileBuildPropertyInput").value),
       libraries: profileLines($("#profileLibrariesInput").value),
     }),
   });
@@ -1523,6 +1597,7 @@ function renderCodex(payload = {}) {
   const patches = payload.patches || [];
   const conversations = payload.conversations || [];
   renderCodexHistory(conversations);
+  renderCodexReviewRecovery(payload.review_recovery || {});
   const signature = JSON.stringify([messages, patches]);
   if (signature !== state.codexMessagesSignature) {
     state.codexMessagesSignature = signature;
@@ -1762,6 +1837,28 @@ async function reconnectCodex() {
   }
 }
 
+async function restoreCodexReviews() {
+  try {
+    await api("/api/codex_restore_reviews", { method: "POST", body: "{}" });
+    $("#editorStatus").textContent = "Restored unfinished Codex reviews from the previous Talos session.";
+    await refreshCodex();
+  } catch (error) {
+    $("#codexStatus").textContent = `Could not restore unfinished reviews: ${error.message}`;
+  }
+}
+
+async function discardCodexReviews() {
+  try {
+    await api("/api/codex_discard_reviews", { method: "POST", body: "{}" });
+    setCodexReviewMode(null);
+    $("#codexReviewRecovery").hidden = true;
+    $("#editorStatus").textContent = "Discarded unfinished Codex reviews. The Arduino sketch was not changed.";
+    await refreshCodex();
+  } catch (error) {
+    $("#codexStatus").textContent = `Could not discard unfinished reviews: ${error.message}`;
+  }
+}
+
 function renderArduinoProjects(projects = []) {
   if (!projects.length) {
     $("#arduinoProjects").innerHTML = `<div class="project-row"><div><div class="project-title">No open Arduino sketches detected</div><div class="project-path">Open one or more .ino sketches in Arduino IDE, then refresh.</div></div></div>`;
@@ -1822,6 +1919,7 @@ function render(payload) {
   $("#toolList").textContent = (payload.tools || []).join("\n");
   renderStats(payload);
   renderArduino(arduino, false, selectedProject);
+  renderProfileReadiness(payload.arduino_profile_readiness || {});
   renderEnvironmentProfile(payload.arduino_profile || state.workspaceMap.environment_profile || {});
   renderArduinoProjects(projects);
   $("#logText").textContent = (payload.events || []).join("\n");
@@ -1913,6 +2011,9 @@ async function verifyArduinoWorkspace(source = verifySource()) {
         source,
       }),
     });
+    state.lastVerifyResult = result;
+    renderProfileReadiness(result.profile_readiness || state.profileReadiness);
+    $("#recordEvidenceBtn").disabled = false;
     renderVerifyOutput(result);
     state.arduinoDirty = false;
     await refreshRunHistory();
@@ -1920,6 +2021,27 @@ async function verifyArduinoWorkspace(source = verifySource()) {
     return result;
   } finally {
     setArduinoVerifyRunning(false);
+  }
+}
+
+async function recordReleaseEvidence() {
+  if (!state.lastVerifyResult) {
+    $("#editorStatus").textContent = "Run Verify Sandbox before recording release evidence.";
+    return;
+  }
+  const button = $("#recordEvidenceBtn");
+  button.disabled = true;
+  try {
+    const result = await api("/api/release_evidence", {
+      method: "POST",
+      body: JSON.stringify({ verify_result: state.lastVerifyResult, blocked_cases: [] }),
+    });
+    $("#editorStatus").textContent = `Recorded release evidence: ${result.evidence?.status || "unknown"}.`;
+    await refreshRunHistory();
+  } catch (error) {
+    $("#editorStatus").textContent = `Could not record release evidence: ${error.message}`;
+  } finally {
+    button.disabled = !state.lastVerifyResult;
   }
 }
 
@@ -2032,6 +2154,7 @@ function bindEvents() {
   $("#copyFilesBtn").addEventListener("click", () => copyText(fileListText(), "#arduinoMeta"));
   $("#copyIssuesBtn").addEventListener("click", () => copyText(state.lastIssueText));
   $("#copyVerifyBtn").addEventListener("click", () => copyText(state.lastVerifyText));
+  $("#recordEvidenceBtn").addEventListener("click", recordReleaseEvidence);
   $("#editInTalosBtn").addEventListener("click", () => setLocalEditMode(!state.localEditMode));
   $("#saveFileBtn").addEventListener("click", saveWorkspaceFile);
   $("#saveAndVerifyBtn").addEventListener("click", saveAndVerifyWorkspace);
@@ -2039,6 +2162,9 @@ function bindEvents() {
   $("#applyCodexPatchBtn").addEventListener("click", () => applyCodexPatch());
   $("#verifyCodexPatchBtn").addEventListener("click", verifyCodexPatch);
   $("#rejectCodexPatchBtn").addEventListener("click", rejectCodexPatch);
+  $("#restoreCodexReviewsBtn").addEventListener("click", restoreCodexReviews);
+  $("#discardCodexReviewsBtn").addEventListener("click", discardCodexReviews);
+  $("#draftConflictMergeBtn").addEventListener("click", draftConflictMerge);
   $("#applyCodexTurnBtn").addEventListener("click", () => resolveCodexTurn("apply"));
   $("#rejectCodexTurnBtn").addEventListener("click", () => resolveCodexTurn("reject"));
   $("#keepExternalConflictBtn").addEventListener("click", keepExternalConflict);
