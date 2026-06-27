@@ -33,7 +33,7 @@ def print_json(payload: dict[str, Any]) -> None:
     print(json.dumps(payload, ensure_ascii=False, indent=2))
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="CLI bridge for Codex to call the local Talos tool server.")
+    parser = argparse.ArgumentParser(description="CLI bridge for Codex to call the local Talos API.")
     parser.add_argument("--base-url", default=DEFAULT_BASE_URL)
     subcommands = parser.add_subparsers(dest="command", required=True)
 

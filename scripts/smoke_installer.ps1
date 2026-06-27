@@ -24,6 +24,7 @@ $appName = $identity.display_name
 $releaseName = "$appName-$($identity.version)-$(Get-Slug $identity.channel)"
 $releaseDir = Join-Path $root "releases\$releaseName"
 $installerPath = Join-Path $releaseDir "$releaseName-setup.exe"
+$evidencePath = Join-Path $releaseDir "installer_smoke.json"
 
 if (-not $SkipBuild) {
   & (Join-Path $root "scripts\build_installer.ps1") -AllowDirty:$AllowDirty
@@ -104,5 +105,21 @@ if (Test-Path -LiteralPath $smokeRoot) {
   }
 }
 
+$evidence = [ordered]@{
+  schema_version = 1
+  test = "installer-install-uninstall-smoke"
+  status = "passed"
+  checked_at = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss zzz")
+  release = $releaseName
+  installer = $installerPath
+  install_dir = $installDir
+  start_menu_shortcut = $true
+  release_notes_shortcut = $true
+  writable_config_absent_from_install_dir = $true
+  uninstall_cleanup = $true
+}
+$evidence | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $evidencePath -Encoding utf8
+
 Write-Host "Installer smoke test passed:"
 Write-Host $installerPath
+Write-Host $evidencePath

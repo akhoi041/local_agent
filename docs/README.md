@@ -90,7 +90,7 @@ Example verify request:
 
 ```text
 desktop_app.py          Desktop pywebview shell
-talos/server.py         Local HTTP tool server
+talos/server.py         Local HTTP API server
 talos/client.py         CLI bridge for terminal/debug use
 talos/core.py           Thin Python bridge config and path utilities
 talos/arduino.py        Arduino workspace and sandbox runner
@@ -120,6 +120,7 @@ scripts/build_installer.ps1 Build the Windows installer with Inno Setup
 scripts/sign_release.ps1 Sign release artifacts or record an explicit unsigned Beta
 scripts/smoke_installer.ps1 Build, silently install, verify shortcuts, and uninstall the installer
 scripts/smoke_installed_app.ps1 Launch installed Talos outside the repo and record smoke evidence
+scripts/distribution_checklist.ps1 Generate the final release distribution checklist
 installer/talos.iss     Inno Setup installer definition
 scripts/smoke_release_recovery.py Validate restart/recovery safety for pending Codex reviews
 tests/                  Regression tests
@@ -274,6 +275,14 @@ After completing the Arduino/Codex manual checks in `docs\INSTALLED_APP_SMOKE_TE
 ```powershell
 .\scripts\smoke_installed_app.ps1 -SkipBuild -ManualArduinoConfirmed
 ```
+
+Generate the final distribution checklist:
+
+```powershell
+.\scripts\distribution_checklist.ps1 -RequireReady
+```
+
+The checklist is written to `releases\Talos-0.1.0-beta\DISTRIBUTION_CHECKLIST.md` and summarizes artifact names, SHA-256 hashes, signing status, installer install/uninstall evidence, installed-app smoke evidence, rollback/recovery coverage, and known limitations.
 
 Install locally:
 

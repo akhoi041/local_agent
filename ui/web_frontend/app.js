@@ -1371,7 +1371,7 @@ function renderStats(payload) {
   const projects = payload.arduino_projects || [];
   const rows = [
     ["Role", payload.role || "Tool server"],
-    ["Native C", payload.native_available ? "Loaded" : "Not built"],
+    ["Native C", payload.native_available ? "Loaded" : "Fallback"],
     ["Open sketches", String(projects.length)],
     ["Arduino", arduino.valid ? "Ready" : "Not ready"],
   ];

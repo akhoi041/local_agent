@@ -129,7 +129,7 @@ def state_payload() -> dict[str, Any]:
     arduino_map = workspace_map(config, latest_verify_for_workspace(str(arduino_summary.get("path") or "")))
     return {
         "name": app_identity["display_name"],
-        "role": "Codex local tool server",
+        "role": "Codex local control layer",
         "root": str(ROOT),
         "app_data": str(APP_DATA_ROOT),
         "app": app_identity,
@@ -192,8 +192,8 @@ def state_payload() -> dict[str, Any]:
         "events": list(EVENTS),
     }
 
-class LocalAgentWebHandler(BaseHTTPRequestHandler):
-    server_version = "LocalAgentWeb/1.0"
+class TalosWebHandler(BaseHTTPRequestHandler):
+    server_version = "TalosWeb/1.0"
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
@@ -207,7 +207,7 @@ class LocalAgentWebHandler(BaseHTTPRequestHandler):
             self.send_json({
                 "ok": True,
                 "service": app_identity["display_name"],
-                "role": "Codex local tool server",
+                "role": "Codex local control layer",
                 "app": app_identity,
                 "build": build_metadata,
             })
@@ -597,7 +597,7 @@ class LocalAgentWebHandler(BaseHTTPRequestHandler):
 def find_port(host: str, start_port: int) -> int:
     for port in range(start_port, start_port + 20):
         try:
-            server = ThreadingHTTPServer((host, port), LocalAgentWebHandler)
+            server = ThreadingHTTPServer((host, port), TalosWebHandler)
         except OSError:
             continue
         server.server_close()
@@ -605,15 +605,15 @@ def find_port(host: str, start_port: int) -> int:
     raise RuntimeError(f"No available port found from {start_port}.")
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run the Local Agent web UI.")
+    parser = argparse.ArgumentParser(description="Run the Talos web UI.")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", default=8787, type=int)
     args = parser.parse_args()
 
     port = find_port(args.host, args.port)
-    server = ThreadingHTTPServer((args.host, port), LocalAgentWebHandler)
+    server = ThreadingHTTPServer((args.host, port), TalosWebHandler)
     start_arduino_event_watcher()
-    print(f"Local Agent Web UI: http://{args.host}:{port}")
+    print(f"Talos Web UI: http://{args.host}:{port}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
