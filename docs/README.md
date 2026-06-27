@@ -1,19 +1,20 @@
 # Talos
 
-Talos is a local Windows tool server for Codex.
+Talos is a local Windows control layer for Codex and Arduino IDE.
 
-It does not try to replace Codex or run a separate AI model. Codex remains the reasoning layer in VS Code or another Codex surface. Talos provides local Arduino workspace access, sandbox verification, and a small HTTP API that Codex can call while you work.
+It does not replace Codex, Arduino IDE, or VS Code. Codex remains the reasoning layer through the locally authenticated Codex app-server, Arduino IDE remains the hardware/source owner, and Talos provides the bridge: sketch discovery, scoped file access, staged change review, sandbox verification, checkpoints, rollback, and packaging support.
 
 ## Current Scope
 
 - Native Windows desktop shell via pywebview.
 - Local HTTP API on `127.0.0.1`.
-- Native C window/title discovery for open Arduino sketches.
-- Arduino sketch folder registration.
-- Arduino source file discovery for `.ino`, `.h`, `.hpp`, `.c`, `.cpp`, `.S`, `.txt`, and `.md`.
-- Safe read/write/delete endpoints constrained to the configured sketch folder.
-- Sandbox compile using `arduino-cli compile --fqbn ...`.
-- Desktop UI for configuring the Arduino sketch folder and running sandbox verify.
+- Native C assisted Arduino IDE process/window discovery with Python fallback.
+- Multiple open Arduino sketch detection with per-sketch board/profile state.
+- Source discovery for `.ino`, `.h`, `.hpp`, `.c`, `.cpp`, `.S`, `.txt`, and `.md`.
+- Scoped file read/write/delete constrained to the selected sketch folder.
+- Codex app-server panel with thread history, context preview, staged changes, hunk review, conflict handling, and cancellation/reconnect controls.
+- Sandbox compile using `arduino-cli compile --fqbn ...`, with cancellation, cache controls, structured diagnostics, and timing output.
+- Checkpoints, guarded rollback, release evidence, installer smoke tests, and per-user runtime data under `%LOCALAPPDATA%\T-Engine\Talos`.
 
 ## Tool API
 
@@ -48,12 +49,21 @@ GET  /api/run_history
 POST /api/codex_message
 POST /api/codex_reconnect
 POST /api/codex_cancel
+POST /api/codex_restore_reviews
+POST /api/codex_discard_reviews
 POST /api/codex_review_patch
 POST /api/codex_apply_patch
+POST /api/codex_apply_hunk
+POST /api/codex_reject_hunk
+POST /api/codex_apply_all
+POST /api/codex_reject_all
 POST /api/codex_keep_external
 POST /api/codex_merge_draft
 POST /api/codex_verify_patch
 POST /api/codex_save_patch
+POST /api/codex_reject_patch
+POST /api/codex_thread
+POST /api/codex_conversation
 ```
 
 `/api/state` and `/api/health` expose both `app` identity and `build` metadata. `app` contains the product identity from `config/app_identity.json`; `build` reports source vs packaged mode, version/channel, release manifest data when installed, Python/platform details, app root, bundle root, and per-user app-data path.
@@ -81,9 +91,11 @@ Example verify request:
 ```text
 desktop_app.py          Desktop pywebview shell
 talos/server.py         Local HTTP tool server
-talos/client.py         CLI bridge for Codex and terminal use
+talos/client.py         CLI bridge for terminal/debug use
 talos/core.py           Thin Python bridge config and path utilities
 talos/arduino.py        Arduino workspace and sandbox runner
+talos/arduino_events.py Event-assisted Arduino window refresh
+talos/checkpoints.py    Save checkpoints and guarded rollback
 talos/codex_bridge.py   Codex staging, change review, and patch lifecycle bridge
 talos/native_bridge.py  ctypes bridge to the native library
 talos/run_history.py    Local verify and change activity history
@@ -92,6 +104,7 @@ ui/web_frontend/        Desktop UI assets
 assets/icons/           Generated Talos Windows icon set
 config/default_config.json Clean packaged configuration defaults
 config/app_identity.json Product identity and packaging metadata
+config/signing_policy.json Code-signing policy and unsigned-Beta rules
 config/requirements.txt Build/runtime Python dependencies
 scripts/build_app.ps1   Build one-file Windows executable
 scripts/build_icons.py  Generate PNG and ICO app icons from talos_icon.png
@@ -102,8 +115,11 @@ scripts/clean_runtime.ps1 Remove disposable sandbox, staging, and test cache dat
 scripts/install_app.ps1 Install built app to LocalAppData and create desktop shortcut
 scripts/launch_desktop.ps1 Open source app or installed app
 scripts/pipeline_status.ps1 Show pipeline progress
+scripts/build_release.ps1 Build a versioned release folder
 scripts/build_installer.ps1 Build the Windows installer with Inno Setup
+scripts/sign_release.ps1 Sign release artifacts or record an explicit unsigned Beta
 scripts/smoke_installer.ps1 Build, silently install, verify shortcuts, and uninstall the installer
+scripts/smoke_installed_app.ps1 Launch installed Talos outside the repo and record smoke evidence
 installer/talos.iss     Inno Setup installer definition
 scripts/smoke_release_recovery.py Validate restart/recovery safety for pending Codex reviews
 tests/                  Regression tests
@@ -118,6 +134,8 @@ docs/EULA.md                 Beta packaged-app terms
 docs/PRIVACY.md              Local data and Codex data-flow notes
 docs/RELEASE_NOTES.md        Current release highlights and known limitations
 docs/THIRD_PARTY_NOTICES.md  Dependency and tooling notices
+docs/CODE_SIGNING.md         Signing policy, unsigned-Beta path, and verification commands
+docs/INSTALLED_APP_SMOKE_TEST.md Installed-app Arduino/Codex smoke-test checklist
 ```
 
 User-writable runtime data is stored under `%LOCALAPPDATA%\T-Engine\Talos` by default. `config.json`, `run_history.json`, `checkpoints.json`, and `codex_reviews.json` live there, while disposable compile and Codex staging copies live under `sandbox\` and `staging\`. Set `TALOS_APP_DATA_DIR` only for tests or isolated debug runs.
@@ -227,10 +245,34 @@ Build the Windows installer:
 The installer is written into the same versioned release folder and creates a Start Menu shortcut by default. Desktop shortcut creation is optional in the installer wizard.
 Installed builds include `release_manifest.json` beside `Talos.exe` so the UI and API can show release/build metadata.
 
+Record the Beta as deliberately unsigned while the publisher certificate is not configured:
+
+```powershell
+.\scripts\sign_release.ps1 -ReleaseDir releases\Talos-0.1.0-beta -AllowUnsignedBeta
+```
+
+Sign release artifacts after a certificate is available:
+
+```powershell
+.\scripts\sign_release.ps1 -ReleaseDir releases\Talos-0.1.0-beta -CertificateThumbprint "<thumbprint>"
+```
+
 Smoke-test the installer install/uninstall behavior:
 
 ```powershell
 .\scripts\smoke_installer.ps1
+```
+
+Smoke-test the installed app outside the source checkout:
+
+```powershell
+.\scripts\smoke_installed_app.ps1 -AllowDirty
+```
+
+After completing the Arduino/Codex manual checks in `docs\INSTALLED_APP_SMOKE_TEST.md`, record the full pass:
+
+```powershell
+.\scripts\smoke_installed_app.ps1 -SkipBuild -ManualArduinoConfirmed
 ```
 
 Install locally:

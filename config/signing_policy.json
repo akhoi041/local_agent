@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "app_name": "Talos",
+  "publisher": "T-Engine",
+  "release_channel": "Beta",
+  "status": "documented_unsigned_beta",
+  "unsigned_beta_allowed": true,
+  "unsigned_release_label": "UNSIGNED BETA",
+  "sign_tool": "signtool.exe",
+  "digest_algorithm": "SHA256",
+  "timestamp_server": "http://timestamp.digicert.com",
+  "certificate_subject": "T-Engine",
+  "targets": [
+    "windows-executable",
+    "windows-installer"
+  ]
+}

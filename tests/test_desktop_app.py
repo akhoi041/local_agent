@@ -6,6 +6,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
+from talos import arduino as arduino_module
 from talos import checkpoints as checkpoint_store
 from talos import core, native_bridge
 from talos import run_history as run_history_store
@@ -674,6 +675,8 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("docs\\EULA.md", installer_smoke)
         self.assertIn("docs\\PRIVACY.md", installer_smoke)
         self.assertIn("docs\\THIRD_PARTY_NOTICES.md", installer_smoke)
+        self.assertIn("docs\\CODE_SIGNING.md", installer_smoke)
+        self.assertIn("docs\\INSTALLED_APP_SMOKE_TEST.md", installer_smoke)
         self.assertIn("writable runtime config inside the install directory", installer_smoke)
         self.assertIn("Silent uninstall", installer_smoke)
         self.assertIn("Installer smoke test passed", installer_smoke)
@@ -738,6 +741,8 @@ class TalosArduinoTests(unittest.TestCase):
             "EULA.md": ["End User License Agreement", "Beta Status"],
             "PRIVACY.md": ["Privacy Notes", "Codex"],
             "THIRD_PARTY_NOTICES.md": ["Third-Party Notices", "pywebview", "PyInstaller", "Pillow"],
+            "CODE_SIGNING.md": ["Code Signing", "signtool.exe", "Get-AuthenticodeSignature", "unsigned-Beta"],
+            "INSTALLED_APP_SMOKE_TEST.md": ["Installed App Smoke Test", "Manual Arduino/Codex Checks", "Pass Criteria"],
         }
         for doc_name, required_terms in required_docs.items():
             content = (root / "docs" / doc_name).read_text(encoding="utf-8")
@@ -756,6 +761,70 @@ class TalosArduinoTests(unittest.TestCase):
             self.assertIn(doc_name, readme)
         self.assertIn("Source: \"{#ReleaseDir}\\docs\\*\"", installer_script)
         self.assertIn("Start Menu includes Release Notes and Privacy shortcuts", pipeline)
+
+    def test_stage_10_code_signing_path_is_documented_and_scripted(self) -> None:
+        root = Path(__file__).parents[1]
+        policy = json.loads((root / "config" / "signing_policy.json").read_text(encoding="utf-8"))
+        signing_doc = (root / "docs" / "CODE_SIGNING.md").read_text(encoding="utf-8")
+        sign_script = (root / "scripts" / "sign_release.ps1").read_text(encoding="utf-8")
+        release_script = (root / "scripts" / "build_release.ps1").read_text(encoding="utf-8")
+        readme = (root / "docs" / "README.md").read_text(encoding="utf-8")
+        pipeline = (root / "docs" / "TALOS_PIPELINE.md").read_text(encoding="utf-8")
+
+        self.assertEqual(policy["schema_version"], 1)
+        self.assertEqual(policy["publisher"], "T-Engine")
+        self.assertTrue(policy["unsigned_beta_allowed"])
+        self.assertEqual(policy["digest_algorithm"], "SHA256")
+        self.assertIn("windows-executable", policy["targets"])
+        self.assertIn("windows-installer", policy["targets"])
+
+        self.assertIn("config/signing_policy.json", signing_doc)
+        self.assertIn("timestamp server", signing_doc)
+        self.assertIn("signing_status.json", signing_doc)
+        self.assertIn("-AllowUnsignedBeta", signing_doc)
+        self.assertIn("-CertificateThumbprint", signing_doc)
+
+        self.assertIn("param(", sign_script)
+        self.assertIn("[switch]$AllowUnsignedBeta", sign_script)
+        self.assertIn("signtool.exe", sign_script)
+        self.assertIn("Get-AuthenticodeSignature", sign_script)
+        self.assertIn("Get-FileHash", sign_script)
+        self.assertIn("signing_status.json", sign_script)
+        self.assertIn("unsigned-beta", sign_script)
+        self.assertIn("Signing verification failed", sign_script)
+
+        self.assertIn("signing_policy.json", release_script)
+        self.assertIn("CODE_SIGNING.md", release_script)
+        self.assertIn("scripts\\sign_release.ps1", readme)
+        self.assertIn("[x] Define the code-signing path", pipeline)
+
+    def test_stage_10_installed_app_smoke_is_scripted_and_documented(self) -> None:
+        root = Path(__file__).parents[1]
+        smoke_script = (root / "scripts" / "smoke_installed_app.ps1").read_text(encoding="utf-8")
+        smoke_doc = (root / "docs" / "INSTALLED_APP_SMOKE_TEST.md").read_text(encoding="utf-8")
+        release_script = (root / "scripts" / "build_release.ps1").read_text(encoding="utf-8")
+        readme = (root / "docs" / "README.md").read_text(encoding="utf-8")
+        pipeline = (root / "docs" / "TALOS_PIPELINE.md").read_text(encoding="utf-8")
+
+        self.assertIn("[switch]$ManualArduinoConfirmed", smoke_script)
+        self.assertIn("[switch]$SkipLaunch", smoke_script)
+        self.assertIn("TalosInstalledAppSmoke", smoke_script)
+        self.assertIn("Start-Process -FilePath $installedExe", smoke_script)
+        self.assertIn("/api/health", smoke_script)
+        self.assertIn("TALOS_APP_DATA_DIR", smoke_script)
+        self.assertIn("installed_app_smoke.json", smoke_script)
+        self.assertIn("packaged", smoke_script)
+        self.assertIn("manual-confirmation-required", smoke_script)
+        self.assertIn("detect-open-arduino-sketch", smoke_script)
+        self.assertIn("review-apply-and-save-codex-change", smoke_script)
+
+        self.assertIn("installed executable outside the repository", smoke_doc)
+        self.assertIn("Verify Sandbox", smoke_doc)
+        self.assertIn("Ask Codex", smoke_doc)
+        self.assertIn("status: passed", smoke_doc)
+        self.assertIn("INSTALLED_APP_SMOKE_TEST.md", release_script)
+        self.assertIn("scripts\\smoke_installed_app.ps1", readme)
+        self.assertIn("[x] Smoke-test the installed app outside the repository", pipeline)
 
     def test_pipeline_defines_exit_condition_for_every_stage(self) -> None:
         pipeline = (Path(__file__).parents[1] / "docs" / "TALOS_PIPELINE.md").read_text(encoding="utf-8")
@@ -786,6 +855,7 @@ class TalosArduinoTests(unittest.TestCase):
         root = Path(__file__).parents[1]
         default_config = json.loads((root / "config" / "default_config.json").read_text(encoding="utf-8"))
 
+        self.assertFalse((root / "config" / "config.json").exists())
         self.assertEqual(default_config["schema_version"], 1)
         self.assertEqual(default_config["arduino_workspace_path"], "")
         self.assertEqual(default_config["arduino_fqbn"], "")
@@ -1621,7 +1691,8 @@ class TalosArduinoTests(unittest.TestCase):
             (root / "build").mkdir()
             (root / "build" / "old.o").write_text("ignore\n", encoding="utf-8")
 
-            sandbox = copy_workspace_to_sandbox(root)
+            with patch.object(arduino_module, "SANDBOX_ROOT", Path(tmp) / "sandbox"):
+                sandbox = copy_workspace_to_sandbox(root)
 
             self.assertEqual(sandbox.name, "Blink")
             self.assertTrue((sandbox / "Blink.ino").exists())
@@ -1635,7 +1706,8 @@ class TalosArduinoTests(unittest.TestCase):
             (root / ".pio").mkdir()
             (root / ".pio" / "cache.o").write_text("ignore\n", encoding="utf-8")
 
-            sandbox = copy_workspace_to_sandbox(root)
+            with patch.object(arduino_module, "SANDBOX_ROOT", Path(tmp) / "sandbox"):
+                sandbox = copy_workspace_to_sandbox(root)
 
             self.assertFalse((sandbox / ".pio").exists())
 

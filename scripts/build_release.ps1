@@ -67,11 +67,12 @@ if (-not (Test-Path -LiteralPath $exePath)) {
 $artifactPath = Join-Path $releaseDir "$releaseName.exe"
 Copy-Item -LiteralPath $exePath -Destination $artifactPath -Force
 Copy-Item -LiteralPath $identityPath -Destination (Join-Path $releaseDir "app_identity.json") -Force
+Copy-Item -LiteralPath (Join-Path $root "config\signing_policy.json") -Destination (Join-Path $releaseDir "signing_policy.json") -Force
 Copy-Item -LiteralPath (Join-Path $root "config\default_config.json") -Destination (Join-Path $releaseDir "default_config.json") -Force
 Copy-Item -LiteralPath (Join-Path $root "docs\README.md") -Destination (Join-Path $releaseDir "README.md") -Force
 $releaseDocsDir = Join-Path $releaseDir "docs"
 New-Item -ItemType Directory -Path $releaseDocsDir -Force | Out-Null
-foreach ($docName in @("LICENSE", "RELEASE_NOTES.md", "EULA.md", "PRIVACY.md", "THIRD_PARTY_NOTICES.md")) {
+foreach ($docName in @("LICENSE", "RELEASE_NOTES.md", "EULA.md", "PRIVACY.md", "THIRD_PARTY_NOTICES.md", "CODE_SIGNING.md", "INSTALLED_APP_SMOKE_TEST.md")) {
   Copy-Item -LiteralPath (Join-Path $root "docs\$docName") -Destination (Join-Path $releaseDocsDir $docName) -Force
 }
 

@@ -67,10 +67,12 @@ $installedReleaseNotes = Join-Path $installDir "docs\RELEASE_NOTES.md"
 $installedEula = Join-Path $installDir "docs\EULA.md"
 $installedPrivacy = Join-Path $installDir "docs\PRIVACY.md"
 $installedThirdParty = Join-Path $installDir "docs\THIRD_PARTY_NOTICES.md"
+$installedCodeSigning = Join-Path $installDir "docs\CODE_SIGNING.md"
+$installedAppSmokeDoc = Join-Path $installDir "docs\INSTALLED_APP_SMOKE_TEST.md"
 $userConfig = Join-Path $installDir "config\config.json"
 $releaseNotesShortcut = Join-Path $startMenuDir "Release Notes.lnk"
 
-foreach ($path in @($installedExe, $uninstaller, $installedManifest, $installedConfig, $installedReleaseNotes, $installedEula, $installedPrivacy, $installedThirdParty, $startMenuShortcut, $releaseNotesShortcut)) {
+foreach ($path in @($installedExe, $uninstaller, $installedManifest, $installedConfig, $installedReleaseNotes, $installedEula, $installedPrivacy, $installedThirdParty, $installedCodeSigning, $installedAppSmokeDoc, $startMenuShortcut, $releaseNotesShortcut)) {
   if (-not (Test-Path -LiteralPath $path)) {
     throw "Installer smoke test expected file was not created: $path"
   }
@@ -81,7 +83,7 @@ if (Test-Path -LiteralPath $userConfig) {
 
 Invoke-ProcessChecked $uninstaller @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART") "Silent uninstall"
 
-foreach ($path in @($installedExe, $uninstaller, $installedManifest, $installedConfig, $installedReleaseNotes, $installedEula, $installedPrivacy, $installedThirdParty, $startMenuShortcut, $releaseNotesShortcut)) {
+foreach ($path in @($installedExe, $uninstaller, $installedManifest, $installedConfig, $installedReleaseNotes, $installedEula, $installedPrivacy, $installedThirdParty, $installedCodeSigning, $installedAppSmokeDoc, $startMenuShortcut, $releaseNotesShortcut)) {
   if (Test-Path -LiteralPath $path) {
     throw "Installer smoke test expected file was not removed: $path"
   }
