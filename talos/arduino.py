@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from talos.core import ROOT
+from talos.core import APP_DATA_ROOT
 from talos.native_bridge import (
     extract_ino_names,
     list_arduino_ide_processes,
@@ -40,7 +40,7 @@ IGNORED_DIRS = {
 }
 MAX_CONTEXT_BYTES = 64_000
 MAX_FILE_BYTES = 128_000
-SANDBOX_ROOT = ROOT / ".talos_sandbox" / "arduino"
+SANDBOX_ROOT = APP_DATA_ROOT / "sandbox" / "arduino"
 ARDUINO_CLI_CANDIDATES = [
     Path.home() / "AppData" / "Local" / "Programs" / "Arduino IDE" / "resources" / "app" / "lib" / "backend" / "resources" / "arduino-cli.exe",
     Path("C:/Program Files/Arduino IDE/resources/app/lib/backend/resources/arduino-cli.exe"),

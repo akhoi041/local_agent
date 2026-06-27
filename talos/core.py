@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import platform
 import shutil
 import sys
 from datetime import datetime
@@ -14,10 +15,30 @@ else:
     ROOT = Path(__file__).resolve().parent.parent
 BUNDLE_ROOT = Path(getattr(sys, "_MEIPASS", ROOT))
 
-CONFIG_PATH = ROOT / "config" / "config.json"
+APP_DATA_ENV = "TALOS_APP_DATA_DIR"
+
+def _default_app_data_root() -> Path:
+    override = os.environ.get(APP_DATA_ENV)
+    if override:
+        return Path(override).expanduser()
+    if os.name == "nt":
+        base = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA")
+        if base:
+            return Path(base) / "T-Engine" / "Talos"
+        return Path.home() / "AppData" / "Local" / "T-Engine" / "Talos"
+    base = os.environ.get("XDG_DATA_HOME")
+    if base:
+        return Path(base) / "Talos"
+    return Path.home() / ".local" / "share" / "Talos"
+
+APP_DATA_ROOT = _default_app_data_root()
+RUNTIME_ROOT = APP_DATA_ROOT / "runtime"
+CONFIG_PATH = APP_DATA_ROOT / "config.json"
+LEGACY_CONFIG_PATH = ROOT / "config" / "config.json"
 APP_IDENTITY_PATH = ROOT / "config" / "app_identity.json"
 DEFAULT_CONFIG_PATH = BUNDLE_ROOT / "config" / "default_config.json"
 BUNDLED_APP_IDENTITY_PATH = BUNDLE_ROOT / "config" / "app_identity.json"
+RELEASE_MANIFEST_PATH = ROOT / "release_manifest.json"
 CONFIG_SCHEMA_VERSION = 1
 WEBVIEW_MIN_WIDTH = 520
 WEBVIEW_MIN_HEIGHT = 420
@@ -133,11 +154,16 @@ def _normalize_config(data: Any) -> dict[str, Any]:
 
 def load_config() -> dict[str, Any]:
     fallback = read_json_file(DEFAULT_CONFIG_PATH, {}, encoding="utf-8-sig")
+    source_path = CONFIG_PATH
     data, valid = _read_json(CONFIG_PATH, fallback, encoding="utf-8-sig")
+    if not CONFIG_PATH.exists() and LEGACY_CONFIG_PATH.exists():
+        source_path = LEGACY_CONFIG_PATH
+        data, valid = _read_json(LEGACY_CONFIG_PATH, fallback, encoding="utf-8-sig")
     config = _normalize_config(data)
     can_migrate = not isinstance(data, dict) or schema_version(data.get("schema_version")) <= CONFIG_SCHEMA_VERSION
-    if CONFIG_PATH.exists() and can_migrate and (not valid or config != data):
-        backup_json_file(CONFIG_PATH, "migration")
+    if source_path.exists() and can_migrate and (source_path != CONFIG_PATH or not valid or config != data):
+        if source_path == CONFIG_PATH:
+            backup_json_file(CONFIG_PATH, "migration")
         try:
             write_json_file(CONFIG_PATH, config)
         except OSError:
@@ -152,6 +178,34 @@ def load_app_identity() -> dict[str, str]:
     data = read_json_file(APP_IDENTITY_PATH, fallback, encoding="utf-8-sig")
     identity = DEFAULT_APP_IDENTITY | data if isinstance(data, dict) else DEFAULT_APP_IDENTITY.copy()
     return {key: str(value).strip() for key, value in identity.items()}
+
+def load_build_metadata(identity: dict[str, str] | None = None) -> dict[str, Any]:
+    app_identity = identity or load_app_identity()
+    manifest = read_json_file(RELEASE_MANIFEST_PATH, {}, encoding="utf-8-sig")
+    manifest_data = manifest if isinstance(manifest, dict) else {}
+    artifacts = manifest_data.get("artifacts")
+    if not isinstance(artifacts, list):
+        artifacts = []
+    return {
+        "schema_version": 1,
+        "mode": "packaged" if getattr(sys, "frozen", False) else "source",
+        "frozen": bool(getattr(sys, "frozen", False)),
+        "app_name": app_identity.get("display_name") or app_identity.get("app_name") or "Talos",
+        "publisher": app_identity.get("publisher", ""),
+        "version": app_identity.get("version", ""),
+        "channel": app_identity.get("channel", ""),
+        "app_id": app_identity.get("app_id", ""),
+        "release": str(manifest_data.get("release") or ""),
+        "built_at": str(manifest_data.get("built_at") or ""),
+        "installer_built_at": str(manifest_data.get("installer_built_at") or ""),
+        "artifacts": artifacts,
+        "python": platform.python_version(),
+        "platform": platform.platform(),
+        "executable": str(Path(sys.executable).resolve()),
+        "root": str(ROOT),
+        "bundle_root": str(BUNDLE_ROOT),
+        "app_data": str(APP_DATA_ROOT),
+    }
 
 def now() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")

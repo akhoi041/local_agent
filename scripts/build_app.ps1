@@ -39,7 +39,7 @@ if (Test-Path -LiteralPath $iconPath) {
   --add-data "config\app_identity.json;config" `
   --add-data "config\default_config.json;config" `
   --add-data "assets\icons;assets\icons" `
-  --add-data "docs\README.md;docs" `
+  --add-data "docs;docs" `
   --add-data "scripts\clean_runtime.ps1;scripts" `
   @extraArgs `
   --clean `

@@ -53,6 +53,7 @@ const state = {
   codexConversations: [],
   codexTasksVisible: true,
   runHistorySignature: "",
+  appBuild: {},
 };
 
 const THEMES = ["light", "dark", "neutral"];
@@ -250,15 +251,44 @@ function hydrateTheme(config = {}) {
   if (THEMES.includes(stored)) applyTheme(stored);
 }
 
-function hydrateAppIdentity(app = {}) {
-  const displayName = app.display_name || app.app_name || "Talos";
+function versionLabel(app = {}) {
   const channel = app.channel ? ` ${app.channel}` : "";
-  const version = app.version ? `v${app.version}${channel}` : channel.trim();
+  return app.version ? `v${app.version}${channel}` : channel.trim();
+}
+
+function buildModeLabel(build = {}) {
+  if (build.release) return `${build.mode || "packaged"} | ${build.release}`;
+  return build.mode || "source";
+}
+
+function hydrateAppIdentity(app = {}, build = {}) {
+  const displayName = app.display_name || app.app_name || "Talos";
+  const version = versionLabel(app);
   document.title = displayName;
   $("#chromeAppName").textContent = displayName;
+  $("#chromeVersion").textContent = version;
   $("#brandName").textContent = displayName;
+  $("#brandVersion").textContent = version;
   $("#heroAppName").textContent = displayName;
   $("#modeLine").dataset.version = version || "";
+  state.appBuild = build || {};
+  renderReleaseDetails(app, build || {});
+}
+
+function renderReleaseDetails(app = {}, build = {}) {
+  const release = build.release || `${app.display_name || app.app_name || "Talos"}-${app.version || ""}-${String(app.channel || "").toLowerCase()}`;
+  const builtAt = build.built_at || "Source/debug build";
+  const installerBuiltAt = build.installer_built_at || "Not packaged by installer";
+  const artifacts = Array.isArray(build.artifacts) ? build.artifacts : [];
+  $("#releaseDetails").innerHTML = `
+    <div><span>Version</span><b>${escapeHtml(versionLabel(app) || "Unknown")}</b></div>
+    <div><span>Release</span><b>${escapeHtml(release)}</b></div>
+    <div><span>Mode</span><b>${escapeHtml(buildModeLabel(build))}</b></div>
+    <div><span>Built</span><b>${escapeHtml(builtAt)}</b></div>
+    <div><span>Installer</span><b>${escapeHtml(installerBuiltAt)}</b></div>
+    <div><span>App data</span><b>${escapeHtml(build.app_data || "")}</b></div>
+    <div><span>Artifacts</span><b>${escapeHtml(String(artifacts.length))}</b></div>
+  `;
 }
 
 function escapeHtml(value) {
@@ -1903,7 +1933,7 @@ function renderArduinoProjects(projects = []) {
 
 function render(payload) {
   hydrateTheme(payload.config || {});
-  hydrateAppIdentity(payload.app || {});
+  hydrateAppIdentity(payload.app || {}, payload.build || {});
   const projects = payload.arduino_projects || [];
   const arduino = payload.arduino || {};
   state.workspaceMap = payload.arduino_workspace_map || {};

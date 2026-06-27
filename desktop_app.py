@@ -9,7 +9,6 @@ from typing import Any
 
 from talos.core import ROOT, WEBVIEW_MIN_HEIGHT, WEBVIEW_MIN_WIDTH, load_app_identity
 
-
 def _existing_icon_path(identity: dict[str, str]) -> str | None:
     icon_path = ROOT / identity.get("icon_ico", "")
     if icon_path.exists():
@@ -21,7 +20,6 @@ def _existing_icon_path(identity: dict[str, str]) -> str | None:
         if bundled_icon.exists():
             return str(bundled_icon)
     return None
-
 
 def _set_windows_app_id(identity: dict[str, str]) -> None:
     if sys.platform != "win32":
@@ -36,7 +34,7 @@ def _set_windows_app_id(identity: dict[str, str]) -> None:
 
 def run_desktop_shell() -> None:
     try:
-        import webview
+        import webview  # type: ignore[import-not-found]
     except ImportError:
         messagebox.showerror(
             "Talos",

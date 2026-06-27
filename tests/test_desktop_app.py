@@ -589,6 +589,18 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("External-change conflict", smoke_test)
         self.assertIn("Save and verify", smoke_test)
 
+    def test_desktop_entrypoint_remains_source_debuggable(self) -> None:
+        root = Path(__file__).parents[1]
+        desktop_shell = (root / "desktop_app.py").read_text(encoding="utf-8")
+        launcher = (root / "scripts" / "launch_desktop.ps1").read_text(encoding="utf-8")
+
+        self.assertIn('import webview  # type: ignore[import-not-found]', desktop_shell)
+        self.assertIn('Join-Path $root "desktop_app.py"', launcher)
+        self.assertIn(".venv\\Scripts\\python.exe", launcher)
+        self.assertIn("import webview", launcher)
+        self.assertIn("python -m pip install -r config\\requirements.txt", launcher)
+        self.assertIn("Start-Process -FilePath $python", launcher)
+
     def test_stage_10_icon_is_wired_into_desktop_build_and_shortcut(self) -> None:
         root = Path(__file__).parents[1]
         desktop_shell = (root / "desktop_app.py").read_text(encoding="utf-8")
@@ -601,11 +613,149 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("assets\\icons;assets\\icons", build_script)
         self.assertIn("config\\app_identity.json;config", build_script)
         self.assertIn("config\\default_config.json;config", build_script)
+        self.assertIn("docs;docs", build_script)
         self.assertIn(".venv\\Scripts\\python.exe", build_script)
         self.assertIn("IconLocation", install_script)
         self.assertIn("config\\app_identity.json", install_script)
         self.assertIn("config\\default_config.json", install_script)
         self.assertNotIn("config\\config.json\") -Destination", install_script)
+
+    def test_stage_10_release_build_command_is_versioned_and_clean_tree_gated(self) -> None:
+        root = Path(__file__).parents[1]
+        release_script = (root / "scripts" / "build_release.ps1").read_text(encoding="utf-8")
+        gitignore = (root / ".gitignore").read_text(encoding="utf-8")
+
+        self.assertIn("param(", release_script)
+        self.assertIn("[switch]$AllowDirty", release_script)
+        self.assertIn("git status --porcelain", release_script)
+        self.assertIn("Release build requires a clean git tree", release_script)
+        self.assertIn("releases", release_script)
+        self.assertIn("$appName-$version-$channel", release_script)
+        self.assertIn("Get-FileHash", release_script)
+        self.assertIn("release_manifest.json", release_script)
+        self.assertIn("scripts\\build_app.ps1", release_script)
+        self.assertIn("releases/", gitignore)
+
+    def test_stage_10_installer_build_has_shortcuts_and_uninstall_cleanup(self) -> None:
+        root = Path(__file__).parents[1]
+        installer_script = (root / "scripts" / "build_installer.ps1").read_text(encoding="utf-8")
+        installer_smoke = (root / "scripts" / "smoke_installer.ps1").read_text(encoding="utf-8")
+        inno_script = (root / "installer" / "talos.iss").read_text(encoding="utf-8")
+
+        self.assertIn("Find-InnoCompiler", installer_script)
+        self.assertIn("scripts\\build_release.ps1", installer_script)
+        self.assertIn("-AllowDirty:$AllowDirty", installer_script)
+        self.assertIn("release_manifest.json", installer_script)
+        self.assertIn("windows-installer", installer_script)
+        self.assertIn("$releaseName-setup.exe", installer_script)
+        self.assertIn("Where-Object { $_.file -ne $installerFile }", installer_script)
+
+        self.assertIn("PrivilegesRequired=lowest", inno_script)
+        self.assertIn("DefaultDirName={localappdata}\\Programs\\{#MyAppName}", inno_script)
+        self.assertIn("Name: \"desktopicon\"", inno_script)
+        self.assertIn("{userprograms}\\{#MyAppName}\\{#MyAppName}", inno_script)
+        self.assertIn("{userdesktop}\\{#MyAppName}", inno_script)
+        self.assertIn("Tasks: desktopicon", inno_script)
+        self.assertIn("[UninstallDelete]", inno_script)
+        self.assertIn("Type: dirifempty; Name: \"{app}\\config\"", inno_script)
+        self.assertIn("release_manifest.json", inno_script)
+        self.assertIn("{#ReleaseDir}\\docs\\*", inno_script)
+        self.assertIn("Release Notes", inno_script)
+        self.assertIn("Privacy Notes", inno_script)
+        self.assertIn("default_config.json", inno_script)
+        self.assertNotIn("DestName: \"config.json\"", inno_script)
+        self.assertIn("#ifndef MyAppName", inno_script)
+        self.assertIn("TalosInstallerSmoke", installer_smoke)
+        self.assertIn("scripts\\build_installer.ps1", installer_smoke)
+        self.assertIn("/VERYSILENT", installer_smoke)
+        self.assertIn("config\\default_config.json", installer_smoke)
+        self.assertIn("release_manifest.json", installer_smoke)
+        self.assertIn("docs\\RELEASE_NOTES.md", installer_smoke)
+        self.assertIn("docs\\EULA.md", installer_smoke)
+        self.assertIn("docs\\PRIVACY.md", installer_smoke)
+        self.assertIn("docs\\THIRD_PARTY_NOTICES.md", installer_smoke)
+        self.assertIn("writable runtime config inside the install directory", installer_smoke)
+        self.assertIn("Silent uninstall", installer_smoke)
+        self.assertIn("Installer smoke test passed", installer_smoke)
+
+    def test_stage_10_runtime_state_uses_per_user_app_data(self) -> None:
+        root = Path(__file__).parents[1]
+        core_source = (root / "talos" / "core.py").read_text(encoding="utf-8")
+        arduino_source = (root / "talos" / "arduino.py").read_text(encoding="utf-8")
+        codex_source = (root / "talos" / "codex_bridge.py").read_text(encoding="utf-8")
+        history_source = (root / "talos" / "run_history.py").read_text(encoding="utf-8")
+        checkpoint_source = (root / "talos" / "checkpoints.py").read_text(encoding="utf-8")
+        server_source = (root / "talos" / "server.py").read_text(encoding="utf-8")
+        cleaner = (root / "scripts" / "clean_runtime.ps1").read_text(encoding="utf-8")
+        gitignore = (root / ".gitignore").read_text(encoding="utf-8")
+
+        self.assertIn("APP_DATA_ENV = \"TALOS_APP_DATA_DIR\"", core_source)
+        self.assertIn("APP_DATA_ROOT = _default_app_data_root()", core_source)
+        self.assertIn("CONFIG_PATH = APP_DATA_ROOT / \"config.json\"", core_source)
+        self.assertIn("LEGACY_CONFIG_PATH = ROOT / \"config\" / \"config.json\"", core_source)
+        self.assertIn("source_path = LEGACY_CONFIG_PATH", core_source)
+
+        self.assertIn("SANDBOX_ROOT = APP_DATA_ROOT / \"sandbox\" / \"arduino\"", arduino_source)
+        self.assertIn("STAGING_ROOT = APP_DATA_ROOT / \"staging\"", codex_source)
+        self.assertIn("REVIEW_STATE_PATH = APP_DATA_ROOT / \"codex_reviews.json\"", codex_source)
+        self.assertIn("RUN_HISTORY_PATH = APP_DATA_ROOT / \"run_history.json\"", history_source)
+        self.assertIn("CHECKPOINT_PATH = APP_DATA_ROOT / \"checkpoints.json\"", checkpoint_source)
+        self.assertIn("\"app_data\": str(APP_DATA_ROOT)", server_source)
+
+        self.assertIn("T-Engine\\Talos", cleaner)
+        self.assertIn("insideAppData", cleaner)
+        self.assertIn("config/config.json", gitignore)
+        self.assertIn("config/codex_reviews.json", gitignore)
+
+    def test_stage_10_version_and_build_metadata_are_visible(self) -> None:
+        root = Path(__file__).parents[1]
+        core_source = (root / "talos" / "core.py").read_text(encoding="utf-8")
+        server_source = (root / "talos" / "server.py").read_text(encoding="utf-8")
+        html = (root / "ui" / "web_frontend" / "index.html").read_text(encoding="utf-8")
+        script = (root / "ui" / "web_frontend" / "app.js").read_text(encoding="utf-8")
+        styles = (root / "ui" / "web_frontend" / "styles.css").read_text(encoding="utf-8")
+
+        self.assertIn("RELEASE_MANIFEST_PATH = ROOT / \"release_manifest.json\"", core_source)
+        self.assertIn("def load_build_metadata", core_source)
+        self.assertIn("\"mode\": \"packaged\" if getattr(sys, \"frozen\", False) else \"source\"", core_source)
+        self.assertIn("\"artifacts\": artifacts", core_source)
+        self.assertIn("load_build_metadata(app_identity)", server_source)
+        self.assertIn("\"build\": build_metadata", server_source)
+
+        self.assertIn('id="chromeVersion"', html)
+        self.assertIn('id="brandVersion"', html)
+        self.assertIn('id="releaseDetails"', html)
+        self.assertIn("function versionLabel", script)
+        self.assertIn("function renderReleaseDetails", script)
+        self.assertIn("hydrateAppIdentity(payload.app || {}, payload.build || {})", script)
+        self.assertIn(".release-details", styles)
+
+    def test_stage_10_release_legal_and_third_party_docs_are_packaged(self) -> None:
+        root = Path(__file__).parents[1]
+        required_docs = {
+            "LICENSE": ["MIT License", "Copyright"],
+            "RELEASE_NOTES.md": ["0.1.0 Beta", "Known Limitations"],
+            "EULA.md": ["End User License Agreement", "Beta Status"],
+            "PRIVACY.md": ["Privacy Notes", "Codex"],
+            "THIRD_PARTY_NOTICES.md": ["Third-Party Notices", "pywebview", "PyInstaller", "Pillow"],
+        }
+        for doc_name, required_terms in required_docs.items():
+            content = (root / "docs" / doc_name).read_text(encoding="utf-8")
+            for term in required_terms:
+                self.assertIn(term, content, doc_name)
+
+        release_script = (root / "scripts" / "build_release.ps1").read_text(encoding="utf-8")
+        installer_script = (root / "installer" / "talos.iss").read_text(encoding="utf-8")
+        local_install = (root / "scripts" / "install_app.ps1").read_text(encoding="utf-8")
+        readme = (root / "docs" / "README.md").read_text(encoding="utf-8")
+        pipeline = (root / "docs" / "TALOS_PIPELINE.md").read_text(encoding="utf-8")
+
+        for doc_name in required_docs:
+            self.assertIn(doc_name, release_script)
+            self.assertIn(doc_name, local_install)
+            self.assertIn(doc_name, readme)
+        self.assertIn("Source: \"{#ReleaseDir}\\docs\\*\"", installer_script)
+        self.assertIn("Start Menu includes Release Notes and Privacy shortcuts", pipeline)
 
     def test_pipeline_defines_exit_condition_for_every_stage(self) -> None:
         pipeline = (Path(__file__).parents[1] / "docs" / "TALOS_PIPELINE.md").read_text(encoding="utf-8")
@@ -1037,6 +1187,11 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertEqual(payload["app"]["publisher"], "T-Engine")
         self.assertEqual(payload["app"]["version"], "0.1.0")
         self.assertEqual(payload["app"]["channel"], "Beta")
+        self.assertEqual(payload["build"]["schema_version"], 1)
+        self.assertEqual(payload["build"]["version"], "0.1.0")
+        self.assertEqual(payload["build"]["channel"], "Beta")
+        self.assertIn(payload["build"]["mode"], {"source", "packaged"})
+        self.assertIn("python", payload["build"])
         self.assertTrue(payload["arduino_ide"]["running"])
         self.assertIn("arduino_profile_readiness", payload)
         self.assertIn("POST /api/release_evidence", payload["tools"])
@@ -1060,6 +1215,7 @@ class TalosArduinoTests(unittest.TestCase):
             with (
                 patch("talos.arduino.list_arduino_ide_processes", return_value=[]),
                 patch("talos.arduino.list_arduino_tool_processes", return_value=[]),
+                patch("talos.arduino.list_window_rows", return_value=[]),
                 patch("talos.arduino.open_window_titles", return_value=["Talos", "desktop_app.py - Visual Studio Code"]),
                 patch("talos.arduino.list_arduino_open_workspaces", return_value=[{"path": str(sketch), "time": 1}]),
                 patch(

@@ -12,7 +12,9 @@ from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
 from talos.core import (
+    APP_DATA_ROOT,
     ROOT,
+    load_build_metadata,
     load_app_identity,
     load_config,
     now,
@@ -104,6 +106,7 @@ def stop_arduino_event_watcher() -> None:
 def state_payload() -> dict[str, Any]:
     config = load_config()
     app_identity = load_app_identity()
+    build_metadata = load_build_metadata(app_identity)
     ide_processes = list_arduino_ide_processes()
     tool_processes = list_arduino_tool_processes()
     window_rows = list_window_rows()
@@ -128,7 +131,9 @@ def state_payload() -> dict[str, Any]:
         "name": app_identity["display_name"],
         "role": "Codex local tool server",
         "root": str(ROOT),
+        "app_data": str(APP_DATA_ROOT),
         "app": app_identity,
+        "build": build_metadata,
         "native_available": native_available(),
         "config": {
             "theme": config.get("theme", "light"),
@@ -198,11 +203,13 @@ class LocalAgentWebHandler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/health":
             app_identity = load_app_identity()
+            build_metadata = load_build_metadata(app_identity)
             self.send_json({
                 "ok": True,
                 "service": app_identity["display_name"],
                 "role": "Codex local tool server",
                 "app": app_identity,
+                "build": build_metadata,
             })
             return
         if parsed.path == "/api/arduino_context":

@@ -11,14 +11,14 @@ from difflib import SequenceMatcher, unified_diff
 from pathlib import Path
 from typing import Any
 
-from talos.core import ROOT, load_app_identity, migrate_state_document, now, read_json_file, write_json_file
+from talos.core import APP_DATA_ROOT, ROOT, load_app_identity, migrate_state_document, now, read_json_file, write_json_file
 from talos.arduino import is_source_file
 
 CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 PATCH_IGNORED_DIRS = {".git", ".talos_sandbox", "__pycache__", "build", "dist"}
 PATCH_FILE_LIMIT = 2_000_000
-STAGING_ROOT = ROOT / ".talos_staging"
-REVIEW_STATE_PATH = ROOT / "config" / "codex_reviews.json"
+STAGING_ROOT = APP_DATA_ROOT / "staging"
+REVIEW_STATE_PATH = APP_DATA_ROOT / "codex_reviews.json"
 REVIEW_STATE_SCHEMA_VERSION = 1
 THREAD_SANDBOX_MODE = "workspace-write"
 CODEX_TURN_TIMEOUT_SECONDS = 300

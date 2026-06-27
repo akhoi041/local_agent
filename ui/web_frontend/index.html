@@ -18,6 +18,7 @@
       <div class="chrome-title pywebview-drag-region">
         <span class="chrome-mark">T</span>
         <span id="chromeAppName" class="pywebview-drag-region">Talos</span>
+        <span id="chromeVersion" class="chrome-version pywebview-drag-region"></span>
       </div>
       <div class="chrome-actions">
         <button id="minimizeBtn" class="chrome-button" title="Minimize">-</button>
@@ -43,6 +44,7 @@
             <span class="brand-copy">
               <span class="brand-kicker">Codex Tool Server</span>
               <span id="brandName" class="brand-name">Talos</span>
+              <span id="brandVersion" class="brand-version"></span>
             </span>
           </div>
           <button id="pinRailBtn" class="rail-pin" type="button" title="Pin navigation open" aria-label="Pin navigation open">
@@ -329,6 +331,14 @@
         </section>
 
         <section class="view" id="settings">
+          <div class="holo-panel settings-panel">
+            <div class="panel-title">Release</div>
+            <div id="releaseDetails" class="release-details">
+              <div><span>Version</span><b>Loading...</b></div>
+              <div><span>Mode</span><b>Loading...</b></div>
+              <div><span>App data</span><b>Loading...</b></div>
+            </div>
+          </div>
           <div class="holo-panel settings-panel">
             <div class="panel-title">Theme</div>
             <div class="theme-options" role="radiogroup" aria-label="Theme">

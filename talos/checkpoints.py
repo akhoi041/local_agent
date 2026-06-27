@@ -6,9 +6,9 @@ import uuid
 from typing import Any
 
 from talos.arduino import configured_workspace, read_workspace_file, write_workspace_file
-from talos.core import ROOT, migrate_state_document, now, read_json_file, write_json_file
+from talos.core import APP_DATA_ROOT, migrate_state_document, now, read_json_file, write_json_file
 
-CHECKPOINT_PATH = ROOT / "config" / "checkpoints.json"
+CHECKPOINT_PATH = APP_DATA_ROOT / "checkpoints.json"
 CHECKPOINT_LIMIT = 80
 CHECKPOINT_HISTORY_LIMIT = 5
 CHECKPOINT_PER_FILE_LIMIT = 8

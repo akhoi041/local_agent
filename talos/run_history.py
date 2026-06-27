@@ -4,9 +4,9 @@ import threading
 import uuid
 from typing import Any
 
-from talos.core import ROOT, migrate_state_document, now, read_json_file, write_json_file
+from talos.core import APP_DATA_ROOT, migrate_state_document, now, read_json_file, write_json_file
 
-RUN_HISTORY_PATH = ROOT / "config" / "run_history.json"
+RUN_HISTORY_PATH = APP_DATA_ROOT / "run_history.json"
 RUN_HISTORY_LIMIT = 40
 RUN_HISTORY_SCHEMA_VERSION = 1
 RUN_HISTORY_LOCK = threading.Lock()

@@ -56,6 +56,8 @@ POST /api/codex_verify_patch
 POST /api/codex_save_patch
 ```
 
+`/api/state` and `/api/health` expose both `app` identity and `build` metadata. `app` contains the product identity from `config/app_identity.json`; `build` reports source vs packaged mode, version/channel, release manifest data when installed, Python/platform details, app root, bundle root, and per-user app-data path.
+
 Example write request:
 
 ```json
@@ -88,8 +90,7 @@ talos/run_history.py    Local verify and change activity history
 native/talos_native.c   Native Windows app-discovery logic
 ui/web_frontend/        Desktop UI assets
 assets/icons/           Generated Talos Windows icon set
-config/config.json      Runtime configuration
-config/default_config.json Clean packaged runtime defaults
+config/default_config.json Clean packaged configuration defaults
 config/app_identity.json Product identity and packaging metadata
 config/requirements.txt Build/runtime Python dependencies
 scripts/build_app.ps1   Build one-file Windows executable
@@ -101,12 +102,27 @@ scripts/clean_runtime.ps1 Remove disposable sandbox, staging, and test cache dat
 scripts/install_app.ps1 Install built app to LocalAppData and create desktop shortcut
 scripts/launch_desktop.ps1 Open source app or installed app
 scripts/pipeline_status.ps1 Show pipeline progress
+scripts/build_installer.ps1 Build the Windows installer with Inno Setup
+scripts/smoke_installer.ps1 Build, silently install, verify shortcuts, and uninstall the installer
+installer/talos.iss     Inno Setup installer definition
 scripts/smoke_release_recovery.py Validate restart/recovery safety for pending Codex reviews
 tests/                  Regression tests
 docs/                   README and license
 ```
 
-Runtime files such as `.talos_sandbox/`, `.talos_staging/`, and `config/run_history.json` are ignored by Git. The sandbox holds disposable compile copies; staging holds disposable Codex change copies. Neither is source code or a workspace backup.
+Release/legal documentation for packaged builds:
+
+```text
+docs/LICENSE                 Project license
+docs/EULA.md                 Beta packaged-app terms
+docs/PRIVACY.md              Local data and Codex data-flow notes
+docs/RELEASE_NOTES.md        Current release highlights and known limitations
+docs/THIRD_PARTY_NOTICES.md  Dependency and tooling notices
+```
+
+User-writable runtime data is stored under `%LOCALAPPDATA%\T-Engine\Talos` by default. `config.json`, `run_history.json`, `checkpoints.json`, and `codex_reviews.json` live there, while disposable compile and Codex staging copies live under `sandbox\` and `staging\`. Set `TALOS_APP_DATA_DIR` only for tests or isolated debug runs.
+
+Legacy source-tree runtime folders such as `.talos_sandbox/` and `.talos_staging/` are still cleaned if present, but Talos no longer relies on them for normal source or packaged runs.
 
 Clean disposable runtime data when Talos is not running:
 
@@ -131,6 +147,12 @@ python -B -m talos.client verify
 ```
 
 ## Run From Source
+
+Install runtime/build dependencies first if this checkout has no `.venv`:
+
+```powershell
+python -m pip install -r config\requirements.txt
+```
 
 ```powershell
 python -B desktop_app.py
@@ -188,6 +210,29 @@ Build:
 .\scripts\build_app.ps1
 ```
 
+Build a versioned release folder from a clean tree:
+
+```powershell
+.\scripts\build_release.ps1
+```
+
+For local validation before committing, use `-AllowDirty`; do not use that flag for distribution builds.
+
+Build the Windows installer:
+
+```powershell
+.\scripts\build_installer.ps1
+```
+
+The installer is written into the same versioned release folder and creates a Start Menu shortcut by default. Desktop shortcut creation is optional in the installer wizard.
+Installed builds include `release_manifest.json` beside `Talos.exe` so the UI and API can show release/build metadata.
+
+Smoke-test the installer install/uninstall behavior:
+
+```powershell
+.\scripts\smoke_installer.ps1
+```
+
 Install locally:
 
 ```powershell
@@ -198,4 +243,4 @@ Install locally:
 
 For sandbox verify, install `arduino-cli` and make sure it is available in `PATH`.
 
-Talos does not compile in your real sketch folder. It copies the sketch into `.talos_sandbox/arduino/...` and compiles the copy.
+Talos does not compile in your real sketch folder. It copies the sketch into `%LOCALAPPDATA%\T-Engine\Talos\sandbox\arduino\...` and compiles the copy.

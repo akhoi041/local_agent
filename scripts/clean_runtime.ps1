@@ -4,18 +4,25 @@ param(
 
 $ErrorActionPreference = "Stop"
 $root = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
-$targets = @()
-$sandboxRoot = Join-Path $root ".talos_sandbox"
-if (Test-Path -LiteralPath $sandboxRoot) {
-    $targets += Get-ChildItem -LiteralPath $sandboxRoot -Directory -Force | ForEach-Object { $_.FullName }
-    $targets += $sandboxRoot
+$appDataRoot = if ($env:TALOS_APP_DATA_DIR) {
+    [System.IO.Path]::GetFullPath($env:TALOS_APP_DATA_DIR)
+} else {
+    $localAppData = if ($env:LOCALAPPDATA) { $env:LOCALAPPDATA } else { Join-Path $HOME "AppData\Local" }
+    [System.IO.Path]::GetFullPath((Join-Path $localAppData "T-Engine\Talos"))
 }
-if (-not $KeepStaging) {
-    $stagingRoot = Join-Path $root ".talos_staging"
-    if (Test-Path -LiteralPath $stagingRoot) {
-        $targets += Get-ChildItem -LiteralPath $stagingRoot -Directory -Force | ForEach-Object { $_.FullName }
-        $targets += $stagingRoot
+$targets = @()
+
+function Add-TargetIfExists([string]$PathText) {
+    if (Test-Path -LiteralPath $PathText) {
+        $script:targets += $PathText
     }
+}
+
+Add-TargetIfExists (Join-Path $root ".talos_sandbox")
+Add-TargetIfExists (Join-Path $appDataRoot "sandbox")
+if (-not $KeepStaging) {
+    Add-TargetIfExists (Join-Path $root ".talos_staging")
+    Add-TargetIfExists (Join-Path $appDataRoot "staging")
 }
 $targets += Get-ChildItem -LiteralPath $root -Directory -Force -Filter "pytest-cache-files-*" |
     ForEach-Object { $_.FullName }
@@ -27,8 +34,10 @@ foreach ($candidate in $targets | Select-Object -Unique) {
     if ($null -eq $target) {
         continue
     }
-    if (-not $target.Path.StartsWith($root, [System.StringComparison]::OrdinalIgnoreCase)) {
-        throw "Refusing to remove a path outside the Talos workspace: $($target.Path)"
+    $insideWorkspace = $target.Path.StartsWith($root, [System.StringComparison]::OrdinalIgnoreCase)
+    $insideAppData = $target.Path.StartsWith($appDataRoot, [System.StringComparison]::OrdinalIgnoreCase)
+    if (-not $insideWorkspace -and -not $insideAppData) {
+        throw "Refusing to remove a path outside the Talos workspace or app data root: $($target.Path)"
     }
     try {
         Remove-Item -LiteralPath $target.Path -Recurse -Force

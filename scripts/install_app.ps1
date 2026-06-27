@@ -21,12 +21,16 @@ if (Test-Path -LiteralPath $installDir) {
 
 New-Item -ItemType Directory -Path $installDir -Force | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $installDir "config") -Force | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $installDir "docs") -Force | Out-Null
 New-Item -ItemType Directory -Path $installIconDir -Force | Out-Null
 Copy-Item -LiteralPath $sourceExe -Destination $installExe -Force
-Copy-Item -LiteralPath (Join-Path $root "config\default_config.json") -Destination (Join-Path $installDir "config\config.json") -Force
+Copy-Item -LiteralPath (Join-Path $root "config\default_config.json") -Destination (Join-Path $installDir "config\default_config.json") -Force
 Copy-Item -LiteralPath $identityPath -Destination (Join-Path $installDir "config\app_identity.json") -Force
 Copy-Item -LiteralPath (Join-Path $sourceIconDir "*") -Destination $installIconDir -Force
 Copy-Item -LiteralPath (Join-Path $root "docs\README.md") -Destination (Join-Path $installDir "README.md") -Force
+foreach ($docName in @("LICENSE", "RELEASE_NOTES.md", "EULA.md", "PRIVACY.md", "THIRD_PARTY_NOTICES.md")) {
+  Copy-Item -LiteralPath (Join-Path $root "docs\$docName") -Destination (Join-Path $installDir "docs\$docName") -Force
+}
 
 $desktop = [Environment]::GetFolderPath("Desktop")
 $shortcutPath = Join-Path $desktop "$appName.lnk"
