@@ -1,5 +1,5 @@
 param(
-    [string]$Path = "docs/TALOS_PIPELINE.md"
+    [string]$Path = "docs/TALOS_PIPELINE_020.md"
 )
 
 $ErrorActionPreference = "Stop"

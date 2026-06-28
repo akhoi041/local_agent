@@ -1,4 +1,4 @@
-import json
+﻿import json
 import re
 import time
 import unittest
@@ -753,7 +753,7 @@ class TalosArduinoTests(unittest.TestCase):
         installer_script = (root / "installer" / "talos.iss").read_text(encoding="utf-8")
         local_install = (root / "scripts" / "install_app.ps1").read_text(encoding="utf-8")
         readme = (root / "docs" / "README.md").read_text(encoding="utf-8")
-        pipeline = (root / "docs" / "TALOS_PIPELINE.md").read_text(encoding="utf-8")
+        pipeline = (root / "docs" / "TALOS_PIPELINE_010.md").read_text(encoding="utf-8")
 
         for doc_name in required_docs:
             self.assertIn(doc_name, release_script)
@@ -769,7 +769,7 @@ class TalosArduinoTests(unittest.TestCase):
         sign_script = (root / "scripts" / "sign_release.ps1").read_text(encoding="utf-8")
         release_script = (root / "scripts" / "build_release.ps1").read_text(encoding="utf-8")
         readme = (root / "docs" / "README.md").read_text(encoding="utf-8")
-        pipeline = (root / "docs" / "TALOS_PIPELINE.md").read_text(encoding="utf-8")
+        pipeline = (root / "docs" / "TALOS_PIPELINE_010.md").read_text(encoding="utf-8")
 
         self.assertEqual(policy["schema_version"], 1)
         self.assertEqual(policy["publisher"], "T-Engine")
@@ -804,7 +804,7 @@ class TalosArduinoTests(unittest.TestCase):
         smoke_doc = (root / "docs" / "INSTALLED_APP_SMOKE_TEST.md").read_text(encoding="utf-8")
         release_script = (root / "scripts" / "build_release.ps1").read_text(encoding="utf-8")
         readme = (root / "docs" / "README.md").read_text(encoding="utf-8")
-        pipeline = (root / "docs" / "TALOS_PIPELINE.md").read_text(encoding="utf-8")
+        pipeline = (root / "docs" / "TALOS_PIPELINE_010.md").read_text(encoding="utf-8")
 
         self.assertIn("[switch]$ManualArduinoConfirmed", smoke_script)
         self.assertIn("[switch]$SkipLaunch", smoke_script)
@@ -827,7 +827,7 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("[x] Smoke-test the installed app outside the repository", pipeline)
 
     def test_pipeline_defines_exit_condition_for_every_stage(self) -> None:
-        pipeline = (Path(__file__).parents[1] / "docs" / "TALOS_PIPELINE.md").read_text(encoding="utf-8")
+        pipeline = (Path(__file__).parents[1] / "docs" / "TALOS_PIPELINE_010.md").read_text(encoding="utf-8")
         stages = re.split(r"(?=^## Stage \d+ - )", pipeline, flags=re.MULTILINE)
         stage_sections = [section for section in stages if section.startswith("## Stage ")]
 

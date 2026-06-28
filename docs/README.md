@@ -137,6 +137,8 @@ docs/RELEASE_NOTES.md        Current release highlights and known limitations
 docs/THIRD_PARTY_NOTICES.md  Dependency and tooling notices
 docs/CODE_SIGNING.md         Signing policy, unsigned-Beta path, and verification commands
 docs/INSTALLED_APP_SMOKE_TEST.md Installed-app Arduino/Codex smoke-test checklist
+docs/TALOS_PIPELINE_010.md   Completed 0.1.0 Beta first-version pipeline
+docs/TALOS_PIPELINE_020.md   Active 0.2.0 Beta pipeline
 ```
 
 User-writable runtime data is stored under `%LOCALAPPDATA%\T-Engine\Talos` by default. `config.json`, `run_history.json`, `checkpoints.json`, and `codex_reviews.json` live there, while disposable compile and Codex staging copies live under `sandbox\` and `staging\`. Set `TALOS_APP_DATA_DIR` only for tests or isolated debug runs.
