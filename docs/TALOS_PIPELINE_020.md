@@ -13,12 +13,32 @@ This version is not a MATLAB release and not the final 1.0.0 Alpha. It focuses o
 ## Baseline
 
 ```text
+Roadmap: docs/TALOS_ROADMAP.md
 Previous completed pipeline: docs/TALOS_PIPELINE_010.md
 Current active pipeline: docs/TALOS_PIPELINE_020.md
 Target version: 0.2.0 Beta
 ```
 
 Talos 0.1.0 Beta already completed the Arduino MVP, Codex bridge, staged change review, sandbox verify, native Windows detection, release packaging scripts, installer smoke tooling, and distribution checklist tooling. Version 0.2.0 should not redesign those foundations unless a reliability issue requires it.
+
+## 0.2.0 Release Criteria
+
+Talos 0.2.0 Beta is ready only when these are true:
+
+- It can be built, installed, launched outside the source tree, smoke-tested, and uninstalled with release evidence.
+- It can repeatedly detect live saved Arduino sketches without keeping stale closed sketches in the active list.
+- It can keep board/profile information synchronized for the selected sketch when Arduino IDE exposes usable metadata.
+- It can verify sandbox builds without stale output accumulation and with clear cache/cancel behavior.
+- It remains usable in normal, maximized, and narrow desktop windows without fixed-layout failures.
+- It preserves the 0.1.0 safety contract: Codex changes never write directly to the real Arduino sketch, and external Arduino edits are not silently overwritten.
+
+## Non-Goals For 0.2.0
+
+- No MATLAB or second-app integration.
+- No commercial-grade upload or serial-monitor guarantee.
+- No plugin SDK or marketplace.
+- No auto-update infrastructure.
+- No rewrite of the Codex bridge, staging workspace, or native detection layer unless required to fix a concrete reliability bug.
 
 ## Progress Rules
 
@@ -129,6 +149,7 @@ Purpose: package and validate the completed 0.2.0 Beta.
 - [ ] Sign artifacts or explicitly mark unsigned Beta status.
 - [ ] Run installer smoke and installed-app smoke.
 - [ ] Generate final 0.2.0 distribution checklist with `-RequireReady`.
+- [ ] Bump app identity, release manifest naming, and release notes from 0.1.0 to 0.2.0 only at the final release gate.
 - [ ] Update release notes with 0.2.0 fixes, known limitations, and upgrade notes.
 
 Exit condition: Talos 0.2.0 Beta can be installed, run outside the development environment, operate reliably with real Arduino sketches, and ship with release evidence.
