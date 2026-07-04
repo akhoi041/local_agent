@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import mimetypes
+import os
 import sys
 import threading
 from http import HTTPStatus
@@ -23,7 +24,7 @@ from talos.core import (
 from talos.arduino import (
     arduino_ide_status,
     cancel_arduino_compile,
-    clear_arduino_compile_cache,
+    clear_arduino_compile_cache_result,
     delete_workspace_file,
     discover_arduino_projects,
     environment_profile,
@@ -54,6 +55,7 @@ from talos.native_bridge import (
     native_available,
 )
 from talos.run_history import (
+    record_codex_turn,
     record_patch_transition,
     record_patch_verification,
     record_release_evidence,
@@ -310,9 +312,9 @@ class TalosWebHandler(BaseHTTPRequestHandler):
             self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.CONFLICT)
             return
         if self.path == "/api/arduino_verify_cache_clear":
-            cleared = clear_arduino_compile_cache()
-            log_event(f"{now()} cleared Arduino compile cache ({cleared} entries)")
-            self.send_json({"ok": True, "cleared": cleared})
+            result = clear_arduino_compile_cache_result()
+            log_event(f"{now()} cleared Arduino compile cache ({result.get('cleared')} entries)")
+            self.send_json(result)
             return
         if self.path == "/api/release_evidence":
             config = load_config()
@@ -390,13 +392,40 @@ class TalosWebHandler(BaseHTTPRequestHandler):
                 str(payload.get("verify_context", "")),
                 bool(payload.get("allow_edits", True)),
             )
+            record_codex_turn(
+                str(workspace.get("path") or ""),
+                str(payload.get("message", "")),
+                "started" if result.get("ok") else "blocked",
+                {
+                    "allow_edits": bool(payload.get("allow_edits", True)),
+                    "active_file": str(active_file.get("path") or ""),
+                    "error": str(result.get("error") or ""),
+                },
+            )
             if result.get("ok"):
                 log_event(f"{now()} started Codex turn")
             self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
             return
+        if self.path == "/api/smoke/codex_patch":
+            if os.environ.get("TALOS_SMOKE_HARNESS") != "1":
+                self.send_json({"error": "Not found."}, HTTPStatus.NOT_FOUND)
+                return
+            workspace = workspace_summary(load_config())
+            result = CODEX_BRIDGE.create_smoke_patch(
+                str(workspace.get("path") or ""),
+                str(payload.get("path", "")),
+                str(payload.get("content", "")),
+            )
+            if result.get("ok"):
+                record_patch_transition(result.get("patch") or {}, "smoke-staged", str(payload.get("path") or ""))
+                log_event(f"{now()} prepared smoke Codex patch: {payload.get('path', '')}")
+            self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
+            return
         if self.path == "/api/codex_reconnect":
+            workspace = workspace_summary(load_config())
             result = CODEX_BRIDGE.reconnect()
             if result.get("ok"):
+                record_codex_turn(str(workspace.get("path") or ""), "", "reconnect", {"status": str(result.get("status") or "")})
                 log_event(f"{now()} Codex reconnect requested")
             self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
             return
@@ -540,7 +569,10 @@ class TalosWebHandler(BaseHTTPRequestHandler):
             self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
             return
         if self.path == "/api/codex_cancel":
+            workspace = workspace_summary(load_config())
             result = CODEX_BRIDGE.cancel_turn()
+            if result.get("ok"):
+                record_codex_turn(str(workspace.get("path") or ""), "", "cancelled")
             self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
             return
         if self.path == "/api/codex_conversation":

@@ -621,6 +621,57 @@ class CodexBridge:
         ).start()
         return {"ok": True, "status": "started"}
 
+    def create_smoke_patch(self, workspace: str, relative_path: str, content: str) -> dict[str, Any]:
+        """Create a controlled staged patch for installed-app smoke tests.
+
+        This exercises the same review/apply/save path as a Codex turn without
+        requiring a live model response during release automation.
+        """
+        workspace_path = Path(workspace).resolve()
+        target = str(relative_path or "").replace("\\", "/")
+        if not workspace_path.exists() or not workspace_path.is_dir():
+            return {"ok": False, "error": "Smoke workspace was not found."}
+        source_path = (workspace_path / target).resolve()
+        try:
+            source_path.relative_to(workspace_path)
+        except ValueError:
+            return {"ok": False, "error": "Smoke patch path is outside the workspace."}
+        if not is_source_file(source_path):
+            return {"ok": False, "error": "Smoke patch target is not an Arduino source file."}
+
+        staging_path = prepare_staging_workspace(str(workspace_path))
+        staged_file = (staging_path / target).resolve()
+        staged_file.parent.mkdir(parents=True, exist_ok=True)
+        staged_file.write_text(content, encoding="utf-8")
+        files = staged_patch_files(
+            workspace_path,
+            staging_path,
+            [{"path": target, "kind": "update"}],
+        )
+        if not files:
+            return {"ok": False, "error": "Smoke patch did not produce a reviewable diff."}
+
+        with self._lock:
+            self._patch_revision += 1
+            self._patch_event_revision += 1
+            patch = {
+                "id": f"smoke-patch-{self._patch_revision}",
+                "time": now(),
+                "workspace": str(workspace_path),
+                "staging_workspace": str(staging_path),
+                "files": files,
+                "diff": "\n".join(str(file.get("diff") or "") for file in files),
+                "event_revision": self._patch_event_revision,
+                "review_status": "staged",
+                "source": "installed-app-smoke-harness",
+            }
+            self._patches.append(patch)
+            del self._patches[:-20]
+            self._review_recovery_pending = False
+            self._persist_reviews_locked()
+            self._append_activity(f"Prepared smoke Codex patch review: {target}.")
+            return {"ok": True, "patch": dict(patch), "file": dict(files[0])}
+
     def apply_patch(self, patch_id: str, workspace: str, relative_path: str) -> dict[str, Any]:
         with self._lock:
             patch = next((item for item in self._patches if item.get("id") == patch_id), None)
@@ -1358,6 +1409,7 @@ class CodexBridge:
             self._patch_event_revision += 1
             patch = {
                 "id": f"patch-{self._patch_revision}",
+                "turn_id": self._turn_id,
                 "time": now(),
                 "workspace": workspace,
                 "staging_workspace": staging_workspace,

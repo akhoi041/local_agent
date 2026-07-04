@@ -157,15 +157,15 @@
                 <div class="editor-actions">
                   <div class="editor-mode-controls">
                     <span id="editorModeBadge" class="editor-mode-badge">Review</span>
-                    <button id="editInTalosBtn" class="icon-button" type="button" title="Enable local editing in Talos" disabled>Edit in Talos</button>
+                    <button id="editInTalosBtn" class="icon-button" type="button" title="Enable local editing in Talos" disabled>Edit</button>
                   </div>
                   <div class="editor-command-controls">
-                    <button id="saveFileBtn" class="icon-button" type="button" disabled>Save File</button>
-                    <button id="saveAndVerifyBtn" class="button" type="button" disabled>Save &amp; Verify</button>
-                    <button id="rollbackFileBtn" class="icon-button" type="button" title="Restore the file before Talos's last save" disabled>Rollback</button>
-                    <button id="verifyArduinoBtn" class="button primary">Verify Sandbox</button>
+                    <button id="saveFileBtn" class="icon-button" type="button" title="Save the Talos editor draft to Arduino IDE" disabled>Save</button>
+                    <button id="saveAndVerifyBtn" class="button" type="button" title="Save the Talos draft, then verify in the sandbox" disabled>Save + Verify</button>
+                    <button id="rollbackFileBtn" class="icon-button" type="button" title="Restore the file before Talos's last save" disabled>Undo</button>
+                    <button id="verifyArduinoBtn" class="button primary" title="Compile the selected sketch in the Talos sandbox">Verify</button>
                     <button id="cancelArduinoVerifyBtn" class="icon-button" type="button" title="Cancel active sandbox verification" hidden>Cancel</button>
-                    <button id="clearVerifyCacheBtn" class="icon-button" type="button" title="Clear cached sandbox verification">Clear Cache</button>
+                    <button id="clearVerifyCacheBtn" class="icon-button" type="button" title="Clear cached sandbox verification">Clear</button>
                     <button id="toggleCodexBtn" class="icon-button active" type="button" title="Toggle Codex panel" aria-label="Toggle Codex panel">Codex</button>
                   </div>
                 </div>
@@ -225,10 +225,19 @@
                 <div id="codexDiffPreview" class="codex-diff-preview" hidden></div>
                 <div class="editor-canvas">
                   <pre id="editorLineNumbers" class="editor-line-numbers" role="button" aria-label="Select source line" title="Click a line number to select that line">1</pre>
-                  <textarea id="sourceEditor" spellcheck="false" disabled placeholder="Select a source file from Explorer to inspect it."></textarea>
+                  <textarea id="sourceEditor" spellcheck="false" disabled placeholder="Select a file from Files to inspect it. Arduino IDE owns the saved sketch; Save writes Talos edits back."></textarea>
                 </div>
                 <div id="editorStatus" class="editor-statusbar">No file selected.</div>
               </div>
+
+              <div
+                id="verifySplitter"
+                class="row-splitter"
+                role="separator"
+                aria-label="Resize Verify Output"
+                aria-orientation="horizontal"
+                tabindex="0"
+              ></div>
 
               <section class="ide-output-panel">
                 <div class="output-tabbar">

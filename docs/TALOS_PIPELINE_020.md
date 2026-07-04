@@ -72,7 +72,7 @@ Purpose: prove that the current app can be built, installed, launched, and unins
 - [x] Record signing status as signed or explicit unsigned Beta.
 - [x] Run installer install/uninstall smoke and record `installer_smoke.json`.
 - [x] Run installed-app smoke outside the source tree and record `installed_app_smoke.json`.
-- [ ] Generate `DISTRIBUTION_CHECKLIST.md` with `-RequireReady`.
+- [x] Generate `DISTRIBUTION_CHECKLIST.md` with `-RequireReady`.
 - [x] Confirm `desktop_app.py` still launches the source app for debug.
 - [x] Record packaging/runtime issues found during release-candidate validation.
 
@@ -84,12 +84,12 @@ Exit condition: the app can be installed and launched outside the source tree, u
 
 Purpose: make live Arduino IDE detection more dependable across real-world sketch/window workflows.
 
-- [ ] Test multiple Arduino IDE windows with saved sketches on different folders.
-- [ ] Test closing a sketch/window and confirm Talos removes stale candidates quickly.
-- [ ] Test switching focus between `.ino`, `.h`, and `.cpp` tabs without losing the real sketch folder.
-- [ ] Improve board-to-sketch mapping for common AVR and ESP32 boards when multiple IDE windows are open.
-- [ ] Add diagnostics for missing or ambiguous board/FQBN detection.
-- [ ] Add regression coverage for stale sketch and stale board cases found during manual testing.
+- [x] Test multiple Arduino IDE windows with saved sketches on different folders.
+- [x] Test closing a sketch/window and confirm Talos removes stale candidates quickly.
+- [x] Test switching focus between `.ino`, `.h`, and `.cpp` tabs without losing the real sketch folder.
+- [x] Improve board-to-sketch mapping for common AVR and ESP32 boards when multiple IDE windows are open.
+- [x] Add diagnostics for missing or ambiguous board/FQBN detection.
+- [x] Add regression coverage for stale sketch and stale board cases found during manual testing.
 
 Exit condition: Talos reliably lists only live saved sketches and keeps the selected sketch's board/profile synchronized when Arduino IDE exposes enough metadata.
 
@@ -97,11 +97,11 @@ Exit condition: Talos reliably lists only live saved sketches and keeps the sele
 
 Purpose: make sandbox verification fast, cancellable, and predictable enough for repeated daily use.
 
-- [ ] Validate verify cache invalidation for source edits, profile edits, board changes, CLI path changes, and build-property changes.
-- [ ] Tune verify cancellation and clear-cache feedback so users understand what happened.
-- [ ] Keep verify output from accumulating stale passed/failed cards after a new verify starts.
-- [ ] Review sandbox copy exclusions for common Arduino build/cache folders.
-- [ ] Add timing thresholds or telemetry checks for prepare, copy, compile, and total verify time.
+- [x] Validate verify cache invalidation for source edits, profile edits, board changes, CLI path changes, and build-property changes.
+- [x] Tune verify cancellation and clear-cache feedback so users understand what happened.
+- [x] Keep verify output from accumulating stale passed/failed cards after a new verify starts.
+- [x] Review sandbox copy exclusions for common Arduino build/cache folders.
+- [x] Add timing thresholds or telemetry checks for prepare, copy, compile, and total verify time.
 
 Exit condition: Verify Sandbox provides one current result, clear cancellation/cache behavior, and actionable timing data without blocking the workbench.
 
@@ -109,11 +109,11 @@ Exit condition: Verify Sandbox provides one current result, clear cancellation/c
 
 Purpose: reduce friction in the Arduino workbench while preserving Arduino IDE as the owner of the real sketch.
 
-- [ ] Polish responsive layout at normal, maximized, and narrow desktop sizes.
-- [ ] Make Explorer, Change Workspace, Verify Output, and Codex panes resizable where useful without fixed-pixel layout failures.
-- [ ] Keep active-file highlighting in the Files list as the primary file location signal.
-- [ ] Simplify labels around Review, Edit in Talos, Save File, Save And Verify, Rollback, and Verify Sandbox.
-- [ ] Add first-run or empty-state hints explaining Arduino IDE ownership and Talos save boundaries.
+- [x] Polish responsive layout at normal, maximized, and narrow desktop sizes.
+- [x] Make Explorer, Change Workspace, Verify Output, and Codex panes resizable where useful without fixed-pixel layout failures.
+- [x] Keep active-file highlighting in the Files list as the primary file location signal.
+- [x] Simplify labels around Review, Edit in Talos, Save File, Save And Verify, Rollback, and Verify Sandbox.
+- [x] Add first-run or empty-state hints explaining Arduino IDE ownership and Talos save boundaries.
 
 Exit condition: a user can understand and operate the Arduino workflow without reading developer notes, and the UI remains usable outside maximized windows.
 
@@ -121,11 +121,11 @@ Exit condition: a user can understand and operate the Arduino workflow without r
 
 Purpose: make the Codex side of the Arduino loop clear, recoverable, and useful without expanding scope beyond Arduino.
 
-- [ ] Ensure pre-send context clearly shows workspace map, active file, profile, verify result, and edit permission.
-- [ ] Improve Codex panel states for tasks, active conversation, pending turn, cancellation, reconnect, and recovery.
-- [ ] Keep staged changes grouped by file, hunk, and Codex turn.
-- [ ] Recommend verify-before-save for Codex-generated changes.
-- [ ] Record Codex turn outcomes by sketch in run history for debugging and support.
+- [x] Ensure pre-send context clearly shows workspace map, active file, profile, verify result, and edit permission.
+- [x] Improve Codex panel states for tasks, active conversation, pending turn, cancellation, reconnect, and recovery.
+- [x] Keep staged changes grouped by file, hunk, and Codex turn.
+- [x] Recommend verify-before-save for Codex-generated changes.
+- [x] Record Codex turn outcomes by sketch in run history for debugging and support.
 
 Exit condition: a user can ask Codex for an Arduino change, understand what context was sent, review the result, verify it, and decide whether to save it.
 
