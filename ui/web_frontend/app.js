@@ -62,6 +62,7 @@ const RAIL_PIN_KEY = "talos-rail-pinned";
 const CODEX_PANEL_KEY = "talos-codex-panel-open";
 const EXPLORER_WIDTH_KEY = "talos-explorer-pane-width";
 const CODEX_WIDTH_KEY = "talos-codex-pane-width";
+const VERIFY_HEIGHT_KEY = "talos-verify-pane-height";
 const FAST_REFRESH_MS = 1000;
 const IDLE_REFRESH_MS = 5000;
 const REFRESH_TICK_MS = 250;
@@ -122,6 +123,10 @@ function restorePaneWidths() {
   if (Number.isFinite(codex) && codex > 0) {
     root.style.setProperty("--codex-pane-width", `${clampPaneWidth(codex, 280, 680)}px`);
   }
+  const verify = Number(localStorage.getItem(VERIFY_HEIGHT_KEY));
+  if (Number.isFinite(verify) && verify > 0) {
+    root.style.setProperty("--verify-pane-height", `${clampPaneWidth(verify, 140, 520)}px`);
+  }
 }
 
 function resetExplorerWidth() {
@@ -132,6 +137,11 @@ function resetExplorerWidth() {
 function resetCodexWidth() {
   document.documentElement.style.removeProperty("--codex-pane-width");
   localStorage.removeItem(CODEX_WIDTH_KEY);
+}
+
+function resetVerifyHeight() {
+  document.documentElement.style.removeProperty("--verify-pane-height");
+  localStorage.removeItem(VERIFY_HEIGHT_KEY);
 }
 
 function bindExplorerSplitter(selector) {
@@ -200,6 +210,41 @@ function bindCodexSplitter(selector) {
     splitter.addEventListener("pointerup", finish);
     splitter.addEventListener("pointercancel", finish);
     update(event.clientX);
+  });
+}
+
+function bindVerifySplitter(selector) {
+  const splitter = $(selector);
+  if (!splitter) return;
+  splitter.addEventListener("dblclick", resetVerifyHeight);
+  splitter.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    const editorArea = splitter.closest(".ide-editor-area");
+    if (!editorArea) return;
+    event.preventDefault();
+    splitter.setPointerCapture(event.pointerId);
+    splitter.classList.add("dragging");
+    const bounds = editorArea.getBoundingClientRect();
+    const update = (clientY) => {
+      const toolbarHeight = $(".editor-tabbar")?.getBoundingClientRect().height || 48;
+      const available = Math.max(0, bounds.height - toolbarHeight - 12);
+      const minimumEditor = Math.min(260, Math.max(180, available * 0.4));
+      const maximum = Math.max(140, available - minimumEditor);
+      const height = clampPaneWidth(bounds.bottom - clientY, 140, maximum);
+      document.documentElement.style.setProperty("--verify-pane-height", `${Math.round(height)}px`);
+      localStorage.setItem(VERIFY_HEIGHT_KEY, String(Math.round(height)));
+    };
+    const move = (moveEvent) => update(moveEvent.clientY);
+    const finish = () => {
+      splitter.classList.remove("dragging");
+      splitter.removeEventListener("pointermove", move);
+      splitter.removeEventListener("pointerup", finish);
+      splitter.removeEventListener("pointercancel", finish);
+    };
+    splitter.addEventListener("pointermove", move);
+    splitter.addEventListener("pointerup", finish);
+    splitter.addEventListener("pointercancel", finish);
+    update(event.clientY);
   });
 }
 
@@ -488,6 +533,19 @@ function renderRunHistory(events = []) {
               </ol>
             </article>`;
         }
+        if (event.type === "codex_turn") {
+          return `
+            <article class="run-history-item codex-turn">
+              <div class="run-history-main">
+                <span class="run-history-badge">CODEX</span>
+                <div>
+                  <strong>${escapeHtml(event.status || "updated")}</strong>
+                  <span>${escapeHtml(event.workspace || "no workspace")} | ${escapeHtml(event.time || "")}</span>
+                </div>
+              </div>
+              ${event.message ? `<p>${escapeHtml(event.message)}</p>` : ""}
+            </article>`;
+        }
         if (event.type === "release_evidence") {
           return `
             <article class="run-history-item verify ${event.ok ? "passed" : "failed"}">
@@ -600,7 +658,7 @@ function updateEditorAccess() {
   const button = $("#editInTalosBtn");
   button.disabled = !state.activeFilePath || reviewOpen;
   button.classList.toggle("active", canEdit);
-  button.textContent = canEdit ? "Stop Editing" : "Edit in Talos";
+  button.textContent = canEdit ? "Review" : "Edit";
   button.title = canEdit
     ? "Return to review mode; local changes remain until saved or discarded"
     : "Enable local editing in Talos; Arduino IDE is not updated until Save File";
@@ -1244,8 +1302,8 @@ async function applyCodexPatch(patch = state.codexReviewPatch) {
   setEditorDirty(content !== state.editorOriginalContent);
   state.localEditMode = false;
   updateEditorAccess();
-  $("#editorStatus").textContent = "Codex change applied to Talos editor. Save File to update Arduino IDE.";
-  $("#codexStatus").textContent = "Codex change applied to editor; waiting for Save File.";
+  $("#editorStatus").textContent = "Codex change applied to Talos editor. Verify before Save File when possible.";
+  $("#codexStatus").textContent = "Codex change applied to editor; verify before saving to Arduino IDE.";
 
   const reviewable = patch.id && ["staged", "reviewing"].includes(proposedFile.review_status || "staged");
   if (!reviewable) return;
@@ -1306,7 +1364,7 @@ async function reviewCodexHunk(action, hunkId) {
     state.localEditMode = false;
     setCodexReviewMode(updatedPatch);
     $("#editorStatus").textContent = action === "apply"
-      ? "Codex hunk applied to Talos editor. Review remaining hunks or Save File when complete."
+        ? "Codex hunk applied to Talos editor. Review remaining hunks, verify, then Save File when complete."
       : "Codex hunk rejected. The Arduino sketch was not changed.";
     await refreshCodex();
   } catch (error) {
@@ -1335,7 +1393,7 @@ async function resolveCodexTurn(action) {
     state.localEditMode = false;
     setCodexReviewMode(updatedPatch);
     $("#editorStatus").textContent = action === "apply"
-      ? `Applied ${Number(result.changed || 0)} Codex hunk(s) to Talos drafts. Save File writes the active draft to Arduino IDE.`
+      ? `Applied ${Number(result.changed || 0)} Codex hunk(s) to Talos drafts. Verify before Save File when possible.`
       : `Rejected ${Number(result.changed || 0)} pending Codex hunk(s). The Arduino sketch was not changed.`;
     await refreshCodex();
   } catch (error) {
@@ -1535,6 +1593,7 @@ function countEditorLines() {
 function buildCodexContextPreview() {
   const map = state.workspaceMap || {};
   const profile = state.environmentProfile || {};
+  const readiness = state.profileReadiness || {};
   const activeFile = state.activeFilePath || "none";
   const sourceTabs = Number(map.source_tab_count || (map.source_tabs || []).length || 0);
   const profileParts = [
@@ -1548,8 +1607,9 @@ function buildCodexContextPreview() {
     `Workspace map: ${map.valid ? "ready" : "unavailable"} | main ${map.main_sketch || "none"} | ${sourceTabs} source file(s)`,
     `Active file: ${activeFile}${state.activeFilePath ? ` | ${countEditorLines()} editor line(s)` : ""}`,
     `Profile: ${profileParts.join(" | ") || "none"}`,
+    `Profile readiness: ${readiness.ready ? "ready" : "needs review"}${(readiness.blockers || []).length ? ` | blockers: ${(readiness.blockers || []).join(", ")}` : ""}`,
     `Verify: ${codexVerifySummary()}`,
-    `Edits: ${$("#codexAllowEdits")?.checked ? "allowed" : "read-only"}`,
+    `Edit permission: ${$("#codexAllowEdits")?.checked ? "Codex may stage changes in Talos only" : "read-only"}`,
   ];
   return lines.join("\n");
 }
@@ -1609,6 +1669,12 @@ function codexChangeStatusLabel(status = "staged") {
   }[status] || status;
 }
 
+function codexPatchFileLabel(file = {}) {
+  const hunkCount = Number((file.hunks || []).length || file.hunk_count || 0);
+  const hunkText = hunkCount ? `${hunkCount} hunk${hunkCount === 1 ? "" : "s"}` : "no hunks";
+  return `${file.kind || "update"} | ${hunkText}`;
+}
+
 function renderCodex(payload = {}) {
   state.codexBusy = Boolean(payload.busy);
   previewPendingCodexPatch(payload.pending_patch || {});
@@ -1639,12 +1705,18 @@ function renderCodex(payload = {}) {
         `).join("");
     const patchHtml = patches.slice(-5).map((patch) => `
       <section class="codex-patch">
-        <div class="codex-patch-head"><span>${escapeHtml(codexChangeStatusLabel(patch.review_status || "staged"))}</span><span>${escapeHtml(patch.time || "")}</span></div>
+        <div class="codex-patch-head">
+          <span>${escapeHtml(codexChangeStatusLabel(patch.review_status || "staged"))}</span>
+          <span>${escapeHtml(patch.turn_id ? `turn ${String(patch.turn_id).slice(-6)}` : patch.time || "")}</span>
+        </div>
         <div class="codex-patch-list">
           ${(patch.files || []).map((file) => `
             <div class="codex-patch-file">
               <span class="codex-patch-kind">${escapeHtml(file.review_status || "staged")}</span>
-              <code title="${escapeHtml(file.path || "")}">${escapeHtml(file.path || "")}</code>
+              <span class="codex-patch-file-copy">
+                <code title="${escapeHtml(file.path || "")}">${escapeHtml(file.path || "")}</code>
+                <small>${escapeHtml(codexPatchFileLabel(file))}</small>
+              </span>
             </div>
           `).join("")}
         </div>
@@ -1685,7 +1757,7 @@ function renderCodex(payload = {}) {
     state.codexPatchEventRevision = nextEventRevision;
   } else if (nextEventRevision !== state.codexPatchEventRevision) {
     state.codexPatchEventRevision = nextEventRevision;
-    $("#codexStatus").textContent = "Codex patch is ready for review.";
+    $("#codexStatus").textContent = "Codex patch is ready for review. Verify the staged change before saving.";
   }
 }
 
@@ -1781,6 +1853,7 @@ async function sendCodexMessage() {
   if (!message || state.codexBusy) return;
   renderCodexContextPreview();
   $("#codexStatus").textContent = "Sending context to Codex...";
+  $("#codexContextPreview").open = true;
   $("#sendCodexBtn").disabled = true;
   showCodexTasks(false);
   try {
@@ -2159,6 +2232,7 @@ function bindEvents() {
   showCodexTasks(true);
   bindExplorerSplitter("#explorerSplitter");
   bindCodexSplitter("#codexSplitter");
+  bindVerifySplitter("#verifySplitter");
   $$(".nav").forEach((button) => button.addEventListener("click", () => setView(button.dataset.view)));
   $("#pinRailBtn").addEventListener("click", () => applyRailPinned(!railPinned()));
   $("#refreshBtn").addEventListener("click", refresh);

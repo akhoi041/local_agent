@@ -7,6 +7,7 @@
   --explorer-pane-width: clamp(248px, 16vw, 304px);
   --codex-pane-width: clamp(320px, 25vw, 460px);
   --pane-splitter-width: 4px;
+  --verify-pane-height: clamp(180px, 28vh, 360px);
   --bg: #ffffff;
   --canvas-subtle: #f6f8fa;
   --canvas-inset: #f6f8fa;
@@ -955,6 +956,31 @@ textarea:focus {
   outline: none;
 }
 
+.row-splitter {
+  position: relative;
+  z-index: 8;
+  min-height: var(--pane-splitter-width);
+  background: var(--line-soft);
+  cursor: row-resize;
+  touch-action: none;
+}
+
+.row-splitter::after {
+  position: absolute;
+  right: 0;
+  bottom: -3px;
+  left: 0;
+  height: 10px;
+  content: "";
+}
+
+.row-splitter:hover,
+.row-splitter:focus-visible,
+.row-splitter.dragging {
+  background: var(--accent);
+  outline: none;
+}
+
 .ide-explorer {
   display: grid;
   grid-template-rows: auto auto auto minmax(120px, 1fr);
@@ -1145,7 +1171,7 @@ textarea:focus {
 
 .ide-editor-area {
   display: grid;
-  grid-template-rows: 50px minmax(280px, 1fr) minmax(160px, 29%);
+  grid-template-rows: auto minmax(220px, 1fr) var(--pane-splitter-width) minmax(140px, var(--verify-pane-height));
   min-width: 0;
   min-height: 0;
   overflow: hidden;
@@ -1153,9 +1179,11 @@ textarea:focus {
 }
 
 .editor-tabbar {
+  flex-wrap: wrap;
   gap: 12px;
   justify-content: flex-end;
-  padding: 0 12px;
+  min-height: 48px;
+  padding: 6px 12px;
   background: var(--canvas-subtle);
   text-transform: none;
 }
@@ -1253,8 +1281,10 @@ textarea:focus {
 
 .editor-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   align-items: center;
+  justify-content: flex-end;
   min-width: 0;
   margin-left: auto;
 }
@@ -1262,6 +1292,7 @@ textarea:focus {
 .editor-mode-controls,
 .editor-command-controls {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   align-items: center;
   min-width: 0;
@@ -1270,6 +1301,13 @@ textarea:focus {
 .editor-command-controls {
   padding-left: 10px;
   border-left: 1px solid var(--line);
+}
+
+.editor-command-controls .button,
+.editor-command-controls .icon-button,
+.editor-mode-controls .icon-button {
+  min-height: 30px;
+  padding: 4px 10px;
 }
 
 .editor-mode-badge {
@@ -1724,6 +1762,20 @@ textarea:focus {
   white-space: nowrap;
 }
 
+.codex-patch-file-copy {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.codex-patch-file-copy small {
+  color: var(--muted);
+  font-size: 9px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .codex-activity {
   grid-area: activity;
   max-height: 92px;
@@ -2173,8 +2225,22 @@ button.run-history-item:hover {
 }
 
 .run-history-item.passed .run-history-badge,
-.run-history-item.patch .run-history-badge {
+.run-history-item.patch .run-history-badge,
+.run-history-item.codex-turn .run-history-badge {
   color: var(--green);
+}
+
+.run-history-item.codex-turn {
+  display: grid;
+  gap: 6px;
+}
+
+.run-history-item.codex-turn p {
+  margin: 0;
+  padding-left: 82px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .run-history-item.failed .run-history-badge {
@@ -2648,6 +2714,7 @@ input[type="checkbox"] {
   }
 
   .editor-command-controls {
+    flex: 1 1 auto;
     padding-left: 6px;
   }
 
@@ -2783,7 +2850,7 @@ input[type="checkbox"] {
   }
 
   .ide-editor-area {
-    grid-template-rows: 50px minmax(220px, 1fr) minmax(160px, 32%);
+    grid-template-rows: auto minmax(220px, 1fr) var(--pane-splitter-width) minmax(160px, var(--verify-pane-height));
   }
 
   .editor-tabbar {

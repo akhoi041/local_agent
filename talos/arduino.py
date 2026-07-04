@@ -49,6 +49,8 @@ ARDUINO_CLI_CANDIDATES = [
 _ARDUINO_CLI_CACHE: str | None = None
 VERIFY_CACHE_TTL_SECONDS = 30.0
 VERIFY_CACHE_LIMIT = 12
+VERIFY_SLOW_TOTAL_SECONDS = 15.0
+VERIFY_SLOW_COMPILE_SECONDS = 12.0
 VERIFY_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
 VERIFY_CACHE_LOCK = threading.Lock()
 ACTIVE_COMPILE_LOCK = threading.Lock()
@@ -263,7 +265,7 @@ def boards_by_window_title(
         if "arduino ide" not in title.lower():
             continue
         process = process_by_pid.get(int(window.get("pid") or 0), {})
-        created_at = int(process.get("created_at") or 0)
+        created_at = int(window.get("created_at") or process.get("created_at") or 0)
         if created_at:
             candidates.append((title, created_at))
 
@@ -285,6 +287,7 @@ def boards_by_window_title(
 def board_match_tokens(board: dict[str, str]) -> list[str]:
     fqbn = board.get("fqbn", "")
     board_name = board.get("board_name", "")
+    ignored = {"arduino", "board", "dev", "module", "development"}
     tokens: list[str] = []
     parts = fqbn.split(":")
     if len(parts) >= 3:
@@ -294,12 +297,16 @@ def board_match_tokens(board: dict[str, str]) -> list[str]:
     normalized: list[str] = []
     for token in tokens:
         clean = "".join(char.lower() for char in token if char.isalnum())
-        if len(clean) >= 4 and clean not in normalized:
+        if len(clean) >= 4 and clean not in ignored and clean not in normalized:
             normalized.append(clean)
     return normalized
 
 def base_fqbn(fqbn: str) -> str:
     return ":".join(fqbn.split(":")[:3])
+
+def board_identity(fqbn: str) -> str:
+    value = str(fqbn or "").strip()
+    return base_fqbn(value) if value else ""
 
 def match_project_board(
     project: dict[str, Any],
@@ -339,7 +346,7 @@ def match_project_board(
     scored.sort(key=lambda item: item[0], reverse=True)
     if scored and scored[0][0] > 0:
         return scored[0][1]
-    return boards[0]
+    return {"fqbn": "", "board_name": ""}
 
 def apply_project_board(
     project: dict[str, Any],
@@ -349,7 +356,75 @@ def apply_project_board(
     board = match_project_board(project, boards, workspace_boards)
     project["fqbn"] = board.get("fqbn", "")
     project["board_name"] = board.get("board_name", "")
-    project["board_source"] = "workspace_state" if (workspace_boards or {}).get(str(project.get("path") or "").lower()) else "process"
+    if (workspace_boards or {}).get(str(project.get("path") or "").lower()):
+        project["board_source"] = "workspace_state"
+    elif project["fqbn"]:
+        project["board_source"] = "process"
+    else:
+        project["board_source"] = "missing" if not boards else "ambiguous"
+    add_project_diagnostics(project, boards, workspace_boards)
+    return project
+
+def assign_remaining_project_boards(
+    projects: list[dict[str, Any]],
+    boards: list[dict[str, str]],
+    workspace_boards: dict[str, dict[str, str]] | None = None,
+) -> list[dict[str, Any]]:
+    claimed = {
+        board_identity(str(project.get("fqbn") or ""))
+        for project in projects
+        if str(project.get("fqbn") or "").strip()
+    }
+    unclaimed = [
+        board for board in boards
+        if board_identity(str(board.get("fqbn") or "")) not in claimed
+    ]
+    pending = [
+        project for project in projects
+        if project.get("valid") and not str(project.get("fqbn") or "").strip()
+    ]
+    if len(pending) == 1 and len(unclaimed) == 1:
+        project = pending[0]
+        board = unclaimed[0]
+        project["fqbn"] = board.get("fqbn", "")
+        project["board_name"] = board.get("board_name", "")
+        project["board_source"] = "remaining_process"
+        add_project_diagnostics(project, boards, workspace_boards)
+    return projects
+
+def add_project_diagnostics(
+    project: dict[str, Any],
+    boards: list[dict[str, str]] | None = None,
+    workspace_boards: dict[str, dict[str, str]] | None = None,
+) -> dict[str, Any]:
+    boards = boards or []
+    workspace_boards = workspace_boards or {}
+    diagnostics: list[dict[str, str]] = []
+    if project.get("status") == "unsaved":
+        diagnostics.append({
+            "code": "unsaved_sketch",
+            "message": "Save this Arduino sketch before selecting it as a Talos workspace.",
+        })
+    elif project.get("status") == "folder_missing":
+        diagnostics.append({
+            "code": "folder_missing",
+            "message": "Talos detected the Arduino window but could not find the sketch folder in search roots.",
+        })
+    if project.get("valid") and not str(project.get("fqbn") or "").strip():
+        diagnostics.append({
+            "code": "missing_board" if not boards else "ambiguous_board",
+            "message": (
+                "No board/FQBN was detected for this sketch."
+                if not boards
+                else "Multiple board candidates were detected, but none could be mapped safely to this sketch."
+            ),
+        })
+    if project.get("valid") and str(project.get("path") or "").lower() in workspace_boards:
+        diagnostics.append({
+            "code": "workspace_board_state",
+            "message": "Board was mapped from Arduino workspace state.",
+        })
+    project["diagnostics"] = diagnostics
     return project
 
 def append_root_with_ancestors(roots: list[Path], root: Path, levels: int = 2) -> None:
@@ -611,6 +686,7 @@ def discover_arduino_projects(
                 project["fqbn"] = title_board["fqbn"]
                 project["board_name"] = title_board["board_name"]
                 project["board_source"] = "process_tree"
+                add_project_diagnostics(project, boards, workspace_board_map)
                 projects.append(project)
             else:
                 exact_board = workspace_board_map.get(str(folder).lower()) if folder is not None else None
@@ -624,10 +700,11 @@ def discover_arduino_projects(
                     project["board_name"] = board["board_name"]
                     project["board_source"] = "remaining_process"
                     claimed_board_bases.add(base_fqbn(board["fqbn"]))
+                    add_project_diagnostics(project, boards, workspace_board_map)
                     projects.append(project)
                 else:
                     projects.append(apply_project_board(project, boards, workspace_board_map))
-    return projects
+    return assign_remaining_project_boards(projects, boards, workspace_board_map)
 
 def configured_workspace(config: dict[str, Any]) -> Path | None:
     workspace = resolve_workspace(arduino_config(config)["workspace_path"])
@@ -1026,6 +1103,9 @@ def compile_cache_key(
     digest.update(str(summary.get("fqbn") or "").encode("utf-8"))
     digest.update(repr(profile.get("build_flags") or []).encode("utf-8"))
     digest.update(repr(profile.get("build_properties") or []).encode("utf-8"))
+    digest.update(str(profile.get("serial_port") or "").encode("utf-8"))
+    digest.update(str(profile.get("baud_rate") or "").encode("utf-8"))
+    digest.update(repr(profile.get("libraries") or []).encode("utf-8"))
     try:
         digest.update(f"{cli}:{Path(cli).stat().st_mtime_ns}".encode("utf-8"))
     except OSError:
@@ -1043,6 +1123,24 @@ def compile_cache_key(
     return digest.hexdigest()
 
 
+def verify_runtime_status(timings: dict[str, float]) -> dict[str, Any]:
+    total = float(timings.get("total") or 0.0)
+    compile_time = float(timings.get("compile") or 0.0)
+    slow_steps: list[str] = []
+    if total >= VERIFY_SLOW_TOTAL_SECONDS:
+        slow_steps.append("total")
+    if compile_time >= VERIFY_SLOW_COMPILE_SECONDS:
+        slow_steps.append("compile")
+    return {
+        "slow": bool(slow_steps),
+        "slow_steps": slow_steps,
+        "thresholds": {
+            "total": VERIFY_SLOW_TOTAL_SECONDS,
+            "compile": VERIFY_SLOW_COMPILE_SECONDS,
+        },
+    }
+
+
 def cached_compile_result(cache_key: str, lookup_seconds: float = 0.0) -> dict[str, Any] | None:
     with VERIFY_CACHE_LOCK:
         item = VERIFY_CACHE.get(cache_key)
@@ -1056,6 +1154,7 @@ def cached_compile_result(cache_key: str, lookup_seconds: float = 0.0) -> dict[s
     cached = copy.deepcopy(result)
     cached["cache"] = {"hit": True, "age_seconds": round(age, 3), "key": cache_key[:12]}
     cached["timings"] = {"cache_lookup": round(lookup_seconds, 3), "total": round(lookup_seconds, 3)}
+    cached["runtime"] = verify_runtime_status(cached["timings"])
     return cached
 
 
@@ -1075,12 +1174,20 @@ def clear_arduino_compile_cache() -> int:
         VERIFY_CACHE.clear()
     return count
 
+def clear_arduino_compile_cache_result() -> dict[str, Any]:
+    count = clear_arduino_compile_cache()
+    return {
+        "ok": True,
+        "cleared": count,
+        "message": f"Cleared {count} Arduino verify cache entr{'y' if count == 1 else 'ies'}.",
+    }
+
 def cancel_arduino_compile() -> dict[str, Any]:
     global ACTIVE_COMPILE_CANCELLED
     with ACTIVE_COMPILE_LOCK:
         process = ACTIVE_COMPILE
         if process is None or process.poll() is not None:
-            return {"ok": False, "active": False, "message": "No Arduino compile is running."}
+            return {"ok": False, "active": False, "status": "idle", "message": "No Arduino compile is running."}
         ACTIVE_COMPILE_CANCELLED = True
         pid = process.pid
     try:
@@ -1090,7 +1197,7 @@ def cancel_arduino_compile() -> dict[str, Any]:
             process.terminate()
     except (OSError, subprocess.TimeoutExpired):
         process.terminate()
-    return {"ok": True, "active": True, "message": "Arduino compile cancellation requested."}
+    return {"ok": True, "active": True, "status": "cancelling", "pid": pid, "message": "Arduino compile cancellation requested."}
 
 def run_arduino_compile(
     config: dict[str, Any],
@@ -1107,6 +1214,7 @@ def run_arduino_compile(
     def with_total(payload: dict[str, Any]) -> dict[str, Any]:
         timings["total"] = round(time.perf_counter() - started_at, 3)
         payload["timings"] = timings.copy()
+        payload["runtime"] = verify_runtime_status(timings)
         return payload
 
     step_started_at = time.perf_counter()

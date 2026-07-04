@@ -121,6 +121,24 @@ def record_patch_transition(
         _store_events(events)
     return event
 
+def record_codex_turn(
+    workspace: str,
+    message: str,
+    outcome: str,
+    detail: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    event = {
+        "id": f"codex-turn-{uuid.uuid4().hex}",
+        "type": "codex_turn",
+        "time": now(),
+        "source": "codex",
+        "workspace": str(workspace or ""),
+        "status": str(outcome or "unknown"),
+        "message": str(message or "")[:2000],
+        "detail": detail or {},
+    }
+    return _store_event(event)
+
 def record_patch_verification(workspace: str, result: dict[str, Any]) -> dict[str, Any] | None:
     with RUN_HISTORY_LOCK:
         events = _load_events()
@@ -186,6 +204,7 @@ def _upsert_patch_event(events: list[dict[str, Any]], patch: dict[str, Any]) -> 
             "source": "codex",
             "workspace": str(patch.get("workspace") or ""),
             "patch_id": patch_id,
+            "turn_id": str(patch.get("turn_id") or ""),
             "timeline": [{"time": str(patch.get("time") or now()), "action": "staged"}],
         }
         events.append(event)

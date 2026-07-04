@@ -14,6 +14,7 @@ from talos.arduino_events import ArduinoEventWatcher, is_arduino_window_title
 from talos.arduino import (
     cached_compile_result,
     clear_arduino_compile_cache,
+    clear_arduino_compile_cache_result,
     compile_cache_key,
     boards_by_window_title,
     copy_workspace_to_sandbox,
@@ -27,6 +28,7 @@ from talos.arduino import (
     read_workspace_file,
     run_arduino_compile,
     save_environment_profile,
+    verify_runtime_status,
     workspace_context,
     workspace_map,
     workspace_summary,
@@ -57,7 +59,14 @@ from talos.checkpoints import (
     mark_checkpoint_saved,
     rollback_last_checkpoint,
 )
-from talos.run_history import record_patch, record_patch_transition, record_release_evidence, record_verify, run_history
+from talos.run_history import (
+    record_codex_turn,
+    record_patch,
+    record_patch_transition,
+    record_release_evidence,
+    record_verify,
+    run_history,
+)
 from talos.server import state_payload
 
 class TalosArduinoTests(unittest.TestCase):
@@ -452,6 +461,10 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn('id="recordEvidenceBtn"', html)
         self.assertIn('id="explorerSplitter"', html)
         self.assertIn('id="codexSplitter"', html)
+        self.assertIn('id="verifySplitter"', html)
+        self.assertIn('Save + Verify', html)
+        self.assertIn('title="Compile the selected sketch in the Talos sandbox"', html)
+        self.assertIn("Arduino IDE owns the saved sketch; Save writes Talos edits back.", html)
 
         script = (Path(__file__).parents[1] / "ui" / "web_frontend" / "app.js").read_text(encoding="utf-8")
         self.assertIn("patch_event_revision", script)
@@ -485,6 +498,12 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("/api/codex_verify_patch", script)
         self.assertIn("keepExternalConflict", script)
         self.assertIn("buildCodexContextPreview", script)
+        self.assertIn("Profile readiness:", script)
+        self.assertIn("Edit permission:", script)
+        self.assertIn("codexPatchFileLabel", script)
+        self.assertIn("Verify the staged change before saving", script)
+        self.assertIn("verify before saving to Arduino IDE", script)
+        self.assertIn('$("#codexContextPreview").open = true', script)
         self.assertIn("renderCodexContextPreview", script)
         self.assertIn("renderCodexReviewRecovery", script)
         self.assertIn("/api/codex_restore_reviews", script)
@@ -520,6 +539,9 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertNotIn("toggleCodexHistory", script)
         self.assertIn("bindExplorerSplitter", script)
         self.assertIn("bindCodexSplitter", script)
+        self.assertIn("bindVerifySplitter", script)
+        self.assertIn("VERIFY_HEIGHT_KEY", script)
+        self.assertIn("resetVerifyHeight", script)
         self.assertIn("saveEnvironmentProfile", script)
         self.assertIn("/api/arduino_profile", script)
         self.assertIn("renderProfileReadiness", script)
@@ -537,6 +559,7 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("/api/codex_discard_reviews", server)
         self.assertIn("/api/codex_merge_draft", server)
         self.assertIn("/api/release_evidence", server)
+        self.assertIn("record_codex_turn", server)
 
         styles = (Path(__file__).parents[1] / "ui" / "web_frontend" / "styles.css").read_text(encoding="utf-8")
         self.assertNotIn("width: 100vw;", styles)
@@ -561,6 +584,12 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("display: none !important;", styles)
         self.assertIn("cursor: pointer;", styles)
         self.assertIn("--codex-pane-width", styles)
+        self.assertIn("--verify-pane-height", styles)
+        self.assertIn(".row-splitter", styles)
+        self.assertIn("grid-template-rows: auto minmax(220px, 1fr) var(--pane-splitter-width) minmax(140px, var(--verify-pane-height));", styles)
+        self.assertIn("flex-wrap: wrap;", styles)
+        self.assertIn(".codex-patch-file-copy", styles)
+        self.assertIn(".run-history-item.codex-turn", styles)
 
         check_script = (Path(__file__).parents[1] / "scripts" / "check.ps1").read_text(encoding="utf-8")
         self.assertIn("build_native.ps1", check_script)
@@ -807,10 +836,13 @@ class TalosArduinoTests(unittest.TestCase):
         pipeline = (root / "docs" / "TALOS_PIPELINE_010.md").read_text(encoding="utf-8")
 
         self.assertIn("[switch]$ManualArduinoConfirmed", smoke_script)
+        self.assertIn("[switch]$AutoArduinoHarness", smoke_script)
         self.assertIn("[switch]$SkipLaunch", smoke_script)
         self.assertIn("TalosInstalledAppSmoke", smoke_script)
         self.assertIn("Start-Process -FilePath $installedExe", smoke_script)
         self.assertIn("/api/health", smoke_script)
+        self.assertIn("TALOS_SMOKE_HARNESS", smoke_script)
+        self.assertIn("/api/smoke/codex_patch", smoke_script)
         self.assertIn("TALOS_APP_DATA_DIR", smoke_script)
         self.assertIn("installed_app_smoke.json", smoke_script)
         self.assertIn("packaged", smoke_script)
@@ -820,6 +852,7 @@ class TalosArduinoTests(unittest.TestCase):
 
         self.assertIn("installed executable outside the repository", smoke_doc)
         self.assertIn("Verify Sandbox", smoke_doc)
+        self.assertIn("-AutoArduinoHarness", smoke_doc)
         self.assertIn("Ask Codex", smoke_doc)
         self.assertIn("status: passed", smoke_doc)
         self.assertIn("INSTALLED_APP_SMOKE_TEST.md", release_script)
@@ -924,13 +957,16 @@ class TalosArduinoTests(unittest.TestCase):
                 record_patch(
                     {
                         "id": "patch-1",
+                        "turn_id": "turn-1",
                         "workspace": r"C:\Sketch",
                         "files": [{"path": "Sketch.ino", "kind": "update"}],
                     }
                 )
+                record_codex_turn(r"C:\Sketch", "Review this sketch.", "started", {"active_file": "Sketch.ino"})
                 record_patch_transition(
                     {
                         "id": "patch-1",
+                        "turn_id": "turn-1",
                         "workspace": r"C:\Sketch",
                         "review_status": "saved",
                         "files": [{"path": "Sketch.ino", "kind": "update", "review_status": "saved", "hunks": [{}, {}]}],
@@ -940,10 +976,13 @@ class TalosArduinoTests(unittest.TestCase):
                 )
                 events = run_history()
 
-            self.assertEqual([event["type"] for event in events], ["patch", "verify"])
-            self.assertEqual(events[1]["source"], "codex_patch")
-            self.assertEqual(events[0]["files"][0]["hunks"], 2)
-            self.assertEqual(events[0]["timeline"][-1]["action"], "saved")
+            self.assertEqual([event["type"] for event in events], ["codex_turn", "patch", "verify"])
+            self.assertEqual(events[2]["source"], "codex_patch")
+            self.assertEqual(events[1]["turn_id"], "turn-1")
+            self.assertEqual(events[1]["files"][0]["hunks"], 2)
+            self.assertEqual(events[1]["timeline"][-1]["action"], "saved")
+            self.assertEqual(events[0]["status"], "started")
+            self.assertEqual(events[0]["detail"]["active_file"], "Sketch.ino")
 
     def test_run_history_records_versioned_release_evidence(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -1186,6 +1225,40 @@ class TalosArduinoTests(unittest.TestCase):
             self.assertTrue(all(project["valid"] for project in projects))
             self.assertTrue(all(project["source_count"] == 1 for project in projects))
 
+    def test_arduino_discovery_maps_multiple_windows_with_distinct_board_process_trees(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp) / "Arduino"
+            avr = root / "blink_uno"
+            esp = root / "sensor_esp32"
+            avr.mkdir(parents=True)
+            esp.mkdir()
+            (avr / "blink_uno.ino").write_text("void setup() {}\nvoid loop() {}\n", encoding="utf-8")
+            (esp / "sensor_esp32.ino").write_text("void setup() {}\nvoid loop() {}\n", encoding="utf-8")
+
+            projects = discover_arduino_projects(
+                {"arduino_search_roots": str(root)},
+                window_rows=[
+                    {"pid": 101, "title": "blink_uno | Arduino IDE 2.3.4", "created_at": 1000},
+                    {"pid": 202, "title": "sensor_esp32 | Arduino IDE 2.3.4", "created_at": 5000},
+                ],
+                ide_processes=[
+                    {"pid": 101, "title": "blink_uno | Arduino IDE 2.3.4", "created_at": 1000, "ino_paths": []},
+                    {"pid": 202, "title": "sensor_esp32 | Arduino IDE 2.3.4", "created_at": 5000, "ino_paths": []},
+                ],
+                tool_processes=[
+                    {"pid": 301, "name": "arduino-cli.exe", "command_line": r"backend\plugin-host", "created_at": 1100},
+                    {"pid": 302, "name": "arduino-language-server.exe", "parent_pid": 301, "fqbn": "arduino:avr:uno", "board_name": "Arduino Uno"},
+                    {"pid": 401, "name": "arduino-cli.exe", "command_line": r"backend\plugin-host", "created_at": 5100},
+                    {"pid": 402, "name": "arduino-language-server.exe", "parent_pid": 401, "fqbn": "esp32:esp32:esp32", "board_name": "ESP32 Dev Module"},
+                ],
+                open_workspaces=[],
+                workspace_boards={},
+            )
+
+            self.assertEqual([project["sketch"] for project in projects], ["blink_uno.ino", "sensor_esp32.ino"])
+            self.assertEqual([project["board_name"] for project in projects], ["Arduino Uno", "ESP32 Dev Module"])
+            self.assertTrue(all(project["board_source"] == "process_tree" for project in projects))
+
     def test_arduino_discovery_maps_ide_2_titles_without_ino_extension(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp) / "Arduino"
@@ -1376,6 +1449,28 @@ class TalosArduinoTests(unittest.TestCase):
             self.assertTrue(projects[0]["unsaved"])
             self.assertEqual(projects[0]["status"], "unsaved")
 
+    def test_arduino_discovery_keeps_sketch_folder_when_active_title_is_cpp_or_header_tab(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp) / "Arduino"
+            sketch = root / "LQR_pendulum"
+            sketch.mkdir(parents=True)
+            (sketch / "LQR_pendulum.ino").write_text("void setup() {}\nvoid loop() {}\n", encoding="utf-8")
+            (sketch / "encoder.cpp").write_text("int ticks = 0;\n", encoding="utf-8")
+            (sketch / "encoder.h").write_text("#pragma once\n", encoding="utf-8")
+
+            cpp_projects = discover_arduino_projects(
+                {"arduino_search_roots": str(root)},
+                titles=["LQR_pendulum - encoder.cpp | Arduino IDE 2.3.4"],
+            )
+            header_projects = discover_arduino_projects(
+                {"arduino_search_roots": str(root)},
+                titles=["LQR_pendulum - encoder.h | Arduino IDE 2.3.4"],
+            )
+
+            self.assertEqual(cpp_projects[0]["sketch"], "LQR_pendulum.ino")
+            self.assertEqual(header_projects[0]["sketch"], "LQR_pendulum.ino")
+            self.assertEqual(cpp_projects[0]["source_count"], 3)
+
     def test_arduino_discovery_attaches_detected_board_to_open_project(self) -> None:
         with TemporaryDirectory() as tmp:
             sketch = Path(tmp) / "test"
@@ -1468,6 +1563,35 @@ class TalosArduinoTests(unittest.TestCase):
             self.assertEqual(projects[0]["board_name"], "ESP32S3 Dev Module")
             self.assertEqual(projects[0]["board_source"], "workspace_state")
             self.assertEqual(projects[1]["board_name"], "ESP32 Dev Module")
+
+    def test_arduino_discovery_reports_missing_and_ambiguous_board_diagnostics(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp) / "Arduino"
+            first = root / "plain"
+            second = root / "controller"
+            first.mkdir(parents=True)
+            second.mkdir()
+            first_ino = first / "plain.ino"
+            second_ino = second / "controller.ino"
+            first_ino.write_text("void setup() {}\nvoid loop() {}\n", encoding="utf-8")
+            second_ino.write_text("void setup() {}\nvoid loop() {}\n", encoding="utf-8")
+
+            missing = discover_arduino_projects({}, titles=[], ino_paths=[str(first_ino)])
+            ambiguous = discover_arduino_projects(
+                {},
+                titles=[],
+                ino_paths=[str(second_ino)],
+                tool_processes=[
+                    {"fqbn": "arduino:avr:uno", "board_name": "Arduino Uno"},
+                    {"fqbn": "esp32:esp32:esp32", "board_name": "ESP32 Dev Module"},
+                ],
+            )
+
+            self.assertEqual(missing[0]["board_source"], "missing")
+            self.assertEqual(missing[0]["diagnostics"][0]["code"], "missing_board")
+            self.assertEqual(ambiguous[0]["board_source"], "ambiguous")
+            self.assertEqual(ambiguous[0]["fqbn"], "")
+            self.assertEqual(ambiguous[0]["diagnostics"][0]["code"], "ambiguous_board")
 
     def test_arduino_context_includes_sketch_files(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -1640,6 +1764,69 @@ class TalosArduinoTests(unittest.TestCase):
             self.assertNotEqual(initial_key, changed_key)
             self.assertEqual(clear_arduino_compile_cache(), 1)
             self.assertIsNone(cached_compile_result(initial_key))
+
+    def test_compile_cache_key_includes_profile_cli_and_override_changes(self) -> None:
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "Blink"
+            workspace.mkdir()
+            (workspace / "Blink.ino").write_text("void setup() {}\nvoid loop() {}\n", encoding="utf-8")
+            summary = {"fqbn": "arduino:avr:uno"}
+            profile = {
+                "build_flags": ["-DDEBUG"],
+                "build_properties": ["compiler.cpp.extra_flags=-DDEBUG"],
+                "serial_port": "COM3",
+                "baud_rate": 115200,
+                "libraries": ["Wire"],
+            }
+
+            base = compile_cache_key(workspace, summary, profile, "arduino-cli-a", None)
+            changed_board = compile_cache_key(workspace, {"fqbn": "esp32:esp32:esp32"}, profile, "arduino-cli-a", None)
+            changed_profile = compile_cache_key(workspace, summary, {**profile, "serial_port": "COM4"}, "arduino-cli-a", None)
+            changed_cli = compile_cache_key(workspace, summary, profile, "arduino-cli-b", None)
+            changed_override = compile_cache_key(workspace, summary, profile, "arduino-cli-a", {"Blink.ino": "void setup() {}\n"})
+
+            self.assertEqual(len({base, changed_board, changed_profile, changed_cli, changed_override}), 5)
+
+    def test_compile_cache_clear_result_and_cached_runtime_feedback(self) -> None:
+        clear_arduino_compile_cache()
+        from talos.arduino import store_compile_result
+
+        store_compile_result("cache-key", {"ok": True, "status": "passed", "output": "ok"})
+        cleared = clear_arduino_compile_cache_result()
+
+        self.assertTrue(cleared["ok"])
+        self.assertEqual(cleared["cleared"], 1)
+        self.assertIn("Cleared 1", cleared["message"])
+        self.assertIsNone(cached_compile_result("cache-key"))
+
+    def test_verify_runtime_status_flags_slow_compile_and_total(self) -> None:
+        fast = verify_runtime_status({"prepare": 0.01, "compile": 0.5, "total": 0.7})
+        slow = verify_runtime_status({"prepare": 0.01, "compile": 13.0, "total": 16.0})
+
+        self.assertFalse(fast["slow"])
+        self.assertTrue(slow["slow"])
+        self.assertEqual(slow["slow_steps"], ["total", "compile"])
+        self.assertGreaterEqual(slow["thresholds"]["total"], 1)
+
+    def test_verify_cancel_feedback_reports_idle_state(self) -> None:
+        result = arduino_module.cancel_arduino_compile()
+
+        self.assertFalse(result["ok"])
+        self.assertFalse(result["active"])
+        self.assertEqual(result["status"], "idle")
+        self.assertIn("No Arduino compile", result["message"])
+
+    def test_verify_ui_resets_output_before_new_request(self) -> None:
+        script = (Path(__file__).parents[1] / "ui" / "web_frontend" / "app.js").read_text(encoding="utf-8")
+        verify_fn = re.search(r"async function verifyArduinoWorkspace[\s\S]+?async function recordReleaseEvidence", script)
+        self.assertIsNotNone(verify_fn)
+        body = verify_fn.group(0)
+
+        self.assertLess(
+            body.index('renderVerifyOutput(null, "Copying sketch folder to sandbox and running arduino-cli compile...")'),
+            body.index('await api("/api/arduino_verify"'),
+        )
+        self.assertIn("setArduinoVerifyRunning(true)", body)
 
     def test_arduino_compile_output_parser_cleans_ansi_and_extracts_summary(self) -> None:
         output = (
