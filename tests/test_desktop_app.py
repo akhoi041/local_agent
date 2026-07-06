@@ -379,6 +379,38 @@ class TalosArduinoTests(unittest.TestCase):
             self.assertEqual(resolved["file"]["conflict_resolution"], "kept-external")
             self.assertEqual((root / "Sketch.ino").read_text(encoding="utf-8"), "external edit\n")
 
+    def test_external_workspace_change_marks_editor_applied_codex_file_as_conflict(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp) / "source"
+            staging = Path(tmp) / "staging"
+            root.mkdir()
+            staging.mkdir()
+            (root / "Sketch.ino").write_text("before\n", encoding="utf-8")
+            (staging / "Sketch.ino").write_text("codex change\n", encoding="utf-8")
+            files = staged_patch_files(root, staging, [{"path": "Sketch.ino", "kind": "update"}])
+            bridge = CodexBridge(persist_reviews=False)
+            bridge._patches.append({
+                "id": "patch-editor-conflict",
+                "workspace": str(root),
+                "review_status": "staged",
+                "files": files,
+            })
+
+            applied = bridge.apply_patch("patch-editor-conflict", str(root), "Sketch.ino")
+            self.assertTrue(applied["ok"])
+            self.assertEqual(applied["file"]["review_status"], "applied-to-editor")
+            (root / "Sketch.ino").write_text("external after editor apply\n", encoding="utf-8")
+
+            status = bridge.status(start=False)
+
+            self.assertEqual(status["patches"][0]["files"][0]["review_status"], "conflict")
+            self.assertEqual(status["patches"][0]["review_status"], "conflict")
+            self.assertEqual(
+                status["patches"][0]["files"][0]["conflict_current_content"],
+                "external after editor apply\n",
+            )
+            self.assertNotIn("editor_content", status["patches"][0]["files"][0])
+
     def test_conflict_can_create_editor_only_three_way_merge_draft(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp) / "source"
@@ -449,8 +481,12 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn('id="codexContextPreview"', html)
         self.assertIn('id="codexContextPreviewText"', html)
         self.assertIn('id="codexReviewRecovery"', html)
+        self.assertIn('id="codexReviewRecoveryHint"', html)
         self.assertIn('id="restoreCodexReviewsBtn"', html)
         self.assertIn('id="discardCodexReviewsBtn"', html)
+        self.assertIn("Discard Reviews", html)
+        self.assertIn("Restore Reviews", html)
+        self.assertIn("keep the current Arduino workspace unchanged", html)
         self.assertIn('id="draftConflictMergeBtn"', html)
         self.assertNotIn('id="codexHistoryBtn"', html)
         self.assertIn('id="codexBackBtn"', html)

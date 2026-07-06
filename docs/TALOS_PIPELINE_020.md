@@ -133,11 +133,11 @@ Exit condition: a user can ask Codex for an Arduino change, understand what cont
 
 Purpose: protect real Arduino sketches from accidental overwrite during normal Talos/Codex usage.
 
-- [ ] Expand conflict tests for external Arduino IDE edits while Talos has staged or editor-applied changes.
-- [ ] Test restart recovery during pending review, staged verify, save, and rollback flows.
-- [ ] Make restore/discard decisions for unfinished reviews clear after restart.
-- [ ] Confirm rollback refuses to overwrite files changed after the saved checkpoint.
-- [ ] Document the safest manual recovery path when a user edits both Arduino IDE and Talos at the same time.
+- [x] Expand conflict tests for external Arduino IDE edits while Talos has staged or editor-applied changes. Added regression coverage for staged Codex files and editor-applied Codex files becoming conflict state after external Arduino edits.
+- [x] Test restart recovery during pending review, staged verify, save, and rollback flows. Existing restart/recovery, staged verify, save checkpoint, and guarded rollback tests pass in the full regression suite.
+- [x] Make restore/discard decisions for unfinished reviews clear after restart. Recovery UI now labels `Restore Reviews` and `Discard Reviews` with explicit Arduino-workspace safety text.
+- [x] Confirm rollback refuses to overwrite files changed after the saved checkpoint. Guarded rollback regression confirms Talos refuses rollback after an external file change.
+- [x] Document the safest manual recovery path when a user edits both Arduino IDE and Talos at the same time. Added `docs/TALOS_RECOVERY_GUIDE.md` and linked it from the README.
 
 Exit condition: no normal Talos/Codex path can silently overwrite external Arduino changes, and recovery is understandable after restart.
 

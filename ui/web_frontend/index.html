@@ -189,10 +189,11 @@
                   <div>
                     <span class="codex-review-kicker">Recovered review</span>
                     <strong id="codexReviewRecoveryLabel">Unfinished Codex review found</strong>
+                    <p id="codexReviewRecoveryHint">Restore to continue reviewing staged Codex changes, or discard to keep the current Arduino workspace unchanged.</p>
                   </div>
                   <div class="panel-actions">
-                    <button id="discardCodexReviewsBtn" class="icon-button" type="button">Discard</button>
-                    <button id="restoreCodexReviewsBtn" class="button primary" type="button">Restore</button>
+                    <button id="discardCodexReviewsBtn" class="icon-button" type="button" title="Discard unfinished Codex reviews without changing Arduino files">Discard Reviews</button>
+                    <button id="restoreCodexReviewsBtn" class="button primary" type="button" title="Restore unfinished Codex reviews for manual inspection">Restore Reviews</button>
                   </div>
                 </div>
                 <div id="codexConflictView" class="codex-conflict-view" hidden>
