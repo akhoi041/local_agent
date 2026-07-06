@@ -137,6 +137,7 @@ docs/RELEASE_NOTES.md        Current release highlights and known limitations
 docs/THIRD_PARTY_NOTICES.md  Dependency and tooling notices
 docs/CODE_SIGNING.md         Signing policy, unsigned-Beta path, and verification commands
 docs/INSTALLED_APP_SMOKE_TEST.md Installed-app Arduino/Codex smoke-test checklist
+docs/TALOS_RECOVERY_GUIDE.md Safe recovery path for Codex review, Arduino external edits, and rollback conflicts
 docs/TALOS_ROADMAP.md        Version-level roadmap across Talos releases
 docs/TALOS_PIPELINE_010.md   Completed 0.1.0 Beta first-version pipeline
 docs/TALOS_PIPELINE_020.md   Active 0.2.0 Beta pipeline
