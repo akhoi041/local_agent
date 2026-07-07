@@ -56,6 +56,7 @@ VERIFY_CACHE_LOCK = threading.Lock()
 ACTIVE_COMPILE_LOCK = threading.Lock()
 ACTIVE_COMPILE: subprocess.Popen[str] | None = None
 ACTIVE_COMPILE_CANCELLED = False
+CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 PROGRAM_MEMORY_RE = re.compile(
     r"Sketch uses\s+(?P<used>\d+)\s+bytes\s+\((?P<percent>\d+)%\).*?Maximum is\s+(?P<maximum>\d+)\s+bytes",
@@ -1192,7 +1193,12 @@ def cancel_arduino_compile() -> dict[str, Any]:
         pid = process.pid
     try:
         if os.name == "nt":
-            subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, timeout=5)
+            subprocess.run(
+                ["taskkill", "/PID", str(pid), "/T", "/F"],
+                capture_output=True,
+                timeout=5,
+                creationflags=CREATE_NO_WINDOW,
+            )
         else:
             process.terminate()
     except (OSError, subprocess.TimeoutExpired):
@@ -1316,6 +1322,7 @@ def run_arduino_compile(
                 stderr=subprocess.PIPE,
                 text=True,
                 cwd=sandbox,
+                creationflags=CREATE_NO_WINDOW,
             )
         except OSError as error:
             ACTIVE_COMPILE = None

@@ -1,6 +1,6 @@
 # Talos Code Signing
 
-Talos 0.1.0 Beta may be distributed unsigned while the publisher certificate is being prepared, but that state must be explicit in the release folder. Public commercial releases should be signed before distribution.
+Talos 0.2.0 Beta may be distributed unsigned while the publisher certificate is being prepared, but that state must be explicit in the release folder. Public commercial releases should be signed before distribution.
 
 ## Policy
 
@@ -22,19 +22,19 @@ Talos 0.1.0 Beta may be distributed unsigned while the publisher certificate is 
 Record the current Beta as deliberately unsigned:
 
 ```powershell
-.\scripts\sign_release.ps1 -ReleaseDir releases\Talos-0.1.0-beta -AllowUnsignedBeta
+.\scripts\sign_release.ps1 -ReleaseDir releases\Talos-0.2.0-beta -AllowUnsignedBeta
 ```
 
 Sign by certificate thumbprint:
 
 ```powershell
-.\scripts\sign_release.ps1 -ReleaseDir releases\Talos-0.1.0-beta -CertificateThumbprint "<thumbprint>"
+.\scripts\sign_release.ps1 -ReleaseDir releases\Talos-0.2.0-beta -CertificateThumbprint "<thumbprint>"
 ```
 
 Sign by certificate subject:
 
 ```powershell
-.\scripts\sign_release.ps1 -ReleaseDir releases\Talos-0.1.0-beta -CertificateSubject "T-Engine"
+.\scripts\sign_release.ps1 -ReleaseDir releases\Talos-0.2.0-beta -CertificateSubject "T-Engine"
 ```
 
 The script signs every `.exe` artifact in the release folder, verifies each artifact with `Get-AuthenticodeSignature`, and writes `signing_status.json`.
@@ -42,15 +42,15 @@ The script signs every `.exe` artifact in the release folder, verifies each arti
 ## Manual Verification
 
 ```powershell
-Get-AuthenticodeSignature releases\Talos-0.1.0-beta\Talos-0.1.0-beta.exe
-Get-AuthenticodeSignature releases\Talos-0.1.0-beta\Talos-0.1.0-beta-setup.exe
-Get-FileHash releases\Talos-0.1.0-beta\Talos-0.1.0-beta.exe -Algorithm SHA256
-Get-FileHash releases\Talos-0.1.0-beta\Talos-0.1.0-beta-setup.exe -Algorithm SHA256
+Get-AuthenticodeSignature releases\Talos-0.2.0-beta\Talos-0.2.0-beta.exe
+Get-AuthenticodeSignature releases\Talos-0.2.0-beta\Talos-0.2.0-beta-setup.exe
+Get-FileHash releases\Talos-0.2.0-beta\Talos-0.2.0-beta.exe -Algorithm SHA256
+Get-FileHash releases\Talos-0.2.0-beta\Talos-0.2.0-beta-setup.exe -Algorithm SHA256
 ```
 
 ## Release Rule
 
-Stage 10 can ship only if the release folder contains either:
+The release gate can ship only if the release folder contains either:
 
 - Valid Authenticode signatures for the executable and installer, or
 - A deliberate unsigned-Beta status file created with `-AllowUnsignedBeta`.

@@ -253,13 +253,13 @@ Installed builds include `release_manifest.json` beside `Talos.exe` so the UI an
 Record the Beta as deliberately unsigned while the publisher certificate is not configured:
 
 ```powershell
-.\scripts\sign_release.ps1 -ReleaseDir releases\Talos-0.1.0-beta -AllowUnsignedBeta
+.\scripts\sign_release.ps1 -ReleaseDir releases\Talos-0.2.0-beta -AllowUnsignedBeta
 ```
 
 Sign release artifacts after a certificate is available:
 
 ```powershell
-.\scripts\sign_release.ps1 -ReleaseDir releases\Talos-0.1.0-beta -CertificateThumbprint "<thumbprint>"
+.\scripts\sign_release.ps1 -ReleaseDir releases\Talos-0.2.0-beta -CertificateThumbprint "<thumbprint>"
 ```
 
 Smoke-test the installer install/uninstall behavior:
@@ -286,7 +286,7 @@ Generate the final distribution checklist:
 .\scripts\distribution_checklist.ps1 -RequireReady
 ```
 
-The checklist is written to `releases\Talos-0.1.0-beta\DISTRIBUTION_CHECKLIST.md` and summarizes artifact names, SHA-256 hashes, signing status, installer install/uninstall evidence, installed-app smoke evidence, rollback/recovery coverage, and known limitations.
+The checklist is written to `releases\Talos-0.2.0-beta\DISTRIBUTION_CHECKLIST.md` and summarizes artifact names, SHA-256 hashes, signing status, installer install/uninstall evidence, installed-app smoke evidence, rollback/recovery coverage, and known limitations.
 
 Install locally:
 
