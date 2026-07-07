@@ -1,6 +1,6 @@
 # Talos Privacy Notes
 
-Version: 0.1.0 Beta
+Version: 0.2.0 Beta
 
 Talos is designed as a local tool layer between Codex and external development tools such as Arduino IDE.
 
@@ -26,4 +26,3 @@ Talos may call local tools such as `arduino-cli`, inspect local Arduino IDE proc
 ## Data Removal
 
 Uninstalling Talos removes installer-owned program files. It does not automatically delete user runtime data under `%LOCALAPPDATA%\T-Engine\Talos`. Remove that folder manually if you want to delete local Talos settings, history, checkpoints, sandbox data, and staging data.
-

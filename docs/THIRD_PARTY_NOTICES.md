@@ -1,6 +1,6 @@
 # Talos Third-Party Notices
 
-Version: 0.1.0 Beta
+Version: 0.2.0 Beta
 
 Talos uses third-party software and tools. Keep this file with binary distributions.
 
@@ -28,4 +28,3 @@ Talos includes `native/talos_native.c`, a project-owned Windows helper library f
 ## Notes For Commercial Review
 
 Before public commercial distribution, verify the complete packaged dependency list from the final build environment and update this file if PyInstaller hooks add additional redistributable components.
-

@@ -145,14 +145,23 @@ Exit condition: no normal Talos/Codex path can silently overwrite external Ardui
 
 Purpose: package and validate the completed 0.2.0 Beta.
 
-- [ ] Run full automated checks.
-- [ ] Run manual Arduino smoke tests for simple `.ino`, multi-file `.h/.cpp`, AVR board, and ESP32 board cases.
-- [ ] Build final 0.2.0 Beta release artifacts.
-- [ ] Sign artifacts or explicitly mark unsigned Beta status.
-- [ ] Run installer smoke and installed-app smoke.
-- [ ] Generate final 0.2.0 distribution checklist with `-RequireReady`.
-- [ ] Bump app identity, release manifest naming, and release notes from 0.1.0 to 0.2.0 only at the final release gate.
-- [ ] Update release notes with 0.2.0 fixes, known limitations, and upgrade notes.
+- [x] Run full automated checks. `scripts/check.ps1` passes native build/export checks, native benchmark, unit tests, release recovery smoke, and pipeline status.
+- [x] Run manual Arduino smoke tests for simple `.ino`, multi-file `.h/.cpp`, AVR board, and ESP32 board cases. Installed-app auto Arduino/Codex harness passed with `arduino:avr:uno`; user manual confirmation passed for the full smoke matrix.
+  - [x] Simple `.ino` sketch opens in Arduino IDE, appears in Talos Open Sketches, can be selected, and does not remain listed after the Arduino window is closed.
+  - [x] Multi-file sketch with `.ino`, `.h`, and `.cpp` tabs appears as one sketch, shows all source files in Files, and opens each file content correctly in Talos.
+  - [x] AVR board case, for example Arduino Uno/Nano, shows the correct board/profile, saves workspace profile, and `Verify Sandbox` passes or reports a clear actionable Arduino CLI error.
+  - [x] ESP32 board case shows the correct board/profile, saves workspace profile, and `Verify Sandbox` passes or reports a clear actionable Arduino CLI error.
+  - [x] Edit-in-Talos flow: enable editing, change a harmless line/comment, `Save File`, confirm Arduino IDE reflects the saved change, then `Save & Verify` works.
+  - [x] Codex flow: ask for a small safe change, review the proposed change, apply to Talos editor, confirm Arduino IDE is not modified before Save File, then save and verify.
+  - [x] Safety/recovery flow: while Talos has a pending Codex/editor change, edit the same file in Arduino IDE and confirm Talos blocks silent overwrite or shows conflict/recovery choices.
+  - [x] Runtime UX: during 15-20 minutes of normal use, Talos should not repeatedly flash PowerShell/CMD windows, should not accumulate stale verify output, and should remain responsive.
+  - [x] Installed-app sanity: launch from Start Menu/installed executable, confirm packaged app data is used, close/reopen Talos, and confirm selected profile/history recovery behavior is understandable.
+- [x] Build final 0.2.0 Beta release artifacts. `releases/Talos-0.2.0-beta/` contains the standalone executable, installer, release manifest, and release docs.
+- [x] Sign artifacts or explicitly mark unsigned Beta status. `signing_status.json` records an explicit unsigned Beta according to `config/signing_policy.json`.
+- [x] Run installer smoke and installed-app smoke. `installer_smoke.json` passed install/uninstall checks; `installed_app_smoke.json` passed packaged launch, health, and auto Arduino/Codex harness checks.
+- [x] Generate final 0.2.0 distribution checklist with `-RequireReady`. `DISTRIBUTION_CHECKLIST.md` was generated successfully in the 0.2.0 release folder.
+- [x] Bump app identity, release manifest naming, and release notes from 0.1.0 to 0.2.0 only at the final release gate. `config/app_identity.json`, Inno fallback metadata, and release docs now target 0.2.0 Beta.
+- [x] Update release notes with 0.2.0 fixes, known limitations, and upgrade notes.
 
 Exit condition: Talos 0.2.0 Beta can be installed, run outside the development environment, operate reliably with real Arduino sketches, and ship with release evidence.
 

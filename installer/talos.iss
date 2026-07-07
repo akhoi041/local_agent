@@ -5,19 +5,19 @@
   #define MyPublisher "T-Engine"
 #endif
 #ifndef MyVersion
-  #define MyVersion "0.1.0"
+  #define MyVersion "0.2.0"
 #endif
 #ifndef MyChannel
   #define MyChannel "Beta"
 #endif
 #ifndef ReleaseName
-  #define ReleaseName "Talos-0.1.0-beta"
+  #define ReleaseName "Talos-0.2.0-beta"
 #endif
 #ifndef ReleaseDir
-  #define ReleaseDir "..\releases\Talos-0.1.0-beta"
+  #define ReleaseDir "..\releases\Talos-0.2.0-beta"
 #endif
 #ifndef OutputDir
-  #define OutputDir "..\releases\Talos-0.1.0-beta"
+  #define OutputDir "..\releases\Talos-0.2.0-beta"
 #endif
 #ifndef IconPath
   #define IconPath "..\assets\icons\talos.ico"

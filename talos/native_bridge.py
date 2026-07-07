@@ -23,8 +23,10 @@ WINDOW_ROW_BUFFER_CHARS = 131072
 PROCESS_ROW_BUFFER_CHARS = 131072
 INO_BUFFER_CHARS = 4096
 _CACHE_TTL_SECONDS = 0.45
-_COMMAND_LINE_CACHE_TTL_SECONDS = 3.0
+_PROCESS_FALLBACK_CACHE_TTL_SECONDS = 5.0
+_COMMAND_LINE_CACHE_TTL_SECONDS = 20.0
 _CACHE: dict[str, tuple[float, object]] = {}
+CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 _HAS_NATIVE_WINDOW_ROWS = False
 _HAS_NATIVE_PROCESS_ROWS = False
 ARDUINO_IDE_CONFIG = Path.home() / "AppData" / "Roaming" / "arduino-ide" / "config.json"
@@ -74,6 +76,15 @@ def cached_value_ttl(key: str, loader, ttl_seconds: float):
     value = loader()
     _CACHE[key] = (now, value)
     return value
+
+def run_hidden_capture(command: list[str], timeout: int) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        command,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        creationflags=CREATE_NO_WINDOW,
+    )
 
 def list_window_titles() -> list[str]:
     if _LIBRARY is not None:
@@ -183,7 +194,7 @@ def list_window_titles_fallback() -> list[str]:
         "Get-Process | Where-Object { $_.MainWindowTitle } | Select-Object -ExpandProperty MainWindowTitle"
     )
     try:
-        completed = subprocess.run(command, capture_output=True, text=True, timeout=8)
+        completed = run_hidden_capture(command, timeout=8)
     except (OSError, subprocess.TimeoutExpired):
         return []
     if completed.returncode != 0:
@@ -232,7 +243,7 @@ $titles = New-Object System.Collections.Generic.List[string]
 $titles | Sort-Object -Unique
 """
     try:
-        completed = subprocess.run(powershell_command(script), capture_output=True, text=True, timeout=8)
+        completed = run_hidden_capture(powershell_command(script), timeout=8)
     except (OSError, subprocess.TimeoutExpired):
         return []
     if completed.returncode != 0:
@@ -247,12 +258,14 @@ $titles | Sort-Object -Unique
 def list_arduino_ide_processes() -> list[dict[str, object]]:
     if os.name != "nt":
         return []
-    return list(cached_value("arduino_ide_processes", list_arduino_ide_processes_uncached))
+    ttl = _CACHE_TTL_SECONDS if _HAS_NATIVE_PROCESS_ROWS else _PROCESS_FALLBACK_CACHE_TTL_SECONDS
+    return list(cached_value_ttl("arduino_ide_processes", list_arduino_ide_processes_uncached, ttl))
 
 def list_arduino_tool_processes() -> list[dict[str, object]]:
     if os.name != "nt":
         return []
-    return list(cached_value("arduino_tool_processes", list_arduino_tool_processes_uncached))
+    ttl = _CACHE_TTL_SECONDS if _HAS_NATIVE_PROCESS_ROWS else _PROCESS_FALLBACK_CACHE_TTL_SECONDS
+    return list(cached_value_ttl("arduino_tool_processes", list_arduino_tool_processes_uncached, ttl))
 
 def list_arduino_open_workspaces() -> list[dict[str, object]]:
     return list(cached_value("arduino_open_workspaces", list_arduino_open_workspaces_uncached))
@@ -385,7 +398,7 @@ def list_arduino_ide_processes_wmic() -> list[dict[str, object]]:
         "wmic process get Name,ProcessId,CommandLine /format:csv",
     ]
     try:
-        completed = subprocess.run(command, capture_output=True, text=True, timeout=5)
+        completed = run_hidden_capture(command, timeout=5)
     except (OSError, subprocess.TimeoutExpired):
         return []
     if completed.returncode != 0 or not completed.stdout.strip():
@@ -410,7 +423,7 @@ def list_arduino_tool_processes_wmic() -> list[dict[str, object]]:
         "wmic process get Name,ProcessId,CommandLine /format:csv",
     ]
     try:
-        completed = subprocess.run(command, capture_output=True, text=True, timeout=5)
+        completed = run_hidden_capture(command, timeout=5)
     except (OSError, subprocess.TimeoutExpired):
         return []
     if completed.returncode != 0 or not completed.stdout.strip():
@@ -468,7 +481,7 @@ def list_arduino_ide_processes_powershell() -> list[dict[str, object]]:
         "Select-Object Name,ProcessId,ParentProcessId,CreationDate,CommandLine | ConvertTo-Json -Compress"
     )
     try:
-        completed = subprocess.run(command, capture_output=True, text=True, timeout=5)
+        completed = run_hidden_capture(command, timeout=5)
     except (OSError, subprocess.TimeoutExpired):
         return []
     if completed.returncode != 0 or not completed.stdout.strip():
@@ -501,7 +514,7 @@ def list_arduino_tool_processes_powershell() -> list[dict[str, object]]:
         "Select-Object Name,ProcessId,ParentProcessId,CreationDate,CommandLine | ConvertTo-Json -Compress"
     )
     try:
-        completed = subprocess.run(command, capture_output=True, text=True, timeout=5)
+        completed = run_hidden_capture(command, timeout=5)
     except (OSError, subprocess.TimeoutExpired):
         return []
     if completed.returncode != 0 or not completed.stdout.strip():

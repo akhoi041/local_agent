@@ -72,7 +72,7 @@ Copy-Item -LiteralPath (Join-Path $root "config\default_config.json") -Destinati
 Copy-Item -LiteralPath (Join-Path $root "docs\README.md") -Destination (Join-Path $releaseDir "README.md") -Force
 $releaseDocsDir = Join-Path $releaseDir "docs"
 New-Item -ItemType Directory -Path $releaseDocsDir -Force | Out-Null
-foreach ($docName in @("LICENSE", "RELEASE_NOTES.md", "EULA.md", "PRIVACY.md", "THIRD_PARTY_NOTICES.md", "CODE_SIGNING.md", "INSTALLED_APP_SMOKE_TEST.md")) {
+foreach ($docName in @("LICENSE", "RELEASE_NOTES.md", "EULA.md", "PRIVACY.md", "THIRD_PARTY_NOTICES.md", "CODE_SIGNING.md", "INSTALLED_APP_SMOKE_TEST.md", "TALOS_RECOVERY_GUIDE.md")) {
   Copy-Item -LiteralPath (Join-Path $root "docs\$docName") -Destination (Join-Path $releaseDocsDir $docName) -Force
 }
 
