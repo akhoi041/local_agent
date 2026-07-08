@@ -24,7 +24,8 @@ MATLAB and other targets are intentionally deferred until the Arduino product li
 | Version | Pipeline | Role |
 | --- | --- | --- |
 | 0.1.0 Beta | `docs/TALOS_PIPELINE_010.md` | Completed first-version technical MVP and packaging foundation. |
-| 0.2.0 Beta | `docs/TALOS_PIPELINE_020.md` | Active pipeline for packaged Arduino reliability and daily-use readiness. |
+| 0.2.0 Beta | `docs/TALOS_PIPELINE_020.md` | Completed packaged Arduino reliability and daily-use readiness release. |
+| 0.3.0 Beta | `docs/TALOS_PIPELINE_030.md` | Active pipeline for Codex-Arduino workflow maturity. |
 
 Future version pipelines should follow the same naming rule:
 
@@ -53,7 +54,7 @@ Primary evidence:
 
 ### 0.2.0 Beta - Packaged Arduino Reliability
 
-Status: active.
+Status: complete.
 
 Purpose:
 
@@ -79,7 +80,7 @@ Primary evidence:
 
 ### 0.3.0 Beta - Codex-Arduino Workflow Maturity
 
-Status: planned.
+Status: active.
 
 Purpose:
 
