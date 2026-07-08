@@ -1585,9 +1585,38 @@ function codexVerifySummary() {
   return firstLine.length > 120 ? `${firstLine.slice(0, 117)}...` : firstLine;
 }
 
+function codexPayloadForNextTurn(message = "") {
+  return {
+    message,
+    active_file: state.activeFilePath
+      ? { path: state.activeFilePath, content: $("#sourceEditor").value }
+      : {},
+    verify_context: state.lastIssueText || state.lastVerifyText,
+    allow_edits: $("#codexAllowEdits")?.checked !== false,
+  };
+}
+
 function countEditorLines() {
   const content = $("#sourceEditor")?.value || "";
   return content ? content.split(/\r?\n/).length : 0;
+}
+
+function categoryLine(label, items = []) {
+  const values = Array.isArray(items) ? items.filter(Boolean) : [];
+  if (!values.length) return `${label}: none`;
+  const visible = values.slice(0, 6).join(", ");
+  const extra = values.length > 6 ? ` (+${values.length - 6})` : "";
+  return `${label}: ${visible}${extra}`;
+}
+
+function contextCoverageLine(sourceTabs, activeBytes, verifyReady) {
+  const activeCoverage = state.activeFilePath
+    ? `active file included (${activeBytes} bytes)`
+    : "no active file";
+  const sourceCoverage = sourceTabs > 24
+    ? `${sourceTabs} source file(s), compact map shown`
+    : `${sourceTabs} source file(s) mapped`;
+  return `Coverage: ${activeCoverage} | ${sourceCoverage} | verify ${verifyReady ? "included" : "not available"}`;
 }
 
 function buildCodexContextPreview() {
@@ -1596,6 +1625,9 @@ function buildCodexContextPreview() {
   const readiness = state.profileReadiness || {};
   const activeFile = state.activeFilePath || "none";
   const sourceTabs = Number(map.source_tab_count || (map.source_tabs || []).length || 0);
+  const inventory = map.file_inventory?.categories || {};
+  const verifyReady = Boolean(state.lastIssueText || (state.lastVerifyText && !state.lastVerifyText.startsWith("Sandbox compile")));
+  const activeBytes = state.activeFilePath ? new Blob([$("#sourceEditor")?.value || ""]).size : 0;
   const profileParts = [
     state.arduinoBoardName || $("#arduinoFqbnInput")?.value || map.board?.name || map.fqbn || "board unknown",
     profile.serial_port ? `port ${profile.serial_port}` : "",
@@ -1605,11 +1637,18 @@ function buildCodexContextPreview() {
   const lines = [
     `Workspace: ${state.selectedWorkspacePath || "none"}`,
     `Workspace map: ${map.valid ? "ready" : "unavailable"} | main ${map.main_sketch || "none"} | ${sourceTabs} source file(s)`,
+    categoryLine("Main sketch", inventory.main_sketch),
+    categoryLine("Headers", inventory.headers),
+    categoryLine("Sources", inventory.sources),
+    categoryLine("Docs", inventory.docs),
+    `Ignored: ${Number(map.file_inventory?.ignored_count || 0)} file(s)/ignored-dir item(s) excluded`,
     `Active file: ${activeFile}${state.activeFilePath ? ` | ${countEditorLines()} editor line(s)` : ""}`,
     `Profile: ${profileParts.join(" | ") || "none"}`,
     `Profile readiness: ${readiness.ready ? "ready" : "needs review"}${(readiness.blockers || []).length ? ` | blockers: ${(readiness.blockers || []).join(", ")}` : ""}`,
     `Verify: ${codexVerifySummary()}`,
     `Edit permission: ${$("#codexAllowEdits")?.checked ? "Codex may stage changes in Talos only" : "read-only"}`,
+    contextCoverageLine(sourceTabs, activeBytes, verifyReady),
+    "Scope: selected Arduino sketch folder only",
   ];
   return lines.join("\n");
 }
@@ -1627,6 +1666,24 @@ function renderCodexContextPreview() {
   $("#codexContextPreviewStatus").textContent = readyParts.length
     ? `${readyParts.length}/4 ready`
     : "No workspace selected";
+}
+
+async function copyCodexContextPackage() {
+  const button = $("#copyCodexContextBtn");
+  if (button) button.disabled = true;
+  try {
+    const message = $("#codexInput")?.value?.trim() || "";
+    const result = await api("/api/codex_context_package", {
+      method: "POST",
+      body: JSON.stringify(codexPayloadForNextTurn(message)),
+    });
+    await copyText(JSON.stringify(result.package || {}, null, 2), "#codexStatus");
+    $("#codexStatus").textContent = "Copied exact Codex context package.";
+  } catch (error) {
+    $("#codexStatus").textContent = `Could not copy Codex context package: ${error.message}`;
+  } finally {
+    if (button) button.disabled = false;
+  }
 }
 
 function codexAccountLabel(payload = {}) {
@@ -1656,6 +1713,104 @@ function codexConnectionStatus(payload = {}) {
     return "Connecting to Codex app-server...";
   }
   return state.codexBusy ? "Codex is working..." : payload.thread_id ? "Thread ready" : "Ready for a new thread";
+}
+
+function codexTaskViewModel(payload = {}) {
+  const task = payload.task_state || {};
+  const connection = payload.connection || {};
+  const stateName = String(task.state || "");
+  const manualReplay = task.replay_guard === "manual_send_required";
+  if (!payload.available) {
+    return { kind: "unavailable", title: "Codex runtime unavailable", detail: "Install or enable Codex before starting a task." };
+  }
+  if (connection.state === "auth_required") {
+    return { kind: "blocked", title: "Sign-in required", detail: "Sign in through the Codex extension or CLI, then reconnect." };
+  }
+  if (connection.state === "disconnected") {
+    const retryIn = Number(connection.next_retry_in || 0);
+    return {
+      kind: "retry",
+      title: "Codex disconnected",
+      detail: retryIn > 0
+        ? `Retry scheduled in ${retryIn.toFixed(1)}s. ${manualReplay ? "The interrupted user turn was not replayed." : ""}`
+        : `Use Reconnect when you are ready.${manualReplay ? " Previous user turns are not replayed automatically." : ""}`,
+    };
+  }
+  if (connection.state === "reconnecting") {
+    return { kind: "retry", title: "Reconnecting", detail: "Talos is reconnecting without replaying the interrupted turn." };
+  }
+  if (payload.busy || stateName === "pending_turn") {
+    return { kind: "working", title: "Codex is working", detail: task.detail || "A turn is currently running." };
+  }
+  if (stateName === "cancelled_turn") {
+    return { kind: "cancelled", title: "Turn cancelled", detail: task.detail || "The interrupted user turn was not replayed." };
+  }
+  if (stateName === "failed_turn") {
+    return { kind: "failed", title: "Turn failed", detail: task.detail || payload.error || "Review the status and send again when ready." };
+  }
+  if (stateName === "recovered_review") {
+    return { kind: "recovered", title: "Recovered review", detail: task.detail || "Unfinished Codex changes were restored for inspection." };
+  }
+  if (payload.thread_id) {
+    return { kind: "active", title: "Active conversation", detail: task.detail || "Thread ready." };
+  }
+  return { kind: "new", title: "New conversation", detail: task.detail || "Ready for a new thread." };
+}
+
+function codexEmptyState(payload = {}) {
+  const model = codexTaskViewModel(payload);
+  if (model.kind === "unavailable" || model.kind === "blocked" || model.kind === "retry" || model.kind === "failed") {
+    return {
+      title: model.title,
+      body: model.detail,
+      suggestions: [],
+    };
+  }
+  if (!state.selectedWorkspacePath) {
+    return {
+      title: "Select an Arduino sketch",
+      body: "Choose a detected sketch so Codex receives a scoped workspace context.",
+      suggestions: [],
+    };
+  }
+  return {
+    title: "Work with your Arduino sketch",
+    body: "Codex receives the selected workspace, active file, and latest verify result.",
+    suggestions: [
+      ["Review this sketch", "Review this sketch and identify the most important issues."],
+      ["Explain the active file", "Explain the active file and its control flow."],
+      ["Optimize the code", "Optimize this sketch while preserving its current behavior."],
+    ],
+  };
+}
+
+function renderCodexTaskBanner(payload = {}) {
+  const model = codexTaskViewModel(payload);
+  return `
+    <section class="codex-task-state ${escapeHtml(model.kind)}">
+      <strong>${escapeHtml(model.title)}</strong>
+      <span>${escapeHtml(model.detail)}</span>
+    </section>
+  `;
+}
+
+function renderCodexEmptyState(payload = {}) {
+  const empty = codexEmptyState(payload);
+  const suggestions = empty.suggestions.length
+    ? `<div class="codex-suggestions">
+        ${empty.suggestions.map(([label, prompt]) => `
+          <button type="button" data-codex-prompt="${escapeHtml(prompt)}">${escapeHtml(label)}</button>
+        `).join("")}
+      </div>`
+    : "";
+  return `
+    <div class="codex-empty">
+      <span class="codex-empty-mark">C</span>
+      <strong>${escapeHtml(empty.title)}</strong>
+      <p>${escapeHtml(empty.body)}</p>
+      ${suggestions}
+    </div>
+  `;
 }
 
 function codexChangeStatusLabel(status = "staged") {
@@ -1694,9 +1849,10 @@ function renderCodex(payload = {}) {
   const conversations = payload.conversations || [];
   renderCodexHistory(conversations);
   renderCodexReviewRecovery(payload.review_recovery || {});
-  const signature = JSON.stringify([messages, patches]);
+  const signature = JSON.stringify([messages, patches, payload.task_state, payload.connection, payload.error, state.selectedWorkspacePath]);
   if (signature !== state.codexMessagesSignature) {
     state.codexMessagesSignature = signature;
+    const taskHtml = renderCodexTaskBanner(payload);
     const messageHtml = messages.map((message) => `
           <article class="codex-message ${message.role === "user" ? "user" : "assistant"}">
             <span class="codex-message-role">${message.role === "user" ? "You" : "Codex"}</span>
@@ -1723,18 +1879,8 @@ function renderCodex(payload = {}) {
       </section>
     `).join("");
     $("#codexMessages").innerHTML = (messageHtml || patchHtml)
-      ? `${messageHtml}${patchHtml}`
-      : `
-        <div class="codex-empty">
-          <span class="codex-empty-mark">C</span>
-          <strong>Work with your Arduino sketch</strong>
-          <p>Codex receives the selected workspace, active file, and latest verify result.</p>
-          <div class="codex-suggestions">
-            <button type="button" data-codex-prompt="Review this sketch and identify the most important issues.">Review this sketch</button>
-            <button type="button" data-codex-prompt="Explain the active file and its control flow.">Explain the active file</button>
-            <button type="button" data-codex-prompt="Optimize this sketch while preserving its current behavior.">Optimize the code</button>
-          </div>
-        </div>`;
+      ? `${taskHtml}${messageHtml}${patchHtml}`
+      : `${taskHtml}${renderCodexEmptyState(payload)}`;
     bindCodexSuggestions();
     $("#codexMessages").scrollTop = $("#codexMessages").scrollHeight;
   }
@@ -1772,6 +1918,7 @@ function renderCodexHistory(conversations = []) {
     ? `${visible.map((conversation) => `
         <button class="codex-history-item ${conversation.active ? "active" : ""}" type="button" data-conversation-id="${escapeHtml(conversation.id || "")}">
           <span class="codex-history-title">${escapeHtml(conversation.title || "New conversation")}</span>
+          <small class="codex-history-context">${escapeHtml(conversation.cwd || conversation.thread_cwd || "No workspace")}</small>
           <span class="codex-history-time">${escapeHtml(relativeTimeLabel(conversation.updated_at || ""))}</span>
         </button>
       `).join("")}${conversations.length > 3 ? `
@@ -1859,14 +2006,7 @@ async function sendCodexMessage() {
   try {
     await api("/api/codex_message", {
       method: "POST",
-      body: JSON.stringify({
-        message,
-        active_file: state.activeFilePath
-          ? { path: state.activeFilePath, content: $("#sourceEditor").value }
-          : {},
-        verify_context: state.lastIssueText || state.lastVerifyText,
-        allow_edits: $("#codexAllowEdits").checked,
-      }),
+      body: JSON.stringify(codexPayloadForNextTurn(message)),
     });
     input.value = "";
     await refreshCodex();
@@ -2281,6 +2421,10 @@ function bindEvents() {
   $("#codexComposer").addEventListener("submit", (event) => {
     event.preventDefault();
     sendCodexMessage();
+  });
+  $("#copyCodexContextBtn").addEventListener("click", (event) => {
+    event.preventDefault();
+    copyCodexContextPackage();
   });
   $("#codexInput").addEventListener("keydown", (event) => {
     if (event.key === "Enter" && !event.shiftKey) {

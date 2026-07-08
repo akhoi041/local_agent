@@ -40,6 +40,7 @@ IGNORED_DIRS = {
 }
 MAX_CONTEXT_BYTES = 64_000
 MAX_FILE_BYTES = 128_000
+MAX_CONTEXT_PREVIEW_FILES = 24
 SANDBOX_ROOT = APP_DATA_ROOT / "sandbox" / "arduino"
 ARDUINO_CLI_CANDIDATES = [
     Path.home() / "AppData" / "Local" / "Programs" / "Arduino IDE" / "resources" / "app" / "lib" / "backend" / "resources" / "arduino-cli.exe",
@@ -748,7 +749,6 @@ def read_workspace_file(config: dict[str, Any], relative_path: str) -> dict[str,
         "mtime_ns": stat.st_mtime_ns,
     }
 
-
 def atomic_write_text(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temp_path = path.with_name(f".talos-write-{os.getpid()}-{threading.get_ident()}-{time.time_ns()}{path.suffix}.tmp")
@@ -761,7 +761,6 @@ def atomic_write_text(path: Path, content: str) -> None:
                 temp_path.unlink()
         except OSError:
             pass
-
 
 def write_workspace_file(config: dict[str, Any], relative_path: str, content: str) -> dict[str, Any]:
     path, error = resolve_workspace_file(config, relative_path)
@@ -808,6 +807,45 @@ def iter_source_files(workspace: Path) -> list[Path]:
         if is_source_file(path):
             files.append(path)
     return sorted(files, key=lambda item: item.relative_to(workspace).as_posix().lower())
+
+def context_file_category(path: str, main_sketch: str = "") -> str:
+    suffix = Path(path).suffix.lower()
+    if path == main_sketch or suffix == ".ino":
+        return "main_sketch" if path == main_sketch else "sketch_tabs"
+    if suffix in {".h", ".hpp"}:
+        return "headers"
+    if suffix in {".c", ".cpp", ".s"}:
+        return "sources"
+    if suffix in {".txt", ".md"}:
+        return "docs"
+    return "ignored"
+
+def workspace_file_inventory(workspace: Path | None, main_sketch: str = "") -> dict[str, Any]:
+    categories: dict[str, list[str]] = {
+        "main_sketch": [],
+        "sketch_tabs": [],
+        "headers": [],
+        "sources": [],
+        "docs": [],
+        "ignored": [],
+    }
+    ignored_count = 0
+    total_count = 0
+    if workspace is None or not workspace.exists() or not workspace.is_dir():
+        return {"total": 0, "ignored_count": 0, "categories": categories}
+    for path in sorted(workspace.rglob("*"), key=lambda item: item.as_posix().lower()):
+        if not path.is_file():
+            continue
+        total_count += 1
+        relative = path.relative_to(workspace).as_posix()
+        rel_parts = path.relative_to(workspace).parts
+        ignored_by_dir = any(part in IGNORED_DIRS or part.startswith(".talos_") for part in rel_parts[:-1])
+        category = "ignored" if ignored_by_dir or not is_source_file(path) else context_file_category(relative, main_sketch)
+        if category == "ignored":
+            ignored_count += 1
+        if len(categories[category]) < MAX_CONTEXT_PREVIEW_FILES:
+            categories[category].append(relative)
+    return {"total": total_count, "ignored_count": ignored_count, "categories": categories}
 
 def project_source_metadata(folder: Path | None) -> dict[str, Any]:
     if folder is None or not folder.exists() or not folder.is_dir():
@@ -883,11 +921,14 @@ def workspace_map(config: dict[str, Any], latest_verify: dict[str, Any] | None =
     verify = latest_verify if isinstance(latest_verify, dict) else {}
     result = verify.get("result") if isinstance(verify.get("result"), dict) else {}
     profile = environment_profile(config, str(summary.get("path") or ""))
+    workspace_path = resolve_workspace(str(summary.get("path") or ""))
+    inventory = workspace_file_inventory(workspace_path, str(summary.get("main_sketch") or ""))
     source_tabs = [
         {
             "path": str(file.get("path") or ""),
             "lines": int(file.get("lines") or 0),
             "bytes": int(file.get("bytes") or 0),
+            "category": context_file_category(str(file.get("path") or ""), str(summary.get("main_sketch") or "")),
         }
         for file in files[:24]
         if isinstance(file, dict)
@@ -900,12 +941,77 @@ def workspace_map(config: dict[str, Any], latest_verify: dict[str, Any] | None =
         "environment_profile": profile,
         "source_tabs": source_tabs,
         "source_tab_count": len(files),
+        "file_inventory": inventory,
         "diagnostics": {
             "status": str(verify.get("status") or ""),
             "time": str(verify.get("time") or ""),
             "issues": list(result.get("issues") or [])[:12],
             "libraries": list(result.get("libraries") or [])[:12],
             "platforms": list(result.get("platforms") or [])[:6],
+        },
+    }
+
+def codex_context_package(
+    config: dict[str, Any],
+    active_file: dict[str, Any] | None = None,
+    verify_context: str = "",
+    allow_edits: bool = True,
+    message: str = "",
+    latest_verify: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Return the scoped context package Talos will send to Codex for the selected sketch."""
+    active_file = active_file if isinstance(active_file, dict) else {}
+    summary = workspace_summary(config)
+    latest = latest_verify if isinstance(latest_verify, dict) else {}
+    map_payload = workspace_map(config, latest)
+    files = summary.get("files") if isinstance(summary.get("files"), list) else []
+    allowed_paths = {str(row.get("path") or "") for row in files if isinstance(row, dict)}
+    active_path = str(active_file.get("path") or "").replace("\\", "/").strip()
+    active_content = str(active_file.get("content") or "")
+    active_in_scope = bool(active_path and active_path in allowed_paths)
+    if not active_in_scope:
+        active_path = ""
+        active_content = ""
+    source_count = int(map_payload.get("source_tab_count") or 0)
+    active_bytes = len(active_content.encode("utf-8")) if active_content else 0
+    verify_summary = str(verify_context or "").strip().splitlines()
+    verify_summary_text = verify_summary[0][:180] if verify_summary else "No verify data"
+    reduced = active_bytes > MAX_CONTEXT_BYTES or source_count > MAX_CONTEXT_PREVIEW_FILES
+    coverage = {
+        "active_file": bool(active_in_scope and active_content),
+        "active_file_path": active_path,
+        "active_file_bytes": active_bytes,
+        "workspace_map": bool(map_payload.get("valid")),
+        "source_files": source_count,
+        "reduced_summary": reduced,
+        "verify_context": bool(str(verify_context or "").strip()),
+        "estimated_bytes": active_bytes + len(str(verify_context or "").encode("utf-8")),
+    }
+    return {
+        "version": "0.3.0",
+        "message": str(message or ""),
+        "workspace": {
+            "path": str(summary.get("path") or ""),
+            "valid": bool(summary.get("valid")),
+            "main_sketch": str(summary.get("main_sketch") or ""),
+            "fqbn": str(summary.get("fqbn") or ""),
+        },
+        "workspace_map": map_payload,
+        "active_file": {
+            "path": active_path,
+            "included": bool(active_in_scope and active_content),
+            "content": active_content,
+            "line_count": active_content.count("\n") + (1 if active_content else 0),
+            "bytes": active_bytes,
+        },
+        "profile": map_payload.get("environment_profile") if isinstance(map_payload.get("environment_profile"), dict) else {},
+        "verify": {"summary": verify_summary_text, "context": str(verify_context or "")},
+        "edit_permission": "stage_changes_in_talos" if allow_edits else "read_only",
+        "coverage": coverage,
+        "scope": {
+            "selected_sketch_only": True,
+            "active_file_rejected": bool(active_file.get("path") and not active_in_scope),
+            "ignored_dirs": sorted(IGNORED_DIRS),
         },
     }
 
@@ -1123,7 +1229,6 @@ def compile_cache_key(
         digest.update(b"<deleted>" if content is None else content.encode("utf-8"))
     return digest.hexdigest()
 
-
 def verify_runtime_status(timings: dict[str, float]) -> dict[str, Any]:
     total = float(timings.get("total") or 0.0)
     compile_time = float(timings.get("compile") or 0.0)
@@ -1141,7 +1246,6 @@ def verify_runtime_status(timings: dict[str, float]) -> dict[str, Any]:
         },
     }
 
-
 def cached_compile_result(cache_key: str, lookup_seconds: float = 0.0) -> dict[str, Any] | None:
     with VERIFY_CACHE_LOCK:
         item = VERIFY_CACHE.get(cache_key)
@@ -1157,7 +1261,6 @@ def cached_compile_result(cache_key: str, lookup_seconds: float = 0.0) -> dict[s
     cached["timings"] = {"cache_lookup": round(lookup_seconds, 3), "total": round(lookup_seconds, 3)}
     cached["runtime"] = verify_runtime_status(cached["timings"])
     return cached
-
 
 def store_compile_result(cache_key: str, result: dict[str, Any]) -> None:
     if not result.get("ok"):

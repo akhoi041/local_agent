@@ -409,6 +409,10 @@ class CodexBridge:
         self._retry_count = 0
         self._next_retry_at = 0.0
         self._last_disconnect = ""
+        self._task_state = "new_conversation"
+        self._task_detail = "Ready for a new thread."
+        self._last_turn_status = ""
+        self._last_turn_at = ""
 
     def status(self, start: bool = True) -> dict[str, Any]:
         if start:
@@ -429,6 +433,13 @@ class CodexBridge:
                     "next_retry_in": round(retry_in, 1),
                     "last_disconnect": self._last_disconnect,
                     "can_retry_now": retry_in <= 0 and not self._starting,
+                },
+                "task_state": {
+                    "state": self._task_state,
+                    "detail": self._task_detail,
+                    "last_turn_status": self._last_turn_status,
+                    "last_turn_at": self._last_turn_at,
+                    "replay_guard": "manual_send_required",
                 },
                 "busy": self._turn_running,
                 "thread_id": self._thread_id,
@@ -474,6 +485,10 @@ class CodexBridge:
                 self._turn_running = False
                 self._turn_id = ""
                 self._turn_error = "Codex reconnect requested. The interrupted user turn was not replayed."
+                self._task_state = "retry_reconnect"
+                self._task_detail = "Reconnect requested. The interrupted user turn was not replayed."
+                self._last_turn_status = "interrupted"
+                self._last_turn_at = now()
                 self._clear_turn_patch_state()
             process = self._process
             self._process = None
@@ -484,6 +499,9 @@ class CodexBridge:
             self._retry_count = 0
             self._next_retry_at = 0.0
             self._connection_state = "reconnecting"
+            self._task_state = "retry_reconnect"
+            if "not replayed" not in self._task_detail:
+                self._task_detail = "Manual reconnect requested. Send again when ready."
             self._append_activity("Manual Codex reconnect requested.")
         if process is not None and process.poll() is None:
             process.terminate()
@@ -598,6 +616,10 @@ class CodexBridge:
                 }
             )
             self._turn_running = True
+            self._task_state = "pending_turn"
+            self._task_detail = "Sending context to Codex."
+            self._last_turn_status = "started"
+            self._last_turn_at = now()
             self._error = ""
             self._turn_error = ""
             self._turn_workspace = workspace_path
@@ -1017,6 +1039,8 @@ class CodexBridge:
             self._patches.clear()
             self._patch_revision += 1
             self._review_recovery_pending = False
+            self._task_state = "new_conversation"
+            self._task_detail = "Ready for a new Codex thread."
             self._persist_reviews_locked()
             self._append_activity("Ready for a new Codex thread.")
         return {"ok": True}
@@ -1055,6 +1079,8 @@ class CodexBridge:
             self._patches = []
             self._patch_revision += 1
             self._review_recovery_pending = False
+            self._task_state = "active_conversation"
+            self._task_detail = f"Loaded conversation {selected_id}."
             self._persist_reviews_locked()
             self._activity.clear()
             self._append_activity("Loaded Codex conversation history.")
@@ -1103,7 +1129,12 @@ class CodexBridge:
                 with self._lock:
                     self._thread_id = thread_id
                     self._thread_cwd = cwd
+                    self._task_state = "active_conversation"
+                    self._task_detail = f"Thread ready for {cwd}."
                     self._append_activity(f"Thread ready for {cwd}.")
+            with self._lock:
+                self._task_state = "pending_turn"
+                self._task_detail = "Codex is processing the current turn."
             result = self._request(
                 "turn/start",
                 {
@@ -1122,6 +1153,7 @@ class CodexBridge:
             turn_id = str(result.get("turn", {}).get("id") or "")
             with self._lock:
                 self._turn_id = turn_id
+                self._task_detail = f"Turn {turn_id or 'started'} is running."
             if turn_id:
                 threading.Thread(
                     target=self._watch_turn_timeout,
@@ -1133,6 +1165,10 @@ class CodexBridge:
                 self._turn_error = str(error)
                 self._turn_running = False
                 self._turn_id = ""
+                self._task_state = "failed_turn"
+                self._task_detail = str(error)
+                self._last_turn_status = "failed"
+                self._last_turn_at = now()
                 self._clear_turn_patch_state()
                 self._append_activity(f"Codex error: {error}")
 
@@ -1157,6 +1193,10 @@ class CodexBridge:
                 self._turn_running = False
                 self._turn_id = ""
                 self._turn_error = reason
+                self._task_state = "cancelled_turn"
+                self._task_detail = "The interrupted user turn was not replayed."
+                self._last_turn_status = "cancelled"
+                self._last_turn_at = now()
                 self._clear_turn_patch_state()
                 self._append_activity(reason)
         return {"ok": True}
@@ -1293,10 +1333,16 @@ class CodexBridge:
                 self._turn_id = ""
                 self._assistant_message_id = ""
                 status = str(turn.get("status") or "completed")
+                self._task_state = "active_conversation" if status == "completed" else "failed_turn"
+                self._task_detail = f"Codex turn {status}."
+                self._last_turn_status = status
+                self._last_turn_at = now()
                 self._append_activity(f"Codex turn {status}.")
                 error = turn.get("error") or {}
                 if error:
                     self._turn_error = str(error.get("message") or error)
+                    self._task_state = "failed_turn"
+                    self._task_detail = self._turn_error
                 self._schedule_thread_refresh(force=True)
             elif method == "error":
                 error = params.get("error") or {}
@@ -1305,11 +1351,19 @@ class CodexBridge:
                     self._turn_error = message_text
                     self._turn_running = False
                     self._turn_id = ""
+                    self._task_state = "failed_turn"
+                    self._task_detail = message_text
+                    self._last_turn_status = "failed"
+                    self._last_turn_at = now()
                     self._clear_turn_patch_state()
                 else:
                     self._error = message_text
+                    self._task_state = "failed_turn"
+                    self._task_detail = message_text
                 self._append_activity(f"Codex error: {message_text}")
             elif method == "account/updated":
+                self._task_state = "active_conversation" if self._thread_id else "new_conversation"
+                self._task_detail = "Codex account state changed."
                 self._append_activity("Codex account state changed.")
 
     def _append_assistant_delta(self, delta: str) -> None:
@@ -1430,6 +1484,8 @@ class CodexBridge:
             restored = unfinished_review_patches(self._patches)
             self._review_recovery_pending = False
             self._patch_revision += 1 if restored else 0
+            self._task_state = "recovered_review" if restored else self._task_state
+            self._task_detail = f"Restored {len(restored)} unfinished Codex review(s)."
             self._persist_reviews_locked()
             self._append_activity(f"Restored {len(restored)} unfinished Codex review(s).")
             return {"ok": True, "restored": len(restored), "patches": list(restored)}
@@ -1443,6 +1499,8 @@ class CodexBridge:
             ]
             self._review_recovery_pending = False
             self._patch_revision += 1
+            self._task_state = "active_conversation" if self._thread_id else "new_conversation"
+            self._task_detail = f"Discarded {discarded} unfinished Codex review(s)."
             self._persist_reviews_locked()
             self._append_activity(f"Discarded {discarded} unfinished Codex review(s).")
             return {"ok": True, "discarded": discarded}

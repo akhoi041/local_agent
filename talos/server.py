@@ -25,6 +25,7 @@ from talos.arduino import (
     arduino_ide_status,
     cancel_arduino_compile,
     clear_arduino_compile_cache_result,
+    codex_context_package,
     delete_workspace_file,
     discover_arduino_projects,
     environment_profile,
@@ -173,6 +174,7 @@ def state_payload() -> dict[str, Any]:
             "GET /api/codex_status",
             "GET /api/run_history",
             "POST /api/codex_reconnect",
+            "POST /api/codex_context_package",
             "POST /api/codex_message",
             "POST /api/codex_restore_reviews",
             "POST /api/codex_discard_reviews",
@@ -375,6 +377,19 @@ class TalosWebHandler(BaseHTTPRequestHandler):
                 log_event(f"{now()} deleted Arduino file: {result.get('path')}")
             self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
             return
+        if self.path == "/api/codex_context_package":
+            workspace = workspace_summary(load_config())
+            latest_verify = latest_verify_for_workspace(str(workspace.get("path") or ""))
+            package = codex_context_package(
+                load_config(),
+                payload.get("active_file") if isinstance(payload.get("active_file"), dict) else {},
+                str(payload.get("verify_context", "")),
+                bool(payload.get("allow_edits", True)),
+                str(payload.get("message", "")),
+                latest_verify,
+            )
+            self.send_json({"ok": True, "package": package})
+            return
         if self.path == "/api/codex_message":
             config = load_config()
             workspace = workspace_summary(config)
@@ -385,6 +400,15 @@ class TalosWebHandler(BaseHTTPRequestHandler):
             active_file = payload.get("active_file")
             if not isinstance(active_file, dict):
                 active_file = {}
+            context_package = codex_context_package(
+                config,
+                active_file,
+                str(payload.get("verify_context", "")),
+                bool(payload.get("allow_edits", True)),
+                str(payload.get("message", "")),
+                latest_verify_for_workspace(str(workspace.get("path") or "")),
+            )
+            active_file = context_package.get("active_file") if isinstance(context_package.get("active_file"), dict) else {}
             result = CODEX_BRIDGE.send_message(
                 str(payload.get("message", "")),
                 workspace,
@@ -399,6 +423,9 @@ class TalosWebHandler(BaseHTTPRequestHandler):
                 {
                     "allow_edits": bool(payload.get("allow_edits", True)),
                     "active_file": str(active_file.get("path") or ""),
+                    "context_active_file_included": bool(active_file.get("included")),
+                    "context_replay_guard": "manual_send_required",
+                    "profile_fqbn": str(workspace.get("fqbn") or ""),
                     "error": str(result.get("error") or ""),
                 },
             )
@@ -425,7 +452,15 @@ class TalosWebHandler(BaseHTTPRequestHandler):
             workspace = workspace_summary(load_config())
             result = CODEX_BRIDGE.reconnect()
             if result.get("ok"):
-                record_codex_turn(str(workspace.get("path") or ""), "", "reconnect", {"status": str(result.get("status") or "")})
+                record_codex_turn(
+                    str(workspace.get("path") or ""),
+                    "",
+                    "reconnect",
+                    {
+                        "status": str(result.get("status") or ""),
+                        "replay_guard": "manual_send_required",
+                    },
+                )
                 log_event(f"{now()} Codex reconnect requested")
             self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
             return
@@ -572,11 +607,24 @@ class TalosWebHandler(BaseHTTPRequestHandler):
             workspace = workspace_summary(load_config())
             result = CODEX_BRIDGE.cancel_turn()
             if result.get("ok"):
-                record_codex_turn(str(workspace.get("path") or ""), "", "cancelled")
+                record_codex_turn(
+                    str(workspace.get("path") or ""),
+                    "",
+                    "cancelled",
+                    {"replay_guard": "manual_send_required"},
+                )
             self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
             return
         if self.path == "/api/codex_conversation":
             result = CODEX_BRIDGE.select_conversation(str(payload.get("id", "")))
+            if result.get("ok"):
+                workspace = workspace_summary(load_config())
+                record_codex_turn(
+                    str(workspace.get("path") or ""),
+                    "",
+                    "conversation_loaded",
+                    {"conversation_id": str(payload.get("id", ""))},
+                )
             self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
             return
         self.send_json({"error": "Not found."}, HTTPStatus.NOT_FOUND)

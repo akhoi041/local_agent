@@ -17,6 +17,7 @@ from talos.arduino import (
     clear_arduino_compile_cache_result,
     compile_cache_key,
     boards_by_window_title,
+    codex_context_package,
     copy_workspace_to_sandbox,
     delete_workspace_file,
     discover_arduino_projects,
@@ -131,6 +132,37 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("Serial profile: COM7 @ 115200 baud", prompt)
         self.assertIn("Build flags: -DDEBUG", prompt)
         self.assertIn("Profile libraries: Wire, ArduinoJson", prompt)
+
+    def test_codex_context_package_is_scoped_and_classified(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp) / "Robot"
+            root.mkdir()
+            (root / "Robot.ino").write_text("void setup() {}\n", encoding="utf-8")
+            (root / "motor.cpp").write_text("void motor() {}\n", encoding="utf-8")
+            (root / "motor.h").write_text("#pragma once\n", encoding="utf-8")
+            (root / "README.md").write_text("notes\n", encoding="utf-8")
+            (root / "secret.bin").write_text("do not send\n", encoding="utf-8")
+            (root / ".git").mkdir()
+            (root / ".git" / "config").write_text("private\n", encoding="utf-8")
+
+            package = codex_context_package(
+                {"arduino_workspace_path": str(root), "arduino_fqbn": "arduino:avr:uno"},
+                {"path": "../outside.ino", "content": "outside secret"},
+                "Status: passed",
+                True,
+                "Review.",
+            )
+
+            inventory = package["workspace_map"]["file_inventory"]
+            self.assertEqual(package["workspace"]["main_sketch"], "Robot.ino")
+            self.assertEqual(inventory["categories"]["main_sketch"], ["Robot.ino"])
+            self.assertIn("motor.cpp", inventory["categories"]["sources"])
+            self.assertIn("motor.h", inventory["categories"]["headers"])
+            self.assertIn("README.md", inventory["categories"]["docs"])
+            self.assertGreaterEqual(inventory["ignored_count"], 2)
+            self.assertFalse(package["active_file"]["included"])
+            self.assertTrue(package["scope"]["active_file_rejected"])
+            self.assertNotIn("outside secret", json.dumps(package))
 
     def test_codex_prompt_can_be_read_only(self) -> None:
         prompt = build_codex_prompt("Review only.", allow_edits=False)
@@ -536,6 +568,10 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("buildCodexContextPreview", script)
         self.assertIn("Profile readiness:", script)
         self.assertIn("Edit permission:", script)
+        self.assertIn("Coverage:", script)
+        self.assertIn("Scope: selected Arduino sketch folder only", script)
+        self.assertIn("copyCodexContextPackage", script)
+        self.assertIn("/api/codex_context_package", script)
         self.assertIn("codexPatchFileLabel", script)
         self.assertIn("Verify the staged change before saving", script)
         self.assertIn("verify before saving to Arduino IDE", script)
@@ -554,6 +590,7 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertNotIn('id="editorMoreBtn"', html)
         self.assertIn('id="verifyCodexPatchBtn"', html)
         self.assertIn('id="applyCodexTurnBtn"', html)
+        self.assertIn('id="copyCodexContextBtn"', html)
         self.assertIn("localEditMode", script)
         self.assertIn("setLocalEditMode", script)
         self.assertIn("updateEditorAccess", script)
@@ -573,6 +610,11 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("relativeTimeLabel", script)
         self.assertIn("showCodexTasks(true)", script)
         self.assertNotIn("toggleCodexHistory", script)
+        self.assertIn("codexTaskViewModel", script)
+        self.assertIn("renderCodexTaskBanner", script)
+        self.assertIn("manual_send_required", script)
+        self.assertIn("The interrupted user turn was not replayed", script)
+        self.assertIn("codex-history-context", script)
         self.assertIn("bindExplorerSplitter", script)
         self.assertIn("bindCodexSplitter", script)
         self.assertIn("bindVerifySplitter", script)
@@ -596,6 +638,8 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("/api/codex_merge_draft", server)
         self.assertIn("/api/release_evidence", server)
         self.assertIn("record_codex_turn", server)
+        self.assertIn("conversation_loaded", server)
+        self.assertIn("context_replay_guard", server)
 
         styles = (Path(__file__).parents[1] / "ui" / "web_frontend" / "styles.css").read_text(encoding="utf-8")
         self.assertNotIn("width: 100vw;", styles)
@@ -1093,7 +1137,24 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertEqual(bridge._turn_id, "")
         self.assertEqual(bridge._turn_protocol_changes, {})
         self.assertIn("not replayed", bridge._turn_error)
+        status = bridge.status(start=False)
+        self.assertEqual(status["task_state"]["state"], "retry_reconnect")
+        self.assertEqual(status["task_state"]["replay_guard"], "manual_send_required")
+        self.assertIn("not replayed", status["task_state"]["detail"])
         start_async.assert_called_once_with(force=True)
+
+    def test_codex_cancel_reports_manual_replay_guard(self) -> None:
+        bridge = CodexBridge(persist_reviews=False)
+        bridge._turn_running = True
+        bridge._turn_id = ""
+
+        result = bridge.cancel_turn()
+        status = bridge.status(start=False)
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(status["task_state"]["state"], "cancelled_turn")
+        self.assertEqual(status["task_state"]["last_turn_status"], "cancelled")
+        self.assertEqual(status["task_state"]["replay_guard"], "manual_send_required")
 
     def test_board_mapping_uses_window_plugin_host_process_tree(self) -> None:
         windows = [
