@@ -176,6 +176,7 @@
                   <div class="codex-review-copy">
                     <span class="codex-review-kicker">Change review</span>
                     <span id="codexReviewLabel">Codex patch ready for review</span>
+                    <span id="codexReviewScope" class="codex-review-scope"></span>
                   </div>
                   <div class="panel-actions codex-review-actions">
                     <button id="verifyCodexPatchBtn" class="icon-button" type="button">Verify Change</button>
@@ -204,7 +205,9 @@
                     </div>
                     <div class="codex-conflict-actions">
                       <span id="codexConflictTime" class="conflict-time"></span>
+                      <button id="rejectConflictCodexBtn" class="icon-button" type="button">Reject Codex</button>
                       <button id="draftConflictMergeBtn" class="icon-button" type="button">Draft Merge</button>
+                      <button id="applyConflictToEditorBtn" class="button primary" type="button">Apply To Talos Editor</button>
                       <button id="keepExternalConflictBtn" class="button" type="button">Keep Arduino Version</button>
                     </div>
                   </header>
@@ -247,6 +250,20 @@
                     <button id="runHistoryTab" class="output-tab" type="button" role="tab" aria-selected="false">History</button>
                   </div>
                   <div class="panel-actions">
+                    <select id="runHistoryFilter" class="history-filter" title="Filter run history" aria-label="Filter run history" hidden>
+                      <option value="all">All</option>
+                      <option value="verify">Verify</option>
+                      <option value="codex">Codex turns</option>
+                      <option value="saved">Saved changes</option>
+                      <option value="conflict">Conflicts</option>
+                      <option value="rollback">Rollbacks</option>
+                      <option value="release">Release evidence</option>
+                    </select>
+                    <label id="runHistorySketchLabel" class="history-sketch-filter" hidden>
+                      <input id="runHistorySketchOnly" type="checkbox" checked />
+                      <span>Active file</span>
+                    </label>
+                    <button id="copySupportBundleBtn" class="icon-button" type="button" title="Copy redacted support bundle" aria-label="Copy support bundle" hidden>Copy Support</button>
                     <button id="copyIssuesBtn" class="icon-button" type="button" title="Copy compile issues only" aria-label="Copy compile issues only" disabled>Copy Issues</button>
                     <button id="copyVerifyBtn" class="icon-button" type="button" title="Copy full verify output" aria-label="Copy full verify output">Copy All</button>
                     <button id="recordEvidenceBtn" class="icon-button" type="button" title="Record release evidence from latest verify" aria-label="Record release evidence" disabled>Record Evidence</button>

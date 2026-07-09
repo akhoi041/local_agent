@@ -18,6 +18,9 @@ const state = {
   environmentProfile: {},
   profileReadiness: {},
   lastVerifyResult: null,
+  lastVerifySignature: "",
+  lastVerifyOk: false,
+  lastVerifyContext: null,
   activeFileByWorkspace: {},
   activeFilePath: "",
   editorOriginalContent: "",
@@ -53,6 +56,8 @@ const state = {
   codexConversations: [],
   codexTasksVisible: true,
   runHistorySignature: "",
+  runHistoryFilter: "all",
+  runHistorySketchOnly: true,
   appBuild: {},
 };
 
@@ -454,6 +459,46 @@ function verifyIssuesHtml(issues = []) {
   `;
 }
 
+function verifySourceLabel(source = "manual") {
+  return source === "codex_patch" ? "Codex-applied edit" : "Manual edit";
+}
+
+function currentVerifyContext(source = verifySource()) {
+  return {
+    workspace: normalizedWindowsPath(state.selectedWorkspacePath),
+    active_file: state.activeFilePath || "",
+    fqbn: state.arduinoFqbnFull || $("#arduinoFqbnInput").value || "",
+    source,
+    editor_override: Boolean(state.activeFilePath && state.editorDirty),
+    content: state.activeFilePath && state.editorDirty ? $("#sourceEditor").value : "",
+  };
+}
+
+function currentVerifySignature(source = verifySource()) {
+  return JSON.stringify(currentVerifyContext(source));
+}
+
+function verifyContextLabel(context = {}) {
+  const parts = [
+    verifySourceLabel(context.source || "manual"),
+    context.active_file || "",
+    context.fqbn || "",
+    context.editor_override ? "unsaved editor draft" : "saved Arduino workspace",
+  ].filter(Boolean);
+  return parts.join(" | ");
+}
+
+function rememberVerifyResult(result = {}, signature = "", context = {}) {
+  state.lastVerifyResult = result;
+  state.lastVerifySignature = signature;
+  state.lastVerifyOk = Boolean(result.ok);
+  state.lastVerifyContext = { ...context, content: undefined };
+}
+
+function currentVerifyIsFresh(source = verifySource()) {
+  return state.lastVerifyOk && state.lastVerifySignature === currentVerifySignature(source);
+}
+
 function renderVerifyOutput(result = null, pendingText = "") {
   const output = $("#arduinoOutput");
   if (!result) {
@@ -468,8 +513,11 @@ function renderVerifyOutput(result = null, pendingText = "") {
   const status = result.status || (ok ? "passed" : "failed");
   const command = result.command || "";
   const sandbox = result.sandbox || "";
+  const context = result.verify_context || state.lastVerifyContext || {};
+  const contextText = verifyContextLabel(context);
   state.lastVerifyText = [
     `Status: ${status}`,
+    contextText ? `Context: ${contextText}` : "",
     command ? `Command: ${command}` : "",
     sandbox ? `Sandbox: ${sandbox}` : "",
     "",
@@ -484,6 +532,7 @@ function renderVerifyOutput(result = null, pendingText = "") {
       <span class="verify-command-name">${escapeHtml(commandBaseName(command) || "arduino-cli")}</span>
       ${result.cache?.hit ? '<span class="verify-command-name">cached</span>' : ""}
     </div>
+    ${contextText ? `<div class="verify-field"><span>Context</span><code>${escapeHtml(contextText)}</code></div>` : ""}
     ${command ? `<div class="verify-field"><span>Command</span><code>${escapeHtml(command)}</code></div>` : ""}
     ${sandbox ? `<div class="verify-field"><span>Sandbox</span><code>${escapeHtml(sandbox)}</code></div>` : ""}
     ${verifySummaryHtml(result)}
@@ -505,6 +554,21 @@ function setOutputView(view) {
   $("#copyIssuesBtn").hidden = historyVisible;
   $("#copyVerifyBtn").hidden = historyVisible;
   $("#recordEvidenceBtn").hidden = historyVisible;
+  $("#runHistoryFilter").hidden = !historyVisible;
+  $("#runHistorySketchLabel").hidden = !historyVisible;
+  $("#copySupportBundleBtn").hidden = !historyVisible;
+}
+
+function eventKindLabel(event) {
+  if (event.type === "verify") return event.source === "codex_patch" ? "VERIFY CODEX" : "VERIFY";
+  if (event.type === "codex_turn") return "CODEX";
+  if (event.type === "release_evidence") return "EVIDENCE";
+  if (event.type !== "patch") return String(event.type || "EVENT").toUpperCase();
+  const actions = (event.timeline || []).map((entry) => String(entry.action || "").toLowerCase());
+  if (actions.some((action) => action.includes("rolled-back"))) return "ROLLBACK";
+  if (actions.some((action) => action.includes("conflict"))) return "CONFLICT";
+  if (actions.some((action) => action === "saved")) return "SAVED";
+  return "PATCH";
 }
 
 function renderRunHistory(events = []) {
@@ -519,7 +583,7 @@ function renderRunHistory(events = []) {
           return `
             <article class="run-history-item patch">
               <div class="run-history-main">
-                <span class="run-history-badge">PATCH</span>
+                <span class="run-history-badge">${eventKindLabel(event)}</span>
                 <div>
                   <strong>${files.length} file(s) from Codex</strong>
                   <span>${escapeHtml(event.status || "staged")} | ${escapeHtml(event.time || "")}</span>
@@ -537,7 +601,7 @@ function renderRunHistory(events = []) {
           return `
             <article class="run-history-item codex-turn">
               <div class="run-history-main">
-                <span class="run-history-badge">CODEX</span>
+                <span class="run-history-badge">${eventKindLabel(event)}</span>
                 <div>
                   <strong>${escapeHtml(event.status || "updated")}</strong>
                   <span>${escapeHtml(event.workspace || "no workspace")} | ${escapeHtml(event.time || "")}</span>
@@ -589,9 +653,19 @@ function verifySource() {
 }
 
 async function refreshRunHistory() {
-  const payload = await api("/api/run_history");
+  const params = new URLSearchParams();
+  if (state.selectedWorkspacePath) params.set("workspace", state.selectedWorkspacePath);
+  if (state.runHistorySketchOnly && state.activeFilePath) params.set("sketch", state.activeFilePath);
+  if (state.runHistoryFilter) params.set("kind", state.runHistoryFilter);
+  const payload = await api(`/api/run_history?${params.toString()}`);
   renderRunHistory(payload.events || []);
   return payload;
+}
+
+async function copySupportBundle() {
+  const result = await api("/api/support_bundle?redact=1");
+  await copyText(JSON.stringify(result.bundle || {}, null, 2), "#editorStatus");
+  $("#editorStatus").textContent = "Copied redacted support bundle.";
 }
 
 async function copyText(text, statusSelector = "") {
@@ -750,6 +824,19 @@ function applyStoredCodexDraft() {
   $("#editorStatus").textContent = "Applied Codex draft. Save File is required to update Arduino IDE.";
 }
 
+function activeCodexAppliedFile() {
+  return [...state.codexPatches].reverse().flatMap((patch) => (
+    normalizedWindowsPath(patch.workspace || "") === normalizedWindowsPath(state.selectedWorkspacePath) ? patch.files || [] : []
+  )).find((file) => (
+    file.path === state.activeFilePath
+    && file.review_status === "applied-to-editor"
+  ));
+}
+
+function shouldWarnUnverifiedCodexSave() {
+  return Boolean(state.editorDirty && activeCodexAppliedFile() && !currentVerifyIsFresh("codex_patch"));
+}
+
 function resetEditor(message = "No file selected.") {
   state.activeFilePath = "";
   setCheckpoint();
@@ -807,11 +894,20 @@ function renderActiveFileRow() {
   });
 }
 
-async function saveWorkspaceFile() {
+async function saveWorkspaceFile(options = {}) {
   if (!state.activeFilePath || !state.editorDirty || state.editorSaving) return false;
   if (state.conflictedFilePaths.has(state.activeFilePath)) {
     $("#editorStatus").textContent = "Save blocked: this file changed outside Talos and requires conflict resolution.";
     return false;
+  }
+  if (!options.skipVerifyWarning && shouldWarnUnverifiedCodexSave()) {
+    const confirmed = window.confirm(
+      "This Codex-applied editor draft has not passed a current Verify Sandbox run. Save to Arduino IDE anyway?",
+    );
+    if (!confirmed) {
+      $("#editorStatus").textContent = "Save paused. Run Save + Verify or Verify Sandbox before saving the Codex draft.";
+      return false;
+    }
   }
   state.editorSaving = true;
   $("#saveFileBtn").disabled = true;
@@ -848,9 +944,14 @@ async function saveWorkspaceFile() {
 }
 
 async function saveAndVerifyWorkspace() {
-  const saved = await saveWorkspaceFile();
-  if (!saved) return;
-  await verifyArduinoWorkspace(verifySource());
+  if (!state.activeFilePath || !state.editorDirty) return;
+  $("#editorStatus").textContent = "Save + Verify runs sandbox compile before saving to Arduino IDE.";
+  const result = await verifyArduinoWorkspace(verifySource());
+  if (!result?.ok) {
+    $("#editorStatus").textContent = "Save + Verify stopped because sandbox verify did not pass. Arduino IDE was not changed.";
+    return;
+  }
+  await saveWorkspaceFile({ skipVerifyWarning: true });
 }
 
 async function rollbackWorkspaceFile() {
@@ -1089,6 +1190,40 @@ function contentWithAppliedHunks(originalContent = "", hunks = []) {
   return `${output.join("\n")}${trailingNewline ? "\n" : ""}`;
 }
 
+function reviewStatusLabel(status = "staged") {
+  const labels = {
+    staged: "Pending",
+    reviewing: "Pending",
+    "applied-to-editor": "Applied to editor",
+    rejected: "Rejected",
+    saved: "Saved",
+    conflict: "Conflict",
+    recovered: "Recovered",
+  };
+  return labels[status] || status;
+}
+
+function reviewSummaryText(summary = {}) {
+  const parts = [
+    ["Pending", summary.pending],
+    ["Applied", summary.applied_to_editor],
+    ["Rejected", summary.rejected],
+    ["Saved", summary.saved],
+    ["Conflict", summary.conflict],
+    ["Recovered", summary.recovered],
+  ].filter(([, value]) => Number(value || 0) > 0);
+  const total = Number(summary.total || summary.files || 0);
+  return parts.length
+    ? `${parts.map(([label, value]) => `${label}: ${Number(value)}`).join(" | ")} | Total: ${total}`
+    : `Total: ${total}`;
+}
+
+function hunkRange(start = 0, end = 0) {
+  const first = Number(start || 0) + 1;
+  const last = Math.max(first, Number(end || start || 0));
+  return `${first}-${last}`;
+}
+
 function renderCodexDiff(editorContent = "", proposedContent = "", file = {}) {
   const preview = $("#codexDiffPreview");
   const hunks = file.hunks || [];
@@ -1096,6 +1231,8 @@ function renderCodexDiff(editorContent = "", proposedContent = "", file = {}) {
     preview.innerHTML = hunks.map((hunk, index) => {
       const status = hunk.review_status || "staged";
       const reviewable = ["staged", "reviewing"].includes(status);
+      const oldRange = hunkRange(hunk.old_start, hunk.old_end);
+      const newRange = hunkRange(hunk.new_start, hunk.new_end);
       const rows = [
         ...(hunk.old_lines || []).map((text, line) => ({ kind: "remove", text, line: Number(hunk.old_start || 0) + line + 1 })),
         ...(hunk.new_lines || []).map((text, line) => ({ kind: "add", text, line: Number(hunk.new_start || 0) + line + 1 })),
@@ -1103,10 +1240,10 @@ function renderCodexDiff(editorContent = "", proposedContent = "", file = {}) {
       return `
         <section class="codex-diff-hunk ${escapeHtml(status)}">
           <header>
-            <span>Hunk ${index + 1} | ${escapeHtml(status)}</span>
+            <span>Hunk ${index + 1} | ${escapeHtml(oldRange)} -> ${escapeHtml(newRange)} <b class="review-status-chip ${escapeHtml(status)}">${escapeHtml(reviewStatusLabel(status))}</b></span>
             <div>
-              <button class="icon-button hunk-action" type="button" data-hunk-action="reject" data-hunk-id="${escapeHtml(hunk.id || "")}" ${reviewable ? "" : "disabled"}>Reject hunk</button>
-              <button class="button primary hunk-action" type="button" data-hunk-action="apply" data-hunk-id="${escapeHtml(hunk.id || "")}" ${reviewable ? "" : "disabled"}>Apply hunk</button>
+              <button class="icon-button hunk-action" type="button" data-hunk-action="reject" data-hunk-id="${escapeHtml(hunk.id || "")}" ${reviewable ? "" : "disabled"}>Reject this hunk</button>
+              <button class="button primary hunk-action" type="button" data-hunk-action="apply" data-hunk-id="${escapeHtml(hunk.id || "")}" ${reviewable ? "" : "disabled"}>Apply this hunk</button>
             </div>
           </header>
           ${rows.map((row) => `<button class="codex-diff-line ${row.kind}" type="button"><span class="codex-diff-number">${row.line}</span><span class="codex-diff-content">${escapeHtml(`${row.kind === "add" ? "+" : "-"}${row.text || ""}`)}</span></button>`).join("")}
@@ -1118,11 +1255,18 @@ function renderCodexDiff(editorContent = "", proposedContent = "", file = {}) {
     $$(".codex-diff-line").forEach((row) => row.addEventListener("click", () => selectDiffLine(row)));
     return;
   }
-  preview.innerHTML = codexDiffRows(editorContent, proposedContent).map((row) => {
+  preview.innerHTML = `
+    <section class="codex-diff-hunk ${escapeHtml(file.review_status || "staged")}">
+      <header>
+        <span>File change <b class="review-status-chip ${escapeHtml(file.review_status || "staged")}">${escapeHtml(reviewStatusLabel(file.review_status || "staged"))}</b></span>
+        <div></div>
+      </header>
+    </section>
+  ${codexDiffRows(editorContent, proposedContent).map((row) => {
     const lineNumber = row.newLine || row.oldLine || "";
     const prefix = row.kind === "add" ? "+" : row.kind === "remove" ? "-" : " ";
     return `<button class="codex-diff-line ${row.kind}" type="button"><span class="codex-diff-number">${lineNumber}</span><span class="codex-diff-content">${escapeHtml(`${prefix}${row.text || ""}`)}</span></button>`;
-  }).join("");
+  }).join("")}`;
   $$(".codex-diff-line").forEach((row) => row.addEventListener("click", () => selectDiffLine(row)));
 }
 
@@ -1139,11 +1283,46 @@ function setCodexConflictMode(patch = null, file = null) {
   $("#codexConflictProposed").textContent = String(file.content || "");
 }
 
-async function keepExternalConflict() {
-  const patch = state.codexPatches.find((item) => (
+function activeConflictPatch() {
+  return state.codexPatches.find((item) => (
     normalizedWindowsPath(item.workspace || "") === normalizedWindowsPath(state.selectedWorkspacePath)
     && (item.files || []).some((file) => file.path === state.activeFilePath && file.review_status === "conflict")
   ));
+}
+
+async function applyConflictToEditor() {
+  const patch = activeConflictPatch();
+  if (!patch?.id || !state.activeFilePath) return;
+  try {
+    const result = await api("/api/codex_apply_conflict", {
+      method: "POST",
+      body: JSON.stringify({ id: patch.id, path: state.activeFilePath }),
+    });
+    const file = result.file || {};
+    $("#sourceEditor").value = String(file.editor_content || file.content || "");
+    renderEditorLineNumbers();
+    state.conflictedFilePaths.delete(state.activeFilePath);
+    setCodexConflictMode();
+    setEditorDirty($("#sourceEditor").value !== state.editorOriginalContent);
+    state.localEditMode = false;
+    updateEditorAccess();
+    $("#editorStatus").textContent = "Codex conflict applied to Talos editor only. Review and Save File to update Arduino IDE.";
+    $("#codexStatus").textContent = "Codex version is now in the Talos editor; Arduino IDE has not been changed.";
+    await refreshCodex();
+  } catch (error) {
+    $("#codexStatus").textContent = `Could not apply conflicted Codex change: ${error.message}`;
+  }
+}
+
+async function rejectConflictCodex() {
+  const patch = activeConflictPatch();
+  if (!patch?.id || !state.activeFilePath) return;
+  state.codexReviewPatch = patch;
+  await rejectCodexPatch();
+}
+
+async function keepExternalConflict() {
+  const patch = activeConflictPatch();
   if (!patch?.id || !state.activeFilePath) return;
   try {
     await api("/api/codex_keep_external", {
@@ -1159,10 +1338,7 @@ async function keepExternalConflict() {
 }
 
 async function draftConflictMerge() {
-  const patch = state.codexPatches.find((item) => (
-    normalizedWindowsPath(item.workspace || "") === normalizedWindowsPath(state.selectedWorkspacePath)
-    && (item.files || []).some((file) => file.path === state.activeFilePath && file.review_status === "conflict")
-  ));
+  const patch = activeConflictPatch();
   if (!patch?.id || !state.activeFilePath) return;
   try {
     const result = await api("/api/codex_merge_draft", {
@@ -1204,6 +1380,7 @@ function setCodexReviewMode(patch = null) {
   $("#codexDiffPreview").hidden = !reviewing;
   if (!reviewing) {
     $("#codexDiffPreview").innerHTML = "";
+    $("#codexReviewScope").textContent = "";
     $("#applyCodexTurnBtn").hidden = true;
     $("#rejectCodexTurnBtn").hidden = true;
     $("#rejectCodexPatchBtn").hidden = false;
@@ -1216,14 +1393,19 @@ function setCodexReviewMode(patch = null) {
   $("#codexReviewLabel").textContent = streaming
     ? `Streaming Codex change: ${file.path}`
     : `Codex change review: ${file.path}`;
-  $("#applyCodexPatchBtn").textContent = reviewable ? "Apply To Editor" : "Restore Proposed Change";
+  const fileIndex = (patch.files || []).findIndex((item) => item.path === file.path) + 1;
+  $("#codexReviewScope").textContent = `File ${fileIndex}/${(patch.files || []).length} | ${reviewSummaryText(file.review_summary || {})}`;
+  $("#applyCodexPatchBtn").textContent = reviewable ? "Apply File To Editor" : "Restore Proposed Change";
   $("#applyCodexPatchBtn").disabled = false;
   $("#verifyCodexPatchBtn").disabled = streaming;
   $("#applyCodexTurnBtn").hidden = false;
   $("#rejectCodexTurnBtn").hidden = false;
+  $("#applyCodexTurnBtn").textContent = "Apply All Pending";
+  $("#rejectCodexTurnBtn").textContent = "Reject All Pending";
   $("#applyCodexTurnBtn").disabled = !reviewable || streaming;
   $("#rejectCodexTurnBtn").disabled = !reviewable || streaming;
   $("#rejectCodexPatchBtn").hidden = !reviewable || streaming;
+  $("#rejectCodexPatchBtn").textContent = "Reject File";
   renderCodexDiff($("#sourceEditor").value, proposedContent, file);
   updateEditorAccess();
   $("#saveFileBtn").disabled = true;
@@ -1455,6 +1637,9 @@ function renderArduino(arduino, force = false, ide = {}) {
     }
     state.selectedWorkspacePath = arduino.path || "";
     state.lastVerifyResult = null;
+    state.lastVerifySignature = "";
+    state.lastVerifyOk = false;
+    state.lastVerifyContext = null;
     $("#recordEvidenceBtn").disabled = true;
     resetEditor(arduino.valid ? "Select a source file." : "No valid workspace selected.");
   }
@@ -2243,7 +2428,14 @@ async function saveArduinoWorkspace() {
 
 async function verifyArduinoWorkspace(source = verifySource()) {
   setOutputView("verify");
-  renderVerifyOutput(null, "Copying sketch folder to sandbox and running arduino-cli compile...");
+  const context = currentVerifyContext(source);
+  const signature = currentVerifySignature(source);
+  const editorOverride = context.editor_override
+    ? { path: state.activeFilePath, content: $("#sourceEditor").value }
+    : null;
+  renderVerifyOutput(null, editorOverride
+    ? "Compiling the current Talos editor draft in an isolated Arduino sandbox..."
+    : "Copying sketch folder to sandbox and running arduino-cli compile...");
   setArduinoVerifyRunning(true);
   try {
     const result = await api("/api/arduino_verify", {
@@ -2252,9 +2444,11 @@ async function verifyArduinoWorkspace(source = verifySource()) {
         path: $("#arduinoPathInput").value,
         fqbn: state.arduinoFqbnFull || $("#arduinoFqbnInput").value,
         source,
+        active_file: state.activeFilePath,
+        editor_override: editorOverride,
       }),
     });
-    state.lastVerifyResult = result;
+    rememberVerifyResult(result, signature, result.verify_context || context);
     renderProfileReadiness(result.profile_readiness || state.profileReadiness);
     $("#recordEvidenceBtn").disabled = false;
     renderVerifyOutput(result);
@@ -2277,7 +2471,7 @@ async function recordReleaseEvidence() {
   try {
     const result = await api("/api/release_evidence", {
       method: "POST",
-      body: JSON.stringify({ verify_result: state.lastVerifyResult, blocked_cases: [] }),
+      body: JSON.stringify({ verify_result: state.lastVerifyResult, blocked_cases: [], release: "0.3.0-beta" }),
     });
     $("#editorStatus").textContent = `Recorded release evidence: ${result.evidence?.status || "unknown"}.`;
     await refreshRunHistory();
@@ -2308,6 +2502,10 @@ async function cancelArduinoVerify() {
 
 async function clearVerifyCache() {
   const result = await api("/api/arduino_verify_cache_clear", { method: "POST", body: "{}" });
+  state.lastVerifyResult = null;
+  state.lastVerifySignature = "";
+  state.lastVerifyOk = false;
+  state.lastVerifyContext = null;
   $("#editorStatus").textContent = `Cleared ${Number(result.cleared || 0)} cached verification result(s).`;
 }
 
@@ -2394,6 +2592,19 @@ function bindEvents() {
     setOutputView("history");
     await refreshRunHistory();
   });
+  $("#runHistoryFilter").addEventListener("change", async (event) => {
+    state.runHistoryFilter = event.target.value || "all";
+    state.runHistorySignature = "";
+    await refreshRunHistory();
+  });
+  $("#runHistorySketchOnly").addEventListener("change", async (event) => {
+    state.runHistorySketchOnly = event.target.checked;
+    state.runHistorySignature = "";
+    await refreshRunHistory();
+  });
+  $("#copySupportBundleBtn").addEventListener("click", () => copySupportBundle().catch((error) => {
+    $("#editorStatus").textContent = `Could not copy support bundle: ${error.message}`;
+  }));
   $("#saveSettingsBtn").addEventListener("click", saveSettings);
   $("#copyFilesBtn").addEventListener("click", () => copyText(fileListText(), "#arduinoMeta"));
   $("#copyIssuesBtn").addEventListener("click", () => copyText(state.lastIssueText));
@@ -2408,7 +2619,9 @@ function bindEvents() {
   $("#rejectCodexPatchBtn").addEventListener("click", rejectCodexPatch);
   $("#restoreCodexReviewsBtn").addEventListener("click", restoreCodexReviews);
   $("#discardCodexReviewsBtn").addEventListener("click", discardCodexReviews);
+  $("#rejectConflictCodexBtn").addEventListener("click", rejectConflictCodex);
   $("#draftConflictMergeBtn").addEventListener("click", draftConflictMerge);
+  $("#applyConflictToEditorBtn").addEventListener("click", applyConflictToEditor);
   $("#applyCodexTurnBtn").addEventListener("click", () => resolveCodexTurn("apply"));
   $("#rejectCodexTurnBtn").addEventListener("click", () => resolveCodexTurn("reject"));
   $("#keepExternalConflictBtn").addEventListener("click", keepExternalConflict);

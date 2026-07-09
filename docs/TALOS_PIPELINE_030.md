@@ -105,11 +105,11 @@ Exit condition: a user can tell what Codex is doing, recover from transient fail
 
 Purpose: reduce friction when reviewing Codex edits while keeping Arduino IDE as the saved-source owner.
 
-- [ ] Make file-level and hunk-level review states visually clear: pending, applied to editor, rejected, saved, conflict, and recovered.
-- [ ] Improve apply/reject controls for one hunk, one file, or a full Codex turn.
-- [ ] Keep diff highlighting readable for small sketches and multi-file `.h/.cpp` projects.
-- [ ] Make conflict choices explicit: keep Arduino version, draft merge, reject Codex, or apply to Talos editor only.
-- [ ] Add tests for review state transitions across restart and active-file switching.
+- [x] Make file-level and hunk-level review states visually clear: pending, applied to editor, rejected, saved, conflict, and recovered. Added backend `review_summary` data and frontend status chips/scope text.
+- [x] Improve apply/reject controls for one hunk, one file, or a full Codex turn. Hunk, file, and turn controls now use explicit labels and summary context.
+- [x] Keep diff highlighting readable for small sketches and multi-file `.h/.cpp` projects. Diff hunks now show ranges, status badges, and file-level fallback headers.
+- [x] Make conflict choices explicit: keep Arduino version, draft merge, reject Codex, or apply to Talos editor only. Added `POST /api/codex_apply_conflict` plus explicit conflict buttons.
+- [x] Add tests for review state transitions across restart and active-file switching. Added conflict apply, summary transition, and multi-file switching coverage; existing recovery tests cover restart.
 
 Exit condition: users can review and decide on Codex edits without guessing what will change in Talos or Arduino IDE.
 
@@ -117,11 +117,11 @@ Exit condition: users can review and decide on Codex edits without guessing what
 
 Purpose: make the safest Codex workflow fast: apply to Talos editor, verify sandbox, then save to Arduino IDE.
 
-- [ ] Make `Save & Verify` behavior explicit for normal edits and Codex-applied edits.
-- [ ] Warn when a user tries to save Codex-generated changes without a current successful verify result.
-- [ ] Keep verify output tied to the active file/sketch so old results do not look current.
-- [ ] Preserve cancellation, cache clear, timing, and one-current-result behavior from 0.2.0.
-- [ ] Add regression coverage for save, save-and-verify, verify cache, and external Arduino edits during the loop.
+- [x] Make `Save & Verify` behavior explicit for normal edits and Codex-applied edits. `Save + Verify` now compiles the current Talos editor draft in sandbox before writing Arduino IDE.
+- [x] Warn when a user tries to save Codex-generated changes without a current successful verify result. Save File now checks the Codex-applied draft against the latest successful verify signature.
+- [x] Keep verify output tied to the active file/sketch so old results do not look current. Verify output now includes context: source, active file, FQBN, and whether the run used an unsaved editor draft.
+- [x] Preserve cancellation, cache clear, timing, and one-current-result behavior from 0.2.0. Existing cancel/cache/timing paths remain, and cache clear invalidates the current verify freshness state.
+- [x] Add regression coverage for save, save-and-verify, verify cache, and external Arduino edits during the loop. Added source-level regression checks for verify-before-save, Codex save warning, editor override, and existing external-edit/verify tests continue to pass.
 
 Exit condition: verify-before-save is clear, fast, and still protected against external Arduino edits.
 
@@ -129,11 +129,11 @@ Exit condition: verify-before-save is clear, fast, and still protected against e
 
 Purpose: make Codex/Arduino workflow history useful for debugging and user support.
 
-- [ ] Add per-sketch filters for run history, verify results, Codex turns, saved changes, conflicts, and rollbacks.
-- [ ] Add copy/export for a support bundle containing app/build metadata, selected workspace summary, profile, latest verify result, and recent Codex/change history.
-- [ ] Keep sensitive local paths visible enough for debugging but easy to redact before sharing.
-- [ ] Add release evidence entries for key 0.3.0 manual workflow checks.
-- [ ] Document the support/debug workflow in project docs.
+- [x] Add per-sketch filters for run history, verify results, Codex turns, saved changes, conflicts, and rollbacks. History now filters by selected workspace, optional active file, and event kind.
+- [x] Add copy/export for a support bundle containing app/build metadata, selected workspace summary, profile, latest verify result, and recent Codex/change history. `GET /api/support_bundle` and `Copy Support` provide the bundle.
+- [x] Keep sensitive local paths visible enough for debugging but easy to redact before sharing. Support bundles redact workspace, app root, bundle root, app-data, and executable paths by default.
+- [x] Add release evidence entries for key 0.3.0 manual workflow checks. Release evidence is recorded as `0.3.0-beta` and visible through the release evidence history filter.
+- [x] Document the support/debug workflow in project docs. Added `docs/TALOS_SUPPORT_DEBUG.md` and README endpoint references.
 
 Exit condition: a user can provide enough local evidence to debug a Codex-Arduino issue without manually copying scattered UI panels.
 
@@ -141,14 +141,14 @@ Exit condition: a user can provide enough local evidence to debug a Codex-Arduin
 
 Purpose: package and validate the completed 0.3.0 Beta.
 
-- [ ] Run full automated checks.
-- [ ] Run manual Codex-Arduino workflow smoke tests for simple `.ino`, multi-file `.h/.cpp`, AVR board, ESP32 board, conflict recovery, and reconnect/cancel behavior.
-- [ ] Build final 0.3.0 Beta release artifacts.
-- [ ] Sign artifacts or explicitly mark unsigned Beta status.
-- [ ] Run installer smoke and installed-app smoke.
-- [ ] Generate final 0.3.0 distribution checklist with `-RequireReady`.
-- [ ] Bump app identity, release manifest naming, and release notes from 0.2.0 to 0.3.0 only at the final release gate.
-- [ ] Update release notes with 0.3.0 workflow fixes, known limitations, and upgrade notes.
+- [x] Run full automated checks. `scripts/check.ps1` passed native build/export checks, native benchmark, unit tests, release recovery smoke, and pipeline status.
+- [x] Run manual Codex-Arduino workflow smoke tests for simple `.ino`, multi-file `.h/.cpp`, AVR board, ESP32 board, conflict recovery, and reconnect/cancel behavior. Installed-app auto Arduino/Codex harness passed with `arduino:avr:uno`; user manual confirmation passed for the full 0.3.0 smoke matrix.
+- [x] Build final 0.3.0 Beta release artifacts. `releases/Talos-0.3.0-beta/` contains the standalone executable, installer, release manifest, and release docs.
+- [x] Sign artifacts or explicitly mark unsigned Beta status. `signing_status.json` records an explicit unsigned Beta according to `config/signing_policy.json`.
+- [x] Run installer smoke and installed-app smoke. `installer_smoke.json` passed install/uninstall checks; `installed_app_smoke.json` passed packaged launch, health, and auto Arduino/Codex harness checks.
+- [x] Generate final 0.3.0 distribution checklist with `-RequireReady`. `DISTRIBUTION_CHECKLIST.md` was generated successfully in the 0.3.0 release folder.
+- [x] Bump app identity, release manifest naming, and release notes from 0.2.0 to 0.3.0 only at the final release gate. `config/app_identity.json`, Inno fallback metadata, release manifest, and release docs now target 0.3.0 Beta.
+- [x] Update release notes with 0.3.0 workflow fixes, known limitations, and upgrade notes.
 
 Exit condition: Talos 0.3.0 Beta can be installed, run outside the development environment, provide a mature Codex-Arduino workflow, and ship with release evidence.
 

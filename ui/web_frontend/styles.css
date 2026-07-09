@@ -1341,6 +1341,14 @@ textarea:focus {
   white-space: nowrap;
 }
 
+.codex-review-scope {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .codex-review-kicker {
   color: var(--muted);
   font-size: 10px;
@@ -2122,6 +2130,45 @@ textarea:focus {
   color: var(--muted);
 }
 
+.codex-diff-hunk.conflict > header {
+  color: var(--danger);
+}
+
+.codex-diff-hunk.saved > header {
+  color: var(--accent);
+}
+
+.review-status-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  background: var(--panel);
+  font-size: 10px;
+  line-height: 1;
+}
+
+.review-status-chip.staged,
+.review-status-chip.reviewing {
+  color: var(--accent);
+  background: var(--accent-subtle);
+}
+
+.review-status-chip.applied-to-editor,
+.review-status-chip.saved {
+  color: var(--green);
+  background: var(--panel);
+}
+
+.review-status-chip.conflict {
+  color: var(--danger);
+  background: var(--panel);
+}
+
 .editor-canvas {
   display: grid;
   grid-template-columns: 48px minmax(0, 1fr);
@@ -2238,6 +2285,28 @@ textarea:focus {
   padding: 10px;
   overflow: auto;
   background: var(--canvas-inset);
+}
+
+.history-filter,
+.history-sketch-filter {
+  min-height: 28px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--panel);
+}
+
+.history-filter {
+  max-width: 132px;
+  padding: 0 7px;
+}
+
+.history-sketch-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px;
+  font-size: 11px;
 }
 
 .run-history-item {
