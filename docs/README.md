@@ -46,6 +46,7 @@ POST /api/arduino_profile
 POST /api/release_evidence
 GET  /api/codex_status
 GET  /api/run_history
+GET  /api/support_bundle?redact=1
 POST /api/codex_message
 POST /api/codex_reconnect
 POST /api/codex_cancel
@@ -138,6 +139,7 @@ docs/THIRD_PARTY_NOTICES.md  Dependency and tooling notices
 docs/CODE_SIGNING.md         Signing policy, unsigned-Beta path, and verification commands
 docs/INSTALLED_APP_SMOKE_TEST.md Installed-app Arduino/Codex smoke-test checklist
 docs/TALOS_RECOVERY_GUIDE.md Safe recovery path for Codex review, Arduino external edits, and rollback conflicts
+docs/TALOS_SUPPORT_DEBUG.md Support bundle, run-history filters, and release-evidence workflow
 docs/TALOS_ROADMAP.md        Version-level roadmap across Talos releases
 docs/TALOS_PIPELINE_010.md   Completed 0.1.0 Beta first-version pipeline
 docs/TALOS_PIPELINE_020.md   Completed 0.2.0 Beta pipeline
@@ -255,13 +257,13 @@ Installed builds include `release_manifest.json` beside `Talos.exe` so the UI an
 Record the Beta as deliberately unsigned while the publisher certificate is not configured:
 
 ```powershell
-.\scripts\sign_release.ps1 -ReleaseDir releases\Talos-0.2.0-beta -AllowUnsignedBeta
+.\scripts\sign_release.ps1 -ReleaseDir releases\Talos-0.3.0-beta -AllowUnsignedBeta
 ```
 
 Sign release artifacts after a certificate is available:
 
 ```powershell
-.\scripts\sign_release.ps1 -ReleaseDir releases\Talos-0.2.0-beta -CertificateThumbprint "<thumbprint>"
+.\scripts\sign_release.ps1 -ReleaseDir releases\Talos-0.3.0-beta -CertificateThumbprint "<thumbprint>"
 ```
 
 Smoke-test the installer install/uninstall behavior:
@@ -288,7 +290,7 @@ Generate the final distribution checklist:
 .\scripts\distribution_checklist.ps1 -RequireReady
 ```
 
-The checklist is written to `releases\Talos-0.2.0-beta\DISTRIBUTION_CHECKLIST.md` and summarizes artifact names, SHA-256 hashes, signing status, installer install/uninstall evidence, installed-app smoke evidence, rollback/recovery coverage, and known limitations.
+The checklist is written to `releases\Talos-0.3.0-beta\DISTRIBUTION_CHECKLIST.md` and summarizes artifact names, SHA-256 hashes, signing status, installer install/uninstall evidence, installed-app smoke evidence, rollback/recovery coverage, and known limitations.
 
 Install locally:
 

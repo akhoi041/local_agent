@@ -319,25 +319,71 @@ def staged_patch_files(
         after = staging_path.read_text(encoding="utf-8", errors="replace") if staging_path.exists() else ""
         kind = str(change.get("kind") or "update")
         hunks = build_patch_hunks(before, after)
-        files.append(
-            {
-                **change,
-                "path": relative,
-                "kind": kind,
-                "diff": "".join(unified_diff(
-                    before.splitlines(keepends=True),
-                    after.splitlines(keepends=True),
-                    fromfile=relative,
-                    tofile=relative,
-                )),
-                "review_status": "staged",
-                "base_content": before,
-                "base_sha256": hashlib.sha256(before.encode("utf-8")).hexdigest(),
-                "hunks": hunks,
-                **({"content": after} if kind != "delete" else {}),
-            }
-        )
+        item = {
+            **change,
+            "path": relative,
+            "kind": kind,
+            "diff": "".join(unified_diff(
+                before.splitlines(keepends=True),
+                after.splitlines(keepends=True),
+                fromfile=relative,
+                tofile=relative,
+            )),
+            "review_status": "staged",
+            "base_content": before,
+            "base_sha256": hashlib.sha256(before.encode("utf-8")).hexdigest(),
+            "hunks": hunks,
+            **({"content": after} if kind != "delete" else {}),
+        }
+        item["review_summary"] = review_summary_for_file(item)
+        files.append(item)
     return files
+
+def review_summary_for_file(file: dict[str, Any]) -> dict[str, int]:
+    statuses = [str(hunk.get("review_status") or "staged") for hunk in file.get("hunks") or []]
+    if not statuses:
+        statuses = [str(file.get("review_status") or "staged")]
+    summary = {
+        "total": len(statuses),
+        "pending": 0,
+        "applied_to_editor": 0,
+        "rejected": 0,
+        "saved": 0,
+        "conflict": 0,
+        "recovered": 0,
+    }
+    for status in statuses:
+        if status in {"staged", "reviewing"}:
+            summary["pending"] += 1
+        elif status == "applied-to-editor":
+            summary["applied_to_editor"] += 1
+        elif status == "rejected":
+            summary["rejected"] += 1
+        elif status == "saved":
+            summary["saved"] += 1
+        elif status == "conflict":
+            summary["conflict"] += 1
+        elif status == "recovered":
+            summary["recovered"] += 1
+    return summary
+
+def review_summary_for_patch(patch: dict[str, Any]) -> dict[str, int]:
+    summary = {
+        "files": 0,
+        "pending": 0,
+        "applied_to_editor": 0,
+        "rejected": 0,
+        "saved": 0,
+        "conflict": 0,
+        "recovered": 0,
+    }
+    for file in patch.get("files") or []:
+        file_summary = review_summary_for_file(file)
+        file["review_summary"] = file_summary
+        summary["files"] += 1
+        for key in ("pending", "applied_to_editor", "rejected", "saved", "conflict", "recovered"):
+            summary[key] += int(file_summary.get(key) or 0)
+    return summary
 
 def unfinished_review_patches(patches: list[dict[str, Any]]) -> list[dict[str, Any]]:
     pending = {"staged", "reviewing", "applied-to-editor", "conflict"}
@@ -420,6 +466,8 @@ class CodexBridge:
         self._schedule_thread_refresh()
         with self._lock:
             self._detect_external_conflicts()
+            for patch in self._patches:
+                self._sync_patch_status(patch)
             process_running = self._process is not None and self._process.poll() is None
             retry_in = max(0.0, self._next_retry_at - time.monotonic())
             return {
@@ -827,6 +875,10 @@ class CodexBridge:
                 if file is None or file.get("review_status") != "applied-to-editor":
                     continue
                 file["review_status"] = "saved"
+                for hunk in file.get("hunks") or []:
+                    if hunk.get("review_status") == "applied-to-editor":
+                        hunk["review_status"] = "saved"
+                self._sync_file_status(file)
                 self._sync_patch_status(patch)
                 self._append_activity(f"Saved Codex change to Arduino workspace: {target}.")
                 self._persist_reviews_locked()
@@ -840,16 +892,44 @@ class CodexBridge:
                 return {"ok": False, "error": "Codex patch was not found."}
             target = str(relative_path or "").replace("\\", "/")
             file = next((item for item in patch.get("files") or [] if item.get("path") == target), None)
-            if file is None or file.get("review_status", "staged") not in {"staged", "reviewing"}:
+            if file is None or file.get("review_status", "staged") not in {"staged", "reviewing", "conflict"}:
                 return {"ok": False, "error": "This file is no longer pending review."}
+            was_conflict = file.get("review_status") == "conflict"
             file["review_status"] = "rejected"
+            if was_conflict:
+                file["conflict_resolution"] = "rejected-codex"
+                file["conflict_resolved_at"] = now()
             for hunk in file.get("hunks") or []:
-                if hunk.get("review_status") in {"staged", "reviewing"}:
+                if hunk.get("review_status") in {"staged", "reviewing", "conflict"}:
                     hunk["review_status"] = "rejected"
             self._sync_file_status(file)
             self._refresh_editor_content(file)
             self._sync_patch_status(patch)
             self._append_activity(f"Rejected Codex change: {target}.")
+            self._persist_reviews_locked()
+            return {"ok": True, "patch": dict(patch), "file": dict(file)}
+
+    def apply_conflict_to_editor(self, patch_id: str, workspace: str, relative_path: str) -> dict[str, Any]:
+        """Resolve a conflict by loading Codex's proposed content into Talos only."""
+        with self._lock:
+            patch, file, error = self._reviewable_file(patch_id, workspace, relative_path)
+            if error:
+                return {"ok": False, "error": error}
+            if file.get("review_status") != "conflict":
+                return {"ok": False, "error": "This Codex change is not in conflict."}
+            if file.get("kind") == "delete":
+                return {"ok": False, "error": "Deleting a file from the editor is not supported yet."}
+            target = str(relative_path or "").replace("\\", "/")
+            file["review_status"] = "applied-to-editor"
+            file["conflict_resolution"] = "codex-to-editor"
+            file["conflict_resolved_at"] = now()
+            file["editor_content"] = str(file.get("content") or "")
+            for hunk in file.get("hunks") or []:
+                if hunk.get("review_status") == "conflict":
+                    hunk["review_status"] = "applied-to-editor"
+            self._sync_file_status(file)
+            self._sync_patch_status(patch)
+            self._append_activity(f"Applied conflicted Codex content to Talos editor only: {target}.")
             self._persist_reviews_locked()
             return {"ok": True, "patch": dict(patch), "file": dict(file)}
 
@@ -869,6 +949,7 @@ class CodexBridge:
                 if hunk.get("review_status") == "conflict":
                     hunk["review_status"] = "rejected"
             file.pop("editor_content", None)
+            self._sync_file_status(file)
             self._sync_patch_status(patch)
             self._append_activity(f"Kept external Arduino file and rejected Codex change: {target}.")
             self._persist_reviews_locked()
@@ -900,6 +981,7 @@ class CodexBridge:
             for hunk in file.get("hunks") or []:
                 if hunk.get("review_status") == "conflict":
                     hunk["review_status"] = "applied-to-editor"
+            self._sync_file_status(file)
             self._sync_patch_status(patch)
             self._append_activity(f"Created three-way merge draft in Talos editor: {target}.")
             self._persist_reviews_locked()
@@ -999,13 +1081,17 @@ class CodexBridge:
     def _sync_file_status(file: dict[str, Any]) -> None:
         statuses = {str(hunk.get("review_status") or "staged") for hunk in file.get("hunks") or []}
         if not statuses:
+            file["review_summary"] = review_summary_for_file(file)
             return
         if statuses & {"staged", "reviewing"}:
             file["review_status"] = "reviewing"
         elif "applied-to-editor" in statuses:
             file["review_status"] = "applied-to-editor"
+        elif statuses == {"saved"}:
+            file["review_status"] = "saved"
         elif statuses == {"rejected"}:
             file["review_status"] = "rejected"
+        file["review_summary"] = review_summary_for_file(file)
 
     @staticmethod
     def _sync_patch_status(patch: dict[str, Any]) -> None:
@@ -1024,6 +1110,7 @@ class CodexBridge:
             patch["review_status"] = "rejected"
         else:
             patch["review_status"] = "staged"
+        patch["review_summary"] = review_summary_for_patch(patch)
 
     def new_thread(self) -> dict[str, Any]:
         with self._lock:

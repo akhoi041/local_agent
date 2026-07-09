@@ -56,6 +56,7 @@ from talos.native_bridge import (
     native_available,
 )
 from talos.run_history import (
+    filtered_run_history,
     record_codex_turn,
     record_patch_transition,
     record_patch_verification,
@@ -64,6 +65,7 @@ from talos.run_history import (
     record_verify,
     latest_verify_for_workspace,
     run_history,
+    support_bundle,
 )
 
 ASSET_ROOT = Path(getattr(sys, "_MEIPASS", ROOT))
@@ -173,6 +175,7 @@ def state_payload() -> dict[str, Any]:
             "POST /api/release_evidence",
             "GET /api/codex_status",
             "GET /api/run_history",
+            "GET /api/support_bundle",
             "POST /api/codex_reconnect",
             "POST /api/codex_context_package",
             "POST /api/codex_message",
@@ -187,6 +190,7 @@ def state_payload() -> dict[str, Any]:
             "POST /api/codex_verify_patch",
             "POST /api/codex_save_patch",
             "POST /api/codex_reject_patch",
+            "POST /api/codex_apply_conflict",
             "POST /api/codex_keep_external",
             "POST /api/codex_merge_draft",
             "POST /api/codex_cancel",
@@ -250,7 +254,34 @@ class TalosWebHandler(BaseHTTPRequestHandler):
             self.send_json(CODEX_BRIDGE.status())
             return
         if parsed.path == "/api/run_history":
-            self.send_json({"ok": True, "events": run_history()})
+            self.send_json({
+                "ok": True,
+                "events": filtered_run_history(
+                    workspace=query.get("workspace", [""])[0],
+                    sketch=query.get("sketch", [""])[0],
+                    kind=query.get("kind", ["all"])[0],
+                ),
+            })
+            return
+        if parsed.path == "/api/support_bundle":
+            config = load_config()
+            app_identity = load_app_identity()
+            build_metadata = load_build_metadata(app_identity)
+            summary = workspace_summary(config)
+            workspace = str(summary.get("path") or "")
+            latest_verify = latest_verify_for_workspace(workspace)
+            redacted = query.get("redact", ["1"])[0] not in {"0", "false", "False"}
+            bundle = support_bundle(
+                app=app_identity,
+                build=build_metadata,
+                workspace_summary=summary,
+                profile=environment_profile(config, workspace),
+                profile_readiness=profile_readiness(config),
+                latest_verify=latest_verify,
+                history=filtered_run_history(workspace=workspace),
+                redact=redacted,
+            )
+            self.send_json({"ok": True, "bundle": bundle})
             return
         path = parsed.path
         if path == "/":
@@ -299,9 +330,21 @@ class TalosWebHandler(BaseHTTPRequestHandler):
             if "fqbn" in payload:
                 config["arduino_fqbn"] = str(payload.get("fqbn", "")).strip()
             save_config(config)
-            result = run_arduino_compile(config)
-            record_verify(result, str(payload.get("source") or "manual"))
-            if str(payload.get("source") or "manual") == "codex_patch":
+            source = str(payload.get("source") or "manual")
+            override = payload.get("editor_override") if isinstance(payload.get("editor_override"), dict) else {}
+            override_path = str(override.get("path") or "").replace("\\", "/") if override else ""
+            overrides = {override_path: str(override.get("content") or "")} if override_path else None
+            result = run_arduino_compile(config, overrides=overrides)
+            summary = workspace_summary(config)
+            result["verify_context"] = {
+                "source": source,
+                "workspace": str(summary.get("path") or ""),
+                "active_file": override_path or str(payload.get("active_file") or ""),
+                "fqbn": str(summary.get("fqbn") or ""),
+                "editor_override": bool(override_path),
+            }
+            record_verify(result, source)
+            if source == "codex_patch":
                 record_patch_verification(str(workspace_summary(config).get("path") or ""), result)
             status = "passed" if result.get("ok") else result.get("status", "failed")
             log_event(f"{now()} Arduino verify {status}")
@@ -334,6 +377,7 @@ class TalosWebHandler(BaseHTTPRequestHandler):
                 readiness,
                 verify_result,
                 payload.get("blocked_cases") if isinstance(payload.get("blocked_cases"), list) else [],
+                str(payload.get("release") or "0.3.0-beta"),
             )
             log_event(f"{now()} recorded Arduino release evidence: {evidence.get('status')}")
             self.send_json({"ok": True, "evidence": evidence})
@@ -573,6 +617,18 @@ class TalosWebHandler(BaseHTTPRequestHandler):
             if result.get("ok"):
                 record_patch_transition(result.get("patch") or {}, "rejected", str(payload.get("path") or ""))
                 log_event(f"{now()} rejected Codex patch: {payload.get('id', '')}")
+            self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
+            return
+        if self.path == "/api/codex_apply_conflict":
+            workspace = workspace_summary(load_config())
+            result = CODEX_BRIDGE.apply_conflict_to_editor(
+                str(payload.get("id", "")),
+                str(workspace.get("path") or ""),
+                str(payload.get("path", "")),
+            )
+            if result.get("ok"):
+                record_patch_transition(result.get("patch") or {}, "conflict-applied-to-editor", str(payload.get("path") or ""))
+                log_event(f"{now()} applied Codex conflict to Talos editor: {payload.get('path', '')}")
             self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
             return
         if self.path == "/api/codex_keep_external":

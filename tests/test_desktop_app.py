@@ -61,12 +61,14 @@ from talos.checkpoints import (
     rollback_last_checkpoint,
 )
 from talos.run_history import (
+    filtered_run_history,
     record_codex_turn,
     record_patch,
     record_patch_transition,
     record_release_evidence,
     record_verify,
     run_history,
+    support_bundle,
 )
 from talos.server import state_payload
 
@@ -472,6 +474,91 @@ class TalosArduinoTests(unittest.TestCase):
             self.assertIn("arduino", result["file"]["editor_content"])
             self.assertIn("codex", result["file"]["editor_content"])
 
+    def test_conflict_can_apply_codex_to_editor_without_writing_arduino_file(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp) / "source"
+            staging = Path(tmp) / "staging"
+            root.mkdir()
+            staging.mkdir()
+            (root / "Sketch.ino").write_text("base\n", encoding="utf-8")
+            (staging / "Sketch.ino").write_text("codex\n", encoding="utf-8")
+            files = staged_patch_files(root, staging, [{"path": "Sketch.ino", "kind": "update"}])
+            bridge = CodexBridge(persist_reviews=False)
+            bridge._patches.append({
+                "id": "patch-apply-conflict",
+                "workspace": str(root),
+                "review_status": "staged",
+                "files": files,
+            })
+            (root / "Sketch.ino").write_text("arduino\n", encoding="utf-8")
+            bridge.status(start=False)
+
+            result = bridge.apply_conflict_to_editor("patch-apply-conflict", str(root), "Sketch.ino")
+
+            self.assertTrue(result["ok"])
+            self.assertEqual((root / "Sketch.ino").read_text(encoding="utf-8"), "arduino\n")
+            self.assertEqual(result["file"]["review_status"], "applied-to-editor")
+            self.assertEqual(result["file"]["conflict_resolution"], "codex-to-editor")
+            self.assertEqual(result["file"]["editor_content"], "codex\n")
+            self.assertEqual(result["file"]["review_summary"]["applied_to_editor"], 1)
+
+    def test_review_summary_tracks_hunk_state_transitions(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            before = "first\nkeep\nsecond\n"
+            after = "FIRST\nkeep\nSECOND\n"
+            hunks = build_patch_hunks(before, after)
+            bridge = CodexBridge(persist_reviews=False)
+            bridge._patches.append({
+                "id": "patch-summary",
+                "workspace": str(root),
+                "review_status": "staged",
+                "files": [{
+                    "path": "Sketch.ino",
+                    "kind": "update",
+                    "base_content": before,
+                    "content": after,
+                    "review_status": "staged",
+                    "hunks": hunks,
+                }],
+            })
+
+            applied = bridge.apply_hunk("patch-summary", str(root), "Sketch.ino", hunks[0]["id"])
+            rejected = bridge.reject_hunk("patch-summary", str(root), "Sketch.ino", hunks[1]["id"])
+
+            self.assertTrue(applied["ok"])
+            self.assertTrue(rejected["ok"])
+            summary = rejected["file"]["review_summary"]
+            self.assertEqual(summary["applied_to_editor"], 1)
+            self.assertEqual(summary["rejected"], 1)
+            self.assertEqual(summary["total"], 2)
+
+    def test_multifile_review_state_survives_active_file_switching(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bridge = CodexBridge(persist_reviews=False)
+            bridge._patches.append({
+                "id": "patch-multi-review",
+                "workspace": str(root),
+                "review_status": "staged",
+                "files": [
+                    {"path": "Main.ino", "kind": "update", "content": "main codex\n", "review_status": "staged"},
+                    {"path": "Motor.cpp", "kind": "update", "content": "motor codex\n", "review_status": "staged"},
+                ],
+            })
+
+            main = bridge.apply_patch("patch-multi-review", str(root), "Main.ino")
+            motor = bridge.reject_patch("patch-multi-review", "Motor.cpp")
+            status = bridge.status(start=False)
+
+            self.assertTrue(main["ok"])
+            self.assertTrue(motor["ok"])
+            files = {file["path"]: file for file in status["patches"][0]["files"]}
+            self.assertEqual(files["Main.ino"]["review_status"], "applied-to-editor")
+            self.assertEqual(files["Motor.cpp"]["review_status"], "rejected")
+            self.assertEqual(status["patches"][0]["review_summary"]["applied_to_editor"], 1)
+            self.assertEqual(status["patches"][0]["review_summary"]["rejected"], 1)
+
     def test_staged_patch_sandbox_overrides_use_pending_codex_content_only(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp) / "Sketch"
@@ -520,6 +607,11 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("Restore Reviews", html)
         self.assertIn("keep the current Arduino workspace unchanged", html)
         self.assertIn('id="draftConflictMergeBtn"', html)
+        self.assertIn('id="applyConflictToEditorBtn"', html)
+        self.assertIn('id="rejectConflictCodexBtn"', html)
+        self.assertIn('id="codexReviewScope"', html)
+        self.assertIn("Apply To Talos Editor", html)
+        self.assertIn("Reject Codex", html)
         self.assertNotIn('id="codexHistoryBtn"', html)
         self.assertIn('id="codexBackBtn"', html)
         self.assertIn('id="codexHistoryCount"', html)
@@ -527,6 +619,9 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn('id="profileBuildPropertyInput"', html)
         self.assertIn('id="profileReadinessStatus"', html)
         self.assertIn('id="recordEvidenceBtn"', html)
+        self.assertIn('id="runHistoryFilter"', html)
+        self.assertIn('id="runHistorySketchOnly"', html)
+        self.assertIn('id="copySupportBundleBtn"', html)
         self.assertIn('id="explorerSplitter"', html)
         self.assertIn('id="codexSplitter"', html)
         self.assertIn('id="verifySplitter"', html)
@@ -551,7 +646,13 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("rejectCodexPatch", script)
         self.assertIn("reviewCodexHunk", script)
         self.assertIn("contentWithAppliedHunks", script)
+        self.assertIn("reviewStatusLabel", script)
+        self.assertIn("reviewSummaryText", script)
         self.assertIn("/api/codex_apply_hunk", script)
+        self.assertIn("/api/codex_apply_conflict", script)
+        self.assertIn("applyConflictToEditor", script)
+        self.assertIn("Reject this hunk", script)
+        self.assertIn("Apply this hunk", script)
         self.assertIn("resolveCodexTurn", script)
         self.assertIn("/api/codex_apply_all", script)
         self.assertIn("Codex change conflict detected", script)
@@ -561,6 +662,10 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("/api/arduino_rollback", script)
         self.assertIn("saveAndVerifyWorkspace", script)
         self.assertIn("verifySource", script)
+        self.assertIn("currentVerifyIsFresh", script)
+        self.assertIn("shouldWarnUnverifiedCodexSave", script)
+        self.assertIn("editor_override", script)
+        self.assertIn("Save + Verify runs sandbox compile before saving", script)
         self.assertIn("patch-timeline", script)
         self.assertIn("verifyCodexPatch", script)
         self.assertIn("/api/codex_verify_patch", script)
@@ -625,6 +730,10 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("renderProfileReadiness", script)
         self.assertIn("recordReleaseEvidence", script)
         self.assertIn("/api/release_evidence", script)
+        self.assertIn("copySupportBundle", script)
+        self.assertIn("/api/support_bundle?redact=1", script)
+        self.assertIn("runHistoryFilter", script)
+        self.assertIn("runHistorySketchOnly", script)
         self.assertIn("watchArduinoEvents", script)
         self.assertIn("/api/arduino_events", script)
         self.assertIn("renderActiveFileRow", script)
@@ -636,7 +745,12 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("/api/codex_restore_reviews", server)
         self.assertIn("/api/codex_discard_reviews", server)
         self.assertIn("/api/codex_merge_draft", server)
+        self.assertIn("/api/codex_apply_conflict", server)
+        self.assertIn("editor_override", server)
         self.assertIn("/api/release_evidence", server)
+        self.assertIn("/api/support_bundle", server)
+        self.assertIn("support_bundle", server)
+        self.assertIn("filtered_run_history", server)
         self.assertIn("record_codex_turn", server)
         self.assertIn("conversation_loaded", server)
         self.assertIn("context_replay_guard", server)
@@ -655,6 +769,10 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("grid-column: 1 / -1;", styles)
         self.assertIn("body.native-window .app-chrome", styles)
         self.assertIn(".workspace-file-list tbody tr.active td", styles)
+        self.assertIn(".review-status-chip", styles)
+        self.assertIn(".codex-review-scope", styles)
+        self.assertIn(".history-filter", styles)
+        self.assertIn(".history-sketch-filter", styles)
         self.assertIn(".sr-only", styles)
 
         desktop = (Path(__file__).parents[1] / "desktop_app.py").read_text(encoding="utf-8")
@@ -1097,10 +1215,73 @@ class TalosArduinoTests(unittest.TestCase):
 
             self.assertEqual(events[0]["type"], "release_evidence")
             self.assertEqual(events[0]["schema_version"], 1)
-            self.assertEqual(events[0]["release"], "0.1.0-beta")
+            self.assertEqual(events[0]["release"], "0.3.0-beta")
             self.assertTrue(events[0]["profile_ready"])
             self.assertEqual(events[0]["verify_summary"]["memory"]["program"]["percent"], 12)
             self.assertEqual(events[0]["blocked_cases"], ["none"])
+
+    def test_run_history_filters_by_workspace_sketch_and_kind(self) -> None:
+        with TemporaryDirectory() as tmp:
+            history_path = Path(tmp) / "run_history.json"
+            with patch("talos.run_history.RUN_HISTORY_PATH", history_path):
+                record_verify(
+                    {
+                        "ok": True,
+                        "status": "passed",
+                        "summary": {"path": r"C:\SketchA", "main_sketch": "Main.ino"},
+                    },
+                    "manual",
+                )
+                record_codex_turn(r"C:\SketchA", "Review", "completed", {"active_file": "Motor.cpp"})
+                record_patch_transition(
+                    {
+                        "id": "patch-save",
+                        "workspace": r"C:\SketchA",
+                        "review_status": "saved",
+                        "files": [{"path": "Motor.cpp", "review_status": "saved"}],
+                    },
+                    "saved",
+                    "Motor.cpp",
+                )
+                record_verify(
+                    {
+                        "ok": False,
+                        "status": "failed",
+                        "summary": {"path": r"C:\SketchB", "main_sketch": "Other.ino"},
+                    },
+                    "manual",
+                )
+
+                saved = filtered_run_history(workspace=r"C:\SketchA", sketch="Motor.cpp", kind="saved")
+                verifies = filtered_run_history(workspace=r"C:\SketchA", kind="verify")
+
+            self.assertEqual(len(saved), 1)
+            self.assertEqual(saved[0]["type"], "patch")
+            self.assertEqual(saved[0]["timeline"][-1]["action"], "saved")
+            self.assertEqual(len(verifies), 1)
+            self.assertEqual(verifies[0]["main_sketch"], "Main.ino")
+
+    def test_support_bundle_redacts_shareable_paths(self) -> None:
+        bundle = support_bundle(
+            app={"display_name": "Talos", "version": "0.3.0"},
+            build={
+                "root": r"C:\University\Bao\local_agent",
+                "bundle_root": r"C:\University\Bao\local_agent",
+                "app_data": r"C:\Users\Admin\AppData\Local\T-Engine\Talos",
+                "executable": r"C:\Python311\python.exe",
+            },
+            workspace_summary={"path": r"C:\Users\Admin\Desktop\Sketch", "main_sketch": "Sketch.ino"},
+            profile={"fqbn": "arduino:avr:uno"},
+            profile_readiness={"ready": True},
+            latest_verify={"workspace": r"C:\Users\Admin\Desktop\Sketch"},
+            history=[{"type": "verify", "workspace": r"C:\Users\Admin\Desktop\Sketch"}],
+            redact=True,
+        )
+
+        body = json.dumps(bundle)
+        self.assertIn("<workspace>", body)
+        self.assertIn("<app-data>", body)
+        self.assertNotIn(r"C:\Users\Admin\Desktop\Sketch", body)
 
     def test_codex_status_starts_runtime_without_blocking_for_handshake(self) -> None:
         bridge = CodexBridge(persist_reviews=False)
@@ -1434,16 +1615,17 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertEqual(tool_scan.call_count, 1)
         self.assertEqual(window_scan.call_count, 1)
         self.assertEqual(payload["app"]["publisher"], "T-Engine")
-        self.assertEqual(payload["app"]["version"], "0.2.0")
+        self.assertEqual(payload["app"]["version"], "0.3.0")
         self.assertEqual(payload["app"]["channel"], "Beta")
         self.assertEqual(payload["build"]["schema_version"], 1)
-        self.assertEqual(payload["build"]["version"], "0.2.0")
+        self.assertEqual(payload["build"]["version"], "0.3.0")
         self.assertEqual(payload["build"]["channel"], "Beta")
         self.assertIn(payload["build"]["mode"], {"source", "packaged"})
         self.assertIn("python", payload["build"])
         self.assertTrue(payload["arduino_ide"]["running"])
         self.assertIn("arduino_profile_readiness", payload)
         self.assertIn("POST /api/release_evidence", payload["tools"])
+        self.assertIn("GET /api/support_bundle", payload["tools"])
 
     def test_arduino_discovery_does_not_include_configured_folder_without_open_ide_signal(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -1928,11 +2110,33 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIsNotNone(verify_fn)
         body = verify_fn.group(0)
 
-        self.assertLess(
-            body.index('renderVerifyOutput(null, "Copying sketch folder to sandbox and running arduino-cli compile...")'),
-            body.index('await api("/api/arduino_verify"'),
-        )
+        self.assertLess(body.index("renderVerifyOutput(null,"), body.index('await api("/api/arduino_verify"'))
+        self.assertIn("Compiling the current Talos editor draft", body)
+        self.assertIn("Copying sketch folder to sandbox and running arduino-cli compile", body)
         self.assertIn("setArduinoVerifyRunning(true)", body)
+
+    def test_save_and_verify_compiles_editor_draft_before_saving(self) -> None:
+        script = (Path(__file__).parents[1] / "ui" / "web_frontend" / "app.js").read_text(encoding="utf-8")
+        save_verify_fn = re.search(r"async function saveAndVerifyWorkspace[\s\S]+?async function rollbackWorkspaceFile", script)
+        self.assertIsNotNone(save_verify_fn)
+        body = save_verify_fn.group(0)
+
+        self.assertLess(
+            body.index("await verifyArduinoWorkspace"),
+            body.index("await saveWorkspaceFile({ skipVerifyWarning: true })"),
+        )
+        self.assertIn("sandbox verify did not pass. Arduino IDE was not changed", body)
+        self.assertIn("Save + Verify runs sandbox compile before saving", body)
+
+    def test_codex_save_warns_without_current_successful_verify(self) -> None:
+        script = (Path(__file__).parents[1] / "ui" / "web_frontend" / "app.js").read_text(encoding="utf-8")
+        save_fn = re.search(r"async function saveWorkspaceFile[\s\S]+?async function saveAndVerifyWorkspace", script)
+        self.assertIsNotNone(save_fn)
+        body = save_fn.group(0)
+
+        self.assertIn("shouldWarnUnverifiedCodexSave", body)
+        self.assertIn("has not passed a current Verify Sandbox run", body)
+        self.assertIn("skipVerifyWarning", body)
 
     def test_arduino_compile_output_parser_cleans_ansi_and_extracts_summary(self) -> None:
         output = (
