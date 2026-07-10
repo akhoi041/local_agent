@@ -8,7 +8,6 @@
       (() => {
         const theme = "__TALOS_THEME__";
         if (["light", "dark", "neutral"].includes(theme)) document.documentElement.dataset.theme = theme;
-        document.documentElement.dataset.rail = localStorage.getItem("talos-rail-pinned") === "true" ? "pinned" : "collapsed";
       })();
     </script>
     <link rel="stylesheet" href="/styles.css" />
@@ -35,33 +34,47 @@
         </div>
         <button id="closeBtn" class="chrome-button danger" title="Close">&times;</button>
       </div>
+      <div id="windowMenu" class="window-menu" role="menu" hidden>
+        <button id="windowRestoreMenuBtn" type="button" role="menuitem">Restore</button>
+        <button id="windowMinimizeMenuBtn" type="button" role="menuitem">Minimize</button>
+        <button id="windowMaximizeMenuBtn" type="button" role="menuitem">Maximize</button>
+        <button id="windowCloseMenuBtn" type="button" role="menuitem">Close</button>
+      </div>
     </div>
+    <div class="window-resize-handle resize-n" data-resize-edge="n" aria-hidden="true"></div>
+    <div class="window-resize-handle resize-e" data-resize-edge="e" aria-hidden="true"></div>
+    <div class="window-resize-handle resize-s" data-resize-edge="s" aria-hidden="true"></div>
+    <div class="window-resize-handle resize-w" data-resize-edge="w" aria-hidden="true"></div>
+    <div class="window-resize-handle resize-ne" data-resize-edge="ne" aria-hidden="true"></div>
+    <div class="window-resize-handle resize-se" data-resize-edge="se" aria-hidden="true"></div>
+    <div class="window-resize-handle resize-sw" data-resize-edge="sw" aria-hidden="true"></div>
+    <div class="window-resize-handle resize-nw" data-resize-edge="nw" aria-hidden="true"></div>
     <div class="scene">
       <aside class="rail">
         <div class="rail-head">
           <div class="brand-core">
             <span class="rail-icon brand-icon">T</span>
-            <span class="brand-copy">
-              <span class="brand-kicker">Codex Control Layer</span>
-              <span id="brandName" class="brand-name">Talos</span>
-              <span id="brandVersion" class="brand-version"></span>
-            </span>
           </div>
-          <button id="pinRailBtn" class="rail-pin" type="button" title="Pin navigation open" aria-label="Pin navigation open">
-            <span class="pin-glyph" aria-hidden="true"></span>
-          </button>
         </div>
         <button class="nav active" data-view="dashboard" title="Server">
-          <span class="rail-icon">S</span><span class="nav-label">Server</span>
+          <span class="rail-icon nav-glyph" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M5 5h14v5H5zM5 14h14v5H5zM8 8h1M8 17h1M12 8h5M12 17h5" /></svg>
+          </span><span class="nav-label sr-only">Server</span>
         </button>
         <button class="nav" data-view="workspace" title="Arduino">
-          <span class="rail-icon">A</span><span class="nav-label">Arduino</span>
+          <span class="rail-icon nav-glyph" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M8 7h8v10H8zM5 9h3M5 15h3M16 9h3M16 15h3M10 4v3M14 4v3M10 17v3M14 17v3M11 11h2M15 11h1M11 14h5" /></svg>
+          </span><span class="nav-label sr-only">Arduino</span>
         </button>
         <button class="nav" data-view="logs" title="Logs">
-          <span class="rail-icon">L</span><span class="nav-label">Logs</span>
+          <span class="rail-icon nav-glyph" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M6 6h12M6 10h12M6 14h8M6 18h10" /></svg>
+          </span><span class="nav-label sr-only">Logs</span>
         </button>
         <button class="nav" data-view="settings" title="Settings">
-          <span class="rail-icon">G</span><span class="nav-label">Settings</span>
+          <span class="rail-icon nav-glyph" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8a4 4 0 0 0 0-8zM12 3v3M12 18v3M4.8 4.8l2.1 2.1M17.1 17.1l2.1 2.1M3 12h3M18 12h3M4.8 19.2l2.1-2.1M17.1 6.9l2.1-2.1" /></svg>
+          </span><span class="nav-label sr-only">Settings</span>
         </button>
       </aside>
 
@@ -76,10 +89,42 @@
         </header>
 
         <section class="view active" id="dashboard">
-          <div class="stats" id="stats"></div>
-          <div class="holo-panel command-panel">
-            <div class="panel-title">Tool endpoints</div>
-            <pre id="toolList">Loading endpoints...</pre>
+          <div class="home-grid">
+            <section class="home-main">
+              <div class="stats" id="stats"></div>
+              <div class="holo-panel product-status-panel">
+                <div class="panel-head">
+                  <div>
+                    <div class="panel-title">Workspace readiness</div>
+                    <p id="serverSummary" class="status-text">Loading Talos runtime status...</p>
+                  </div>
+                </div>
+                <div id="readinessList" class="readiness-list"></div>
+              </div>
+              <details class="holo-panel command-panel developer-details">
+                <summary>
+                  <span>Developer details</span>
+                  <small>API endpoints and local tool surface</small>
+                </summary>
+                <pre id="toolList">Loading endpoints...</pre>
+              </details>
+            </section>
+            <aside class="home-side">
+              <div class="holo-panel quick-actions-panel">
+                <div class="panel-title">Quick actions</div>
+                <button class="button" type="button" data-go-view="workspace">Open Arduino workspace</button>
+                <button class="button" type="button" data-go-view="logs">View event log</button>
+                <button class="button" type="button" data-go-view="settings">Open settings</button>
+                <button id="dashboardSupportBtn" class="button ghost" type="button">Copy support bundle</button>
+              </div>
+              <div class="holo-panel release-summary-panel">
+                <div class="panel-title">Release</div>
+                <div id="dashboardReleaseDetails" class="release-details compact-release">
+                  <div><span>Version</span><b>Loading...</b></div>
+                  <div><span>Mode</span><b>Loading...</b></div>
+                </div>
+              </div>
+            </aside>
           </div>
         </section>
 
@@ -355,32 +400,133 @@
 
         <section class="view" id="logs">
           <div class="holo-panel log-panel">
-            <div class="panel-title">Event stream</div>
-            <pre id="logText"></pre>
+            <div class="panel-head">
+              <div>
+                <div class="panel-title">Event stream</div>
+                <p id="logSummary" class="status-text">Runtime events appear here.</p>
+              </div>
+              <div class="panel-actions">
+                <select id="logFilter" class="history-filter" title="Filter logs" aria-label="Filter logs">
+                  <option value="all">All</option>
+                  <option value="arduino">Arduino</option>
+                  <option value="codex">Codex</option>
+                  <option value="verify">Verify</option>
+                  <option value="diagnostics">Diagnostics</option>
+                  <option value="app">App</option>
+                </select>
+              </div>
+            </div>
+            <div id="logText" class="event-log-list" role="log" aria-live="polite"></div>
           </div>
         </section>
 
         <section class="view" id="settings">
-          <div class="holo-panel settings-panel">
-            <div class="panel-title">Release</div>
+          <details class="holo-panel settings-panel settings-section" open>
+            <summary><span>Help</span><small>Guides and tester reference</small></summary>
+            <div class="release-details help-links">
+              <div><span>User guide</span><b>docs/TALOS_USER_GUIDE.md</b></div>
+              <div><span>First run</span><b>docs/TALOS_FIRST_RUN_CHECKLIST.md</b></div>
+              <div><span>Troubleshooting</span><b>docs/TALOS_TROUBLESHOOTING.md</b></div>
+              <div><span>Diagnostics</span><b>docs/TALOS_DIAGNOSTICS.md</b></div>
+              <div><span>Install lifecycle</span><b>docs/TALOS_INSTALL_LIFECYCLE.md</b></div>
+              <div><span>UI/UX checklist</span><b>docs/TALOS_UI_UX_CHECKLIST.md</b></div>
+              <div><span>Recovery</span><b>docs/TALOS_RECOVERY_GUIDE.md</b></div>
+              <div><span>Support</span><b>docs/TALOS_SUPPORT_DEBUG.md</b></div>
+              <div><span>Release notes</span><b>docs/RELEASE_NOTES.md</b></div>
+            </div>
+          </details>
+          <details class="holo-panel settings-panel settings-section">
+            <summary><span>Release</span><small>Build identity and app data</small></summary>
             <div id="releaseDetails" class="release-details">
               <div><span>Version</span><b>Loading...</b></div>
               <div><span>Mode</span><b>Loading...</b></div>
               <div><span>App data</span><b>Loading...</b></div>
             </div>
-          </div>
-          <div class="holo-panel settings-panel">
-            <div class="panel-title">Theme</div>
+          </details>
+          <details class="holo-panel settings-panel appearance-panel settings-section" open>
+            <summary><span>Appearance</span><small>Theme, contrast, and editor density</small></summary>
+            <div class="settings-intro">
+              <strong>Theme preferences</strong>
+              <span>Choose Talos chrome, editor contrast, and display density for this device.</span>
+            </div>
+            <label class="settings-toggle compact">
+              <input id="systemThemeInput" type="checkbox" />
+              <span>
+                <strong>Sync theme with system</strong>
+                <small>Talos will follow the current Windows light or dark preference on this device.</small>
+              </span>
+            </label>
             <div class="theme-options" role="radiogroup" aria-label="Theme">
-              <label class="theme-option"><input type="radio" name="theme" value="light" /> Light</label>
-              <label class="theme-option"><input type="radio" name="theme" value="dark" /> Dark</label>
-              <label class="theme-option"><input type="radio" name="theme" value="neutral" /> Neutral</label>
+              <label class="theme-option theme-card light-card">
+                <input type="radio" name="theme" value="light" />
+                <span class="theme-card-head">Light theme</span>
+                <span class="theme-preview" aria-hidden="true"><i></i><i></i><i></i><b></b></span>
+                <small>Bright canvas with GitHub-style contrast.</small>
+              </label>
+              <label class="theme-option theme-card dark-card">
+                <input type="radio" name="theme" value="dark" />
+                <span class="theme-card-head">Dark theme</span>
+                <span class="theme-preview" aria-hidden="true"><i></i><i></i><i></i><b></b></span>
+                <small>Dark canvas for long coding sessions.</small>
+              </label>
+              <label class="theme-option theme-card neutral-card">
+                <input type="radio" name="theme" value="neutral" />
+                <span class="theme-card-head">Neutral theme</span>
+                <span class="theme-preview" aria-hidden="true"><i></i><i></i><i></i><b></b></span>
+                <small>Low-saturation workspace for review mode.</small>
+              </label>
+            </div>
+            <div class="appearance-grid">
+              <label class="settings-toggle compact">
+                <input id="highContrastInput" type="checkbox" />
+                <span>
+                  <strong>Increase contrast</strong>
+                  <small>Strengthen borders, focus rings, and selected states.</small>
+                </span>
+              </label>
+              <label class="settings-field">Editor font size
+                <select id="editorFontSizeInput">
+                  <option value="13">13 px</option>
+                  <option value="14">14 px</option>
+                  <option value="15">15 px</option>
+                  <option value="16">16 px</option>
+                </select>
+              </label>
+              <label class="settings-field">Editor density
+                <select id="editorDensityInput">
+                  <option value="compact">Compact</option>
+                  <option value="comfortable">Comfortable</option>
+                  <option value="spacious">Spacious</option>
+                </select>
+              </label>
             </div>
             <div class="action-row settings-actions">
               <p id="settingsStatus">Theme changes apply immediately.</p>
               <button id="saveSettingsBtn" class="button primary" type="button">Save</button>
             </div>
-          </div>
+          </details>
+          <details class="holo-panel settings-panel settings-section">
+            <summary><span>Diagnostics</span><small>Local opt-in product evidence</small></summary>
+            <label class="settings-toggle">
+              <input id="diagnosticsEnabledInput" type="checkbox" />
+              <span>
+                <strong>Enable local product diagnostics</strong>
+                <small>Local only. No remote upload in 0.4.0. Exports are redacted and previewed before sharing.</small>
+              </span>
+            </label>
+            <div class="diagnostics-policy">
+              <span>No sketch source</span>
+              <span>No Codex chat</span>
+              <span>No account identifiers</span>
+              <span>No raw absolute paths</span>
+            </div>
+            <div class="action-row settings-actions">
+              <p id="diagnosticsStatus">Diagnostics are disabled until you opt in and save.</p>
+              <button id="previewDiagnosticsBtn" class="button ghost" type="button">Preview Export</button>
+              <button id="copyDiagnosticsBtn" class="button ghost" type="button">Copy Export</button>
+            </div>
+            <textarea id="diagnosticsPreview" class="diagnostics-preview" spellcheck="false" readonly placeholder="Diagnostics export preview appears here."></textarea>
+          </details>
         </section>
       </main>
     </div>

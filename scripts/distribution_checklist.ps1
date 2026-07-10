@@ -81,11 +81,13 @@ $manifestPath = Join-Path $releaseDirPath "release_manifest.json"
 $signingPath = Join-Path $releaseDirPath "signing_status.json"
 $installerSmokePath = Join-Path $releaseDirPath "installer_smoke.json"
 $installedAppSmokePath = Join-Path $releaseDirPath "installed_app_smoke.json"
+$appLifecycleSmokePath = Join-Path $releaseDirPath "app_lifecycle_smoke.json"
 
 $manifest = Read-JsonFile $manifestPath
 $signing = Read-JsonFile $signingPath
 $installerSmoke = Read-JsonFile $installerSmokePath
 $installedAppSmoke = Read-JsonFile $installedAppSmokePath
+$appLifecycleSmoke = Read-JsonFile $appLifecycleSmokePath
 
 $artifacts = @()
 if ($manifest -and $manifest.artifacts) {
@@ -100,10 +102,11 @@ if ($signing) {
 }
 $installerSmokeReady = $installerSmoke -and [string]$installerSmoke.status -eq "passed"
 $installedAppSmokeReady = $installedAppSmoke -and ([string]$installedAppSmoke.status -eq "passed" -or [string]$installedAppSmoke.status -eq "manual-confirmed-without-launch-check")
-$requiredReady = $manifest -and $hasExecutable -and $hasInstaller -and $signingReady -and $installerSmokeReady -and $installedAppSmokeReady
+$appLifecycleSmokeReady = $appLifecycleSmoke -and [string]$appLifecycleSmoke.status -eq "passed"
+$requiredReady = $manifest -and $hasExecutable -and $hasInstaller -and $signingReady -and $installerSmokeReady -and $installedAppSmokeReady -and $appLifecycleSmokeReady
 
 if ($RequireReady -and -not $requiredReady) {
-  throw "Distribution checklist is not release-ready. Build artifacts, signing status, installer smoke, and installed-app smoke must all be present and passing."
+  throw "Distribution checklist is not release-ready. Build artifacts, signing status, installer smoke, installed-app smoke, and app lifecycle smoke must all be present and passing."
 }
 
 $lines = New-Object System.Collections.Generic.List[string]
@@ -123,6 +126,7 @@ $lines.Add(("| Windows installer artifact | {0} | ``release_manifest.json`` arti
 $lines.Add(("| Signing or explicit unsigned Beta | {0} | ``signing_status.json`` |" -f $(if ($signingReady) { "ready" } else { "missing" })))
 $lines.Add(("| Installer install/uninstall smoke | {0} | ``installer_smoke.json`` |" -f $(if ($installerSmokeReady) { "passed" } else { "missing" })))
 $lines.Add(("| Installed app Arduino/Codex smoke | {0} | ``installed_app_smoke.json`` |" -f $(if ($installedAppSmokeReady) { "passed" } else { "missing/manual" })))
+$lines.Add(("| App-data lifecycle smoke | {0} | ``app_lifecycle_smoke.json`` |" -f $(if ($appLifecycleSmokeReady) { "passed" } else { "missing" })))
 $lines.Add("")
 $lines.Add("## Artifacts")
 $lines.Add("")
@@ -158,6 +162,17 @@ if ($installedAppSmoke) {
   $lines.Add("- Installed-app smoke result missing. Run `scripts\smoke_installed_app.ps1 -SkipBuild -ManualArduinoConfirmed` after manual Arduino/Codex validation.")
 }
 $lines.Add("")
+$lines.Add("## App-Data Lifecycle")
+$lines.Add("")
+if ($appLifecycleSmoke) {
+  $lines.Add(("- Status: ``{0}``" -f $appLifecycleSmoke.status))
+  $lines.Add(("- Isolated app data: ``{0}``" -f $appLifecycleSmoke.isolated_app_data))
+  $lines.Add(("- Install directory removed: ``{0}``" -f $appLifecycleSmoke.install_dir_removed))
+  $lines.Add(("- User runtime data preserved: ``{0}``" -f $appLifecycleSmoke.user_runtime_data_preserved))
+} else {
+  $lines.Add("- App lifecycle result missing. Run `scripts\smoke_app_lifecycle.ps1` after building release artifacts.")
+}
+$lines.Add("")
 $lines.Add("## Rollback And Recovery")
 $lines.Add("")
 $lines.Add("- Stage 9 release recovery smoke is required by `scripts\check.ps1`.")
@@ -176,6 +191,7 @@ $lines.Add("- [ ] Artifact names and hashes reviewed.")
 $lines.Add("- [ ] Signing status reviewed.")
 $lines.Add("- [ ] Installer install/uninstall evidence reviewed.")
 $lines.Add("- [ ] Installed app smoke evidence reviewed.")
+$lines.Add("- [ ] App-data lifecycle evidence reviewed.")
 $lines.Add("- [ ] Known limitations accepted for this Beta channel.")
 $lines.Add("- [ ] Release approved for distribution.")
 

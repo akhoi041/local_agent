@@ -41,6 +41,7 @@ $smokeRoot = Join-Path ([System.IO.Path]::GetTempPath()) "TalosInstallerSmoke"
 $installDir = Join-Path $smokeRoot $appName
 $startMenuDir = Join-Path ([Environment]::GetFolderPath("Programs")) $appName
 $startMenuShortcut = Join-Path $startMenuDir "$appName.lnk"
+$desktopShortcut = Join-Path ([Environment]::GetFolderPath("Desktop")) "$appName.lnk"
 
 if (Test-Path -LiteralPath $installDir) {
   $oldUninstaller = Join-Path $installDir "unins000.exe"
@@ -57,7 +58,8 @@ Invoke-ProcessChecked $installerPath @(
   "/VERYSILENT",
   "/SUPPRESSMSGBOXES",
   "/NORESTART",
-  "/DIR=$installDir"
+  "/DIR=$installDir",
+  "/TASKS=desktopicon"
 ) "Silent install"
 
 $installedExe = Join-Path $installDir "$appName.exe"
@@ -70,10 +72,16 @@ $installedPrivacy = Join-Path $installDir "docs\PRIVACY.md"
 $installedThirdParty = Join-Path $installDir "docs\THIRD_PARTY_NOTICES.md"
 $installedCodeSigning = Join-Path $installDir "docs\CODE_SIGNING.md"
 $installedAppSmokeDoc = Join-Path $installDir "docs\INSTALLED_APP_SMOKE_TEST.md"
+$installedUserGuide = Join-Path $installDir "docs\TALOS_USER_GUIDE.md"
+$installedFirstRunChecklist = Join-Path $installDir "docs\TALOS_FIRST_RUN_CHECKLIST.md"
+$installedTroubleshooting = Join-Path $installDir "docs\TALOS_TROUBLESHOOTING.md"
+$installedDiagnostics = Join-Path $installDir "docs\TALOS_DIAGNOSTICS.md"
+$installedLifecycle = Join-Path $installDir "docs\TALOS_INSTALL_LIFECYCLE.md"
+$installedUiUxChecklist = Join-Path $installDir "docs\TALOS_UI_UX_CHECKLIST.md"
 $userConfig = Join-Path $installDir "config\config.json"
 $releaseNotesShortcut = Join-Path $startMenuDir "Release Notes.lnk"
 
-foreach ($path in @($installedExe, $uninstaller, $installedManifest, $installedConfig, $installedReleaseNotes, $installedEula, $installedPrivacy, $installedThirdParty, $installedCodeSigning, $installedAppSmokeDoc, $startMenuShortcut, $releaseNotesShortcut)) {
+foreach ($path in @($installedExe, $uninstaller, $installedManifest, $installedConfig, $installedReleaseNotes, $installedEula, $installedPrivacy, $installedThirdParty, $installedCodeSigning, $installedAppSmokeDoc, $installedUserGuide, $installedFirstRunChecklist, $installedTroubleshooting, $installedDiagnostics, $installedLifecycle, $installedUiUxChecklist, $startMenuShortcut, $desktopShortcut, $releaseNotesShortcut)) {
   if (-not (Test-Path -LiteralPath $path)) {
     throw "Installer smoke test expected file was not created: $path"
   }
@@ -84,7 +92,7 @@ if (Test-Path -LiteralPath $userConfig) {
 
 Invoke-ProcessChecked $uninstaller @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART") "Silent uninstall"
 
-foreach ($path in @($installedExe, $uninstaller, $installedManifest, $installedConfig, $installedReleaseNotes, $installedEula, $installedPrivacy, $installedThirdParty, $installedCodeSigning, $installedAppSmokeDoc, $startMenuShortcut, $releaseNotesShortcut)) {
+foreach ($path in @($installedExe, $uninstaller, $installedManifest, $installedConfig, $installedReleaseNotes, $installedEula, $installedPrivacy, $installedThirdParty, $installedCodeSigning, $installedAppSmokeDoc, $installedUserGuide, $installedFirstRunChecklist, $installedTroubleshooting, $installedDiagnostics, $installedLifecycle, $installedUiUxChecklist, $startMenuShortcut, $desktopShortcut, $releaseNotesShortcut)) {
   if (Test-Path -LiteralPath $path) {
     throw "Installer smoke test expected file was not removed: $path"
   }
@@ -114,6 +122,7 @@ $evidence = [ordered]@{
   installer = $installerPath
   install_dir = $installDir
   start_menu_shortcut = $true
+  optional_desktop_shortcut = $true
   release_notes_shortcut = $true
   writable_config_absent_from_install_dir = $true
   uninstall_cleanup = $true

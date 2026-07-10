@@ -121,6 +121,7 @@ scripts/build_installer.ps1 Build the Windows installer with Inno Setup
 scripts/sign_release.ps1 Sign release artifacts or record an explicit unsigned Beta
 scripts/smoke_installer.ps1 Build, silently install, verify shortcuts, and uninstall the installer
 scripts/smoke_installed_app.ps1 Launch installed Talos outside the repo and record smoke evidence
+scripts/smoke_app_lifecycle.ps1 Validate isolated app-data upgrade/uninstall lifecycle evidence
 scripts/distribution_checklist.ps1 Generate the final release distribution checklist
 installer/talos.iss     Inno Setup installer definition
 scripts/smoke_release_recovery.py Validate restart/recovery safety for pending Codex reviews
@@ -138,12 +139,19 @@ docs/RELEASE_NOTES.md        Current release highlights and known limitations
 docs/THIRD_PARTY_NOTICES.md  Dependency and tooling notices
 docs/CODE_SIGNING.md         Signing policy, unsigned-Beta path, and verification commands
 docs/INSTALLED_APP_SMOKE_TEST.md Installed-app Arduino/Codex smoke-test checklist
+docs/TALOS_USER_GUIDE.md     User-facing install, first-run, Arduino, Codex, verify, save, and recovery guide
+docs/TALOS_FIRST_RUN_CHECKLIST.md New-tester checklist for simple `.ino`, multi-file sketches, Codex review, recovery, and support
+docs/TALOS_TROUBLESHOOTING.md Common failure paths for Arduino detection, board/FQBN, `arduino-cli`, verify, Codex, installer, and installed-app issues
+docs/TALOS_DIAGNOSTICS.md Local-only diagnostics, consent, redaction, event taxonomy, and export shape
+docs/TALOS_INSTALL_LIFECYCLE.md Clean install, upgrade, uninstall, and app-data lifecycle validation
+docs/TALOS_UI_UX_CHECKLIST.md UI/UX smoke checklist for window sizes, tools, Codex, verify, and settings states
 docs/TALOS_RECOVERY_GUIDE.md Safe recovery path for Codex review, Arduino external edits, and rollback conflicts
 docs/TALOS_SUPPORT_DEBUG.md Support bundle, run-history filters, and release-evidence workflow
 docs/TALOS_ROADMAP.md        Version-level roadmap across Talos releases
 docs/TALOS_PIPELINE_010.md   Completed 0.1.0 Beta first-version pipeline
 docs/TALOS_PIPELINE_020.md   Completed 0.2.0 Beta pipeline
-docs/TALOS_PIPELINE_030.md   Active 0.3.0 Beta pipeline
+docs/TALOS_PIPELINE_030.md   Completed 0.3.0 Beta pipeline
+docs/TALOS_PIPELINE_040.md   Active 0.4.0 Pre-Alpha pipeline
 docs/TALOS_030_BASELINE.md   0.3.0 starting baseline and carry-over guarantees
 ```
 
@@ -272,6 +280,12 @@ Smoke-test the installer install/uninstall behavior:
 .\scripts\smoke_installer.ps1
 ```
 
+Validate isolated app-data lifecycle behavior:
+
+```powershell
+.\scripts\smoke_app_lifecycle.ps1
+```
+
 Smoke-test the installed app outside the source checkout:
 
 ```powershell
@@ -290,7 +304,7 @@ Generate the final distribution checklist:
 .\scripts\distribution_checklist.ps1 -RequireReady
 ```
 
-The checklist is written to `releases\Talos-0.3.0-beta\DISTRIBUTION_CHECKLIST.md` and summarizes artifact names, SHA-256 hashes, signing status, installer install/uninstall evidence, installed-app smoke evidence, rollback/recovery coverage, and known limitations.
+The checklist is written to the versioned release folder and summarizes artifact names, SHA-256 hashes, signing status, installer install/uninstall evidence, installed-app smoke evidence, app-data lifecycle evidence, rollback/recovery coverage, and known limitations.
 
 Install locally:
 

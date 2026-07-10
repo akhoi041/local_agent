@@ -26,6 +26,14 @@ To run the installed-app Arduino/Codex gate without manual confirmation, use the
 
 The harness creates a temporary Arduino sketch, launches the installed Talos app with isolated app data, configures the sketch through Talos APIs, saves a Talos editor change, stages a controlled Codex smoke patch, applies it into the Talos editor, confirms the Arduino workspace is not written before `Save File`, saves the applied change to the Arduino workspace, and runs sandbox verify before and after the patch. Set `TALOS_SMOKE_FQBN` before running the command if the default `arduino:avr:uno` profile is not installed locally.
 
+For install/upgrade/uninstall lifecycle evidence, also run:
+
+```powershell
+.\scripts\smoke_app_lifecycle.ps1
+```
+
+This writes `app_lifecycle_smoke.json` and verifies isolated app-data preservation rules.
+
 ## Manual Arduino/Codex Checks
 
 Use a saved Arduino sketch and keep Arduino IDE open during the test.

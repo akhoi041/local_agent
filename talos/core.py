@@ -62,6 +62,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "arduino_workspace_path": "",
     "arduino_fqbn": "",
     "arduino_profiles": {},
+    "diagnostics": {
+        "enabled": False,
+        "allow_remote_upload": False,
+    },
 }
 
 def _read_json(path: Path, fallback: Any, encoding: str = "utf-8") -> tuple[Any, bool]:
@@ -150,6 +154,11 @@ def _normalize_config(data: Any) -> dict[str, Any]:
         config[key] = str(config.get(key) or "").strip()
     if not isinstance(config.get("arduino_profiles"), dict):
         config["arduino_profiles"] = {}
+    diagnostics = config.get("diagnostics") if isinstance(config.get("diagnostics"), dict) else {}
+    config["diagnostics"] = {
+        "enabled": bool(diagnostics.get("enabled")),
+        "allow_remote_upload": False,
+    }
     return config
 
 def load_config() -> dict[str, Any]:

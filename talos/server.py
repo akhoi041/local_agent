@@ -40,6 +40,7 @@ from talos.arduino import (
 )
 from talos.codex_bridge import CODEX_BRIDGE
 from talos.arduino_events import ArduinoEventWatcher
+from talos.diagnostics import diagnostics_export, diagnostics_settings, record_diagnostic
 from talos.checkpoints import (
     create_before_save_checkpoint,
     discard_checkpoint,
@@ -145,6 +146,7 @@ def state_payload() -> dict[str, Any]:
             "arduino_workspace_path": config.get("arduino_workspace_path", ""),
             "arduino_fqbn": config.get("arduino_fqbn", ""),
             "arduino_profiles": config.get("arduino_profiles", {}),
+            "diagnostics": diagnostics_settings(config),
         },
         "arduino": arduino_summary,
         "arduino_profile": arduino_profile,
@@ -176,6 +178,7 @@ def state_payload() -> dict[str, Any]:
             "GET /api/codex_status",
             "GET /api/run_history",
             "GET /api/support_bundle",
+            "GET /api/diagnostics_export",
             "POST /api/codex_reconnect",
             "POST /api/codex_context_package",
             "POST /api/codex_message",
@@ -283,6 +286,12 @@ class TalosWebHandler(BaseHTTPRequestHandler):
             )
             self.send_json({"ok": True, "bundle": bundle})
             return
+        if parsed.path == "/api/diagnostics_export":
+            config = load_config()
+            app_identity = load_app_identity()
+            build_metadata = load_build_metadata(app_identity)
+            self.send_json({"ok": True, "diagnostics": diagnostics_export(config, app_identity, build_metadata)})
+            return
         path = parsed.path
         if path == "/":
             path = "/index.html"
@@ -295,9 +304,24 @@ class TalosWebHandler(BaseHTTPRequestHandler):
             for key in ("theme", "arduino_workspace_path", "arduino_fqbn"):
                 if key in payload:
                     config[key] = str(payload[key]).strip()
+            if isinstance(payload.get("diagnostics"), dict):
+                diagnostics = payload["diagnostics"]
+                config["diagnostics"] = {
+                    "enabled": bool(diagnostics.get("enabled")),
+                    "allow_remote_upload": False,
+                }
             save_config(config)
             log_event(f"{now()} saved settings")
             self.send_json({"ok": True, "config": load_config()})
+            return
+        if self.path == "/api/diagnostics_event":
+            config = load_config()
+            result = record_diagnostic(
+                config,
+                str(payload.get("event") or ""),
+                payload.get("payload") if isinstance(payload.get("payload"), dict) else {},
+            )
+            self.send_json(result, HTTPStatus.OK if result.get("ok") or not result.get("recorded") else HTTPStatus.BAD_REQUEST)
             return
         if self.path == "/api/arduino_workspace":
             config = load_config()
@@ -347,6 +371,17 @@ class TalosWebHandler(BaseHTTPRequestHandler):
             if source == "codex_patch":
                 record_patch_verification(str(workspace_summary(config).get("path") or ""), result)
             status = "passed" if result.get("ok") else result.get("status", "failed")
+            record_diagnostic(config, "verify_passed" if result.get("ok") else "verify_failed", {
+                "workspace": summary.get("path", ""),
+                "main_sketch": summary.get("main_sketch", ""),
+                "fqbn_family": ":".join(str(summary.get("fqbn") or "").split(":")[:3]),
+                "status": status,
+                "source": source,
+                "timings": result.get("timings") or {},
+                "cache": result.get("cache") or {},
+                "issue_count": len(result.get("issues") or []),
+                "profile_ready": bool((result.get("profile_readiness") or {}).get("ready")),
+            })
             log_event(f"{now()} Arduino verify {status}")
             self.send_json(result)
             return
