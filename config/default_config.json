@@ -3,5 +3,9 @@
   "theme": "light",
   "arduino_workspace_path": "",
   "arduino_fqbn": "",
-  "arduino_profiles": {}
+  "arduino_profiles": {},
+  "diagnostics": {
+    "enabled": false,
+    "allow_remote_upload": false
+  }
 }

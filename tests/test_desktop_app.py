@@ -70,6 +70,7 @@ from talos.run_history import (
     run_history,
     support_bundle,
 )
+from talos.diagnostics import diagnostics_export, diagnostics_settings, record_diagnostic, sanitize_payload
 from talos.server import state_payload
 
 class TalosArduinoTests(unittest.TestCase):
@@ -619,6 +620,18 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn('id="profileBuildPropertyInput"', html)
         self.assertIn('id="profileReadinessStatus"', html)
         self.assertIn('id="recordEvidenceBtn"', html)
+        self.assertIn("docs/TALOS_USER_GUIDE.md", html)
+        self.assertIn("docs/TALOS_FIRST_RUN_CHECKLIST.md", html)
+        self.assertIn("docs/TALOS_TROUBLESHOOTING.md", html)
+        self.assertIn("docs/TALOS_DIAGNOSTICS.md", html)
+        self.assertIn("docs/TALOS_INSTALL_LIFECYCLE.md", html)
+        self.assertIn("docs/TALOS_UI_UX_CHECKLIST.md", html)
+        self.assertIn('id="diagnosticsEnabledInput"', html)
+        self.assertIn('id="diagnosticsPreview"', html)
+        self.assertIn('id="previewDiagnosticsBtn"', html)
+        self.assertIn("docs/TALOS_RECOVERY_GUIDE.md", html)
+        self.assertIn("docs/TALOS_SUPPORT_DEBUG.md", html)
+        self.assertIn("docs/RELEASE_NOTES.md", html)
         self.assertIn('id="runHistoryFilter"', html)
         self.assertIn('id="runHistorySketchOnly"', html)
         self.assertIn('id="copySupportBundleBtn"', html)
@@ -738,6 +751,14 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("/api/arduino_events", script)
         self.assertIn("renderActiveFileRow", script)
         self.assertIn("CODEX_WIDTH_KEY", script)
+        self.assertIn("EXPLORER_PANEL_KEY", script)
+        self.assertIn("applyExplorerPanel", script)
+        style = (Path(__file__).parents[1] / "ui" / "web_frontend" / "styles.css").read_text(encoding="utf-8")
+        self.assertIn("Simplified", (Path(__file__).parents[1] / "docs" / "TALOS_PIPELINE_040.md").read_text(encoding="utf-8"))
+        self.assertIn("explorer-hidden", style)
+        self.assertIn("minmax(300px, var(--codex-pane-width))", style)
+        self.assertNotIn("translateX(100%)", style)
+        self.assertNotIn("right: min(var(--codex-pane-width)", style)
         self.assertNotIn("applyWindowMetrics", script)
         self.assertNotIn("--native-window-width", script)
 
@@ -761,22 +782,45 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("justify-self: stretch;", styles)
         self.assertIn("inset: 0;", styles)
         self.assertIn("border-left: 1px solid var(--line);", styles)
-        self.assertIn("minmax(280px, var(--codex-pane-width))", styles)
+        self.assertIn("inline-size: 100%;", styles)
+        self.assertIn(".ide-workbench.explorer-hidden", styles)
+        self.assertIn("minmax(300px, var(--codex-pane-width))", styles)
+        self.assertNotIn("right: min(var(--codex-pane-width)", styles)
+        self.assertNotIn("box-shadow: -18px 0 32px", styles)
         self.assertIn("@media (max-width: 1240px)", styles)
-        self.assertIn("minmax(260px, var(--codex-pane-width))", styles)
+        self.assertIn("minmax(280px, var(--codex-pane-width))", styles)
+        self.assertNotIn("minmax(260px, var(--codex-pane-width))", styles)
         self.assertIn("grid-template-columns: minmax(0, 1fr);", styles)
         self.assertIn("grid-template-areas:", styles)
         self.assertIn("grid-column: 1 / -1;", styles)
-        self.assertIn("body.native-window .app-chrome", styles)
+        self.assertNotIn("body.native-window .app-chrome", styles)
+        self.assertNotIn(".editor-tabbar::before", styles)
         self.assertIn(".workspace-file-list tbody tr.active td", styles)
         self.assertIn(".review-status-chip", styles)
         self.assertIn(".codex-review-scope", styles)
         self.assertIn(".history-filter", styles)
         self.assertIn(".history-sketch-filter", styles)
         self.assertIn(".sr-only", styles)
+        self.assertIn('class="rail-icon nav-glyph"', html)
+        self.assertIn("viewBox=\"0 0 24 24\"", html)
+        self.assertIn('id="windowMenu"', html)
+        self.assertIn('data-resize-edge="nw"', html)
+        self.assertIn('data-resize-edge="se"', html)
+        self.assertNotIn("pinRailBtn", html)
+        self.assertNotIn("applyRailPinned", script)
+        self.assertNotIn("RAIL_PIN_KEY", script)
 
         desktop = (Path(__file__).parents[1] / "desktop_app.py").read_text(encoding="utf-8")
-        self.assertIn("frameless=False", desktop)
+        self.assertIn("frameless=True", desktop)
+        self.assertIn("def get_window_bounds", desktop)
+        self.assertIn("def set_window_bounds", desktop)
+        self.assertIn("def restore", desktop)
+        self.assertIn("bindWindowResizeHandles", script)
+        self.assertIn("resizeBoundsFromEdge", script)
+        self.assertIn("showWindowMenu", script)
+        self.assertIn('event.altKey && event.code === "Space"', script)
+        self.assertIn(".window-resize-handle", styles)
+        self.assertIn(".window-menu", styles)
         self.assertIn("display: none;", styles)
         self.assertIn("[hidden]", styles)
         self.assertIn("display: none !important;", styles)
@@ -913,6 +957,14 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("docs\\THIRD_PARTY_NOTICES.md", installer_smoke)
         self.assertIn("docs\\CODE_SIGNING.md", installer_smoke)
         self.assertIn("docs\\INSTALLED_APP_SMOKE_TEST.md", installer_smoke)
+        self.assertIn("docs\\TALOS_USER_GUIDE.md", installer_smoke)
+        self.assertIn("docs\\TALOS_FIRST_RUN_CHECKLIST.md", installer_smoke)
+        self.assertIn("docs\\TALOS_TROUBLESHOOTING.md", installer_smoke)
+        self.assertIn("docs\\TALOS_DIAGNOSTICS.md", installer_smoke)
+        self.assertIn("docs\\TALOS_INSTALL_LIFECYCLE.md", installer_smoke)
+        self.assertIn("docs\\TALOS_UI_UX_CHECKLIST.md", installer_smoke)
+        self.assertIn("/TASKS=desktopicon", installer_smoke)
+        self.assertIn("optional_desktop_shortcut", installer_smoke)
         self.assertIn("writable runtime config inside the install directory", installer_smoke)
         self.assertIn("Silent uninstall", installer_smoke)
         self.assertIn("Installer smoke test passed", installer_smoke)
@@ -962,7 +1014,7 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("\"build\": build_metadata", server_source)
 
         self.assertIn('id="chromeVersion"', html)
-        self.assertIn('id="brandVersion"', html)
+        self.assertIn('id="dashboardReleaseDetails"', html)
         self.assertIn('id="releaseDetails"', html)
         self.assertIn("function versionLabel", script)
         self.assertIn("function renderReleaseDetails", script)
@@ -979,6 +1031,12 @@ class TalosArduinoTests(unittest.TestCase):
             "THIRD_PARTY_NOTICES.md": ["Third-Party Notices", "pywebview", "PyInstaller", "Pillow"],
             "CODE_SIGNING.md": ["Code Signing", "signtool.exe", "Get-AuthenticodeSignature", "unsigned-Beta"],
             "INSTALLED_APP_SMOKE_TEST.md": ["Installed App Smoke Test", "Manual Arduino/Codex Checks", "Pass Criteria"],
+            "TALOS_USER_GUIDE.md": ["Talos User Guide", "Arduino IDE remains the owner", "Verify Sandbox", "Use Codex"],
+            "TALOS_FIRST_RUN_CHECKLIST.md": ["Talos First-Run Checklist", "Simple `.ino` Sketch", "Multi-File Sketch", "Codex Review Flow"],
+            "TALOS_TROUBLESHOOTING.md": ["Talos Troubleshooting Guide", "Arduino IDE Is Not Detected", "`arduino-cli` Was Not Found", "Codex Is Disconnected"],
+            "TALOS_DIAGNOSTICS.md": ["Talos Diagnostics And Product Feedback", "Consent Model", "Event Taxonomy", "does not upload"],
+            "TALOS_INSTALL_LIFECYCLE.md": ["Talos Install Lifecycle Validation", "Clean Profile Method", "Upgrade Preservation", "Uninstall Policy"],
+            "TALOS_UI_UX_CHECKLIST.md": ["Talos UI/UX Smoke Checklist", "Window Sizes", "Editor And Review States", "Settings And Appearance"],
         }
         for doc_name, required_terms in required_docs.items():
             content = (root / "docs" / doc_name).read_text(encoding="utf-8")
@@ -1066,6 +1124,73 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("scripts\\smoke_installed_app.ps1", readme)
         self.assertIn("[x] Smoke-test the installed app outside the repository", pipeline)
 
+    def test_stage_040_install_lifecycle_validation_is_scripted_and_packaged(self) -> None:
+        root = Path(__file__).parents[1]
+        lifecycle_script = (root / "scripts" / "smoke_app_lifecycle.ps1").read_text(encoding="utf-8")
+        lifecycle_doc = (root / "docs" / "TALOS_INSTALL_LIFECYCLE.md").read_text(encoding="utf-8")
+        release_script = (root / "scripts" / "build_release.ps1").read_text(encoding="utf-8")
+        local_install = (root / "scripts" / "install_app.ps1").read_text(encoding="utf-8")
+        checklist_script = (root / "scripts" / "distribution_checklist.ps1").read_text(encoding="utf-8")
+        readme = (root / "docs" / "README.md").read_text(encoding="utf-8")
+
+        self.assertIn("TALOS_APP_DATA_DIR", lifecycle_script)
+        self.assertIn("app_lifecycle_smoke.json", lifecycle_script)
+        self.assertIn("config.json", lifecycle_script)
+        self.assertIn("run_history.json", lifecycle_script)
+        self.assertIn("checkpoints.json", lifecycle_script)
+        self.assertIn("codex_reviews.json", lifecycle_script)
+        self.assertIn("diagnostics.json", lifecycle_script)
+        self.assertIn("user_runtime_data_preserved", lifecycle_script)
+        self.assertIn("installer_owned_files_removed", lifecycle_script)
+        self.assertIn("writable_config_absent_from_install_dir", lifecycle_script)
+
+        self.assertIn("Clean Profile Method", lifecycle_doc)
+        self.assertIn("Upgrade Preservation", lifecycle_doc)
+        self.assertIn("Uninstall Policy", lifecycle_doc)
+        self.assertIn("app_lifecycle_smoke.json", lifecycle_doc)
+        self.assertIn("TALOS_INSTALL_LIFECYCLE.md", release_script)
+        self.assertIn("TALOS_INSTALL_LIFECYCLE.md", local_install)
+        self.assertIn("app_lifecycle_smoke.json", checklist_script)
+        self.assertIn("App-data lifecycle smoke", checklist_script)
+        self.assertIn("app lifecycle smoke must all be present", checklist_script)
+        self.assertIn("scripts/smoke_app_lifecycle.ps1", readme)
+
+    def test_stage_040_ui_ux_appearance_and_responsive_markers_exist(self) -> None:
+        root = Path(__file__).parents[1]
+        html = (root / "ui" / "web_frontend" / "index.html").read_text(encoding="utf-8")
+        script = (root / "ui" / "web_frontend" / "app.js").read_text(encoding="utf-8")
+        styles = (root / "ui" / "web_frontend" / "styles.css").read_text(encoding="utf-8")
+        release_script = (root / "scripts" / "build_release.ps1").read_text(encoding="utf-8")
+        local_install = (root / "scripts" / "install_app.ps1").read_text(encoding="utf-8")
+        readme = (root / "docs" / "README.md").read_text(encoding="utf-8")
+
+        self.assertIn('id="systemThemeInput"', html)
+        self.assertIn('id="highContrastInput"', html)
+        self.assertIn('id="editorFontSizeInput"', html)
+        self.assertIn('id="editorDensityInput"', html)
+        self.assertIn("theme-preview", html)
+        self.assertIn("TALOS_UI_UX_CHECKLIST.md", html)
+
+        self.assertIn("SYSTEM_THEME_KEY", script)
+        self.assertIn("HIGH_CONTRAST_KEY", script)
+        self.assertIn("EDITOR_FONT_SIZE_KEY", script)
+        self.assertIn("EDITOR_DENSITY_KEY", script)
+        self.assertIn("applyAppearancePreferences", script)
+        self.assertIn("hydrateAppearance(payload.config || {})", script)
+
+        self.assertIn("--editor-font-size", styles)
+        self.assertIn("data-editor-density", styles)
+        self.assertIn('data-contrast="high"', styles)
+        self.assertIn(".theme-card", styles)
+        self.assertIn(".appearance-grid", styles)
+        self.assertIn(".editor-actions", styles)
+        self.assertIn("overflow-x: auto", styles)
+        self.assertIn("@media (max-width: 1240px)", styles)
+
+        self.assertIn("TALOS_UI_UX_CHECKLIST.md", release_script)
+        self.assertIn("TALOS_UI_UX_CHECKLIST.md", local_install)
+        self.assertIn("TALOS_UI_UX_CHECKLIST.md", readme)
+
     def test_pipeline_defines_exit_condition_for_every_stage(self) -> None:
         pipeline = (Path(__file__).parents[1] / "docs" / "TALOS_PIPELINE_010.md").read_text(encoding="utf-8")
         stages = re.split(r"(?=^## Stage \d+ - )", pipeline, flags=re.MULTILINE)
@@ -1100,6 +1225,7 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertEqual(default_config["arduino_workspace_path"], "")
         self.assertEqual(default_config["arduino_fqbn"], "")
         self.assertEqual(default_config["arduino_profiles"], {})
+        self.assertEqual(default_config["diagnostics"], {"enabled": False, "allow_remote_upload": False})
 
     def test_codex_thread_summary_prefers_name_and_supports_unix_time(self) -> None:
         summary = normalize_codex_thread(
@@ -1282,6 +1408,39 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("<workspace>", body)
         self.assertIn("<app-data>", body)
         self.assertNotIn(r"C:\Users\Admin\Desktop\Sketch", body)
+        self.assertEqual(bundle["support_scope"]["privacy_default"], "redacted")
+        self.assertFalse(bundle["support_scope"]["includes_source_code"])
+        self.assertFalse(bundle["support_scope"]["includes_codex_chat"])
+        self.assertIn("verify", bundle["included_history_filters"])
+
+    def test_diagnostics_are_consent_based_redacted_and_exportable(self) -> None:
+        config = {"diagnostics": {"enabled": False}}
+        disabled = record_diagnostic(config, "verify_failed", {"workspace": r"C:\Private\Sketch", "content": "secret"})
+        self.assertFalse(disabled["recorded"])
+
+        sanitized = sanitize_payload({
+            "workspace": r"C:\Private\Sketch",
+            "content": "void loop() {}",
+            "message": "full Codex chat",
+            "main_sketch": "Blink.ino",
+            "status": "failed",
+        })
+        self.assertIn("workspace_hash", sanitized)
+        self.assertEqual(sanitized["sketch_ext"], ".ino")
+        self.assertNotIn("content", sanitized)
+        self.assertNotIn("message", sanitized)
+
+        enabled_config = {"diagnostics": {"enabled": True}}
+        self.assertTrue(diagnostics_settings(enabled_config)["enabled"])
+        export = diagnostics_export(
+            enabled_config,
+            {"display_name": "Talos", "version": "0.4.0", "channel": "Pre-Alpha"},
+            {"mode": "source", "version": "0.4.0", "channel": "Pre-Alpha", "python": "3.11"},
+        )
+        self.assertFalse(export["consent"]["remote_upload"])
+        self.assertTrue(export["consent"]["user_preview_required"])
+        self.assertFalse(export["data_policy"]["contains_source_code"])
+        self.assertFalse(export["data_policy"]["contains_codex_chat"])
 
     def test_codex_status_starts_runtime_without_blocking_for_handshake(self) -> None:
         bridge = CodexBridge(persist_reviews=False)

@@ -80,12 +80,45 @@ def run_desktop_shell() -> None:
                 window_ref["maximized"] = True
             return window_ref["maximized"]
 
+        def restore(self) -> bool:
+            window = window_ref["window"]
+            if window is not None:
+                window.restore()
+            window_ref["maximized"] = False
+            return False
+
         def get_window_state(self) -> dict[str, Any]:
             window = window_ref["window"]
             state = str(getattr(window, "state", "")) if window is not None else ""
             maximized = window_ref["maximized"] or "maximized" in state.lower()
             window_ref["maximized"] = maximized
             return {"maximized": maximized, "state": state}
+
+        def get_window_bounds(self) -> dict[str, Any]:
+            window = window_ref["window"]
+            if window is None:
+                return {"x": 0, "y": 0, "width": WEBVIEW_MIN_WIDTH, "height": WEBVIEW_MIN_HEIGHT, "maximized": False}
+            state = self.get_window_state()
+            return {
+                "x": int(getattr(window, "x", 0) or 0),
+                "y": int(getattr(window, "y", 0) or 0),
+                "width": int(getattr(window, "width", WEBVIEW_MIN_WIDTH) or WEBVIEW_MIN_WIDTH),
+                "height": int(getattr(window, "height", WEBVIEW_MIN_HEIGHT) or WEBVIEW_MIN_HEIGHT),
+                "maximized": bool(state["maximized"]),
+            }
+
+        def set_window_bounds(self, x: int, y: int, width: int, height: int) -> dict[str, Any]:
+            window = window_ref["window"]
+            if window is None:
+                return {"maximized": False}
+            if window_ref["maximized"]:
+                window.restore()
+                window_ref["maximized"] = False
+            next_width = max(WEBVIEW_MIN_WIDTH, int(width))
+            next_height = max(WEBVIEW_MIN_HEIGHT, int(height))
+            window.move(int(x), int(y))
+            window.resize(next_width, next_height)
+            return {"x": int(x), "y": int(y), "width": next_width, "height": next_height, "maximized": False}
 
         def snap_to(self, x: int, y: int, width: int, height: int) -> dict[str, Any]:
             window = window_ref["window"]
@@ -115,7 +148,7 @@ def run_desktop_shell() -> None:
         height=840,
         min_size=(WEBVIEW_MIN_WIDTH, WEBVIEW_MIN_HEIGHT),
         background_color="#ffffff",
-        frameless=False,
+        frameless=True,
         easy_drag=False,
         js_api=WindowApi(),
     )

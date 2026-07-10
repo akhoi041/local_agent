@@ -59,12 +59,17 @@ const state = {
   runHistoryFilter: "all",
   runHistorySketchOnly: true,
   appBuild: {},
+  diagnostics: { enabled: false, allow_remote_upload: false },
 };
 
 const THEMES = ["light", "dark", "neutral"];
 const THEME_KEY = "talos-theme";
-const RAIL_PIN_KEY = "talos-rail-pinned";
+const SYSTEM_THEME_KEY = "talos-system-theme";
+const HIGH_CONTRAST_KEY = "talos-high-contrast";
+const EDITOR_FONT_SIZE_KEY = "talos-editor-font-size";
+const EDITOR_DENSITY_KEY = "talos-editor-density";
 const CODEX_PANEL_KEY = "talos-codex-panel-open";
+const EXPLORER_PANEL_KEY = "talos-explorer-panel-open";
 const EXPLORER_WIDTH_KEY = "talos-explorer-pane-width";
 const CODEX_WIDTH_KEY = "talos-codex-pane-width";
 const VERIFY_HEIGHT_KEY = "talos-verify-pane-height";
@@ -77,6 +82,8 @@ const CODEX_HIDDEN_REFRESH_MS = 8000;
 const ACTIVE_FILE_POLL_MS = 700;
 const ARDUINO_EVENT_POLL_MS = 300;
 const TALOS_WRITE_DEBOUNCE_MS = 1500;
+const WINDOW_MIN_WIDTH = 640;
+const WINDOW_MIN_HEIGHT = 460;
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -104,6 +111,18 @@ function setView(viewId) {
 
 function codexPanelOpen() {
   return localStorage.getItem(CODEX_PANEL_KEY) !== "false";
+}
+
+function explorerPanelOpen() {
+  return localStorage.getItem(EXPLORER_PANEL_KEY) !== "false";
+}
+
+function applyExplorerPanel(open) {
+  $(".ide-workbench")?.classList.toggle("explorer-hidden", !open);
+  const workspaceButton = $('.nav[data-view="workspace"]');
+  workspaceButton?.classList.toggle("panel-open", open);
+  workspaceButton?.setAttribute("aria-pressed", String(Boolean(open)));
+  localStorage.setItem(EXPLORER_PANEL_KEY, String(Boolean(open)));
 }
 
 function applyCodexPanel(open) {
@@ -154,7 +173,7 @@ function bindExplorerSplitter(selector) {
   if (!splitter) return;
   splitter.addEventListener("dblclick", resetExplorerWidth);
   splitter.addEventListener("pointerdown", (event) => {
-    if (event.button !== 0 || window.innerWidth <= 900) return;
+    if (event.button !== 0 || window.innerWidth <= 900 || !explorerPanelOpen()) return;
     const workbench = splitter.closest(".ide-workbench");
     if (!workbench) return;
     event.preventDefault();
@@ -198,7 +217,9 @@ function bindCodexSplitter(selector) {
     const update = (clientX) => {
       const available = bounds.width;
       const minimumEditor = Math.min(520, Math.max(360, available * 0.32));
-      const explorerWidth = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--explorer-pane-width")) || 248;
+      const explorerWidth = explorerPanelOpen()
+        ? Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--explorer-pane-width")) || 248
+        : 0;
       const maximum = Math.max(280, available - explorerWidth - minimumEditor - 12);
       const width = clampPaneWidth(bounds.right - clientX, 280, maximum);
       document.documentElement.style.setProperty("--codex-pane-width", `${Math.round(width)}px`);
@@ -274,20 +295,47 @@ function applyTheme(theme) {
   if (input) input.checked = true;
 }
 
-function railPinned() {
-  return document.documentElement.dataset.rail === "pinned";
+function systemTheme() {
+  return window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ? "dark" : "light";
 }
 
-function applyRailPinned(pinned) {
-  document.documentElement.dataset.rail = pinned ? "pinned" : "collapsed";
-  localStorage.setItem(RAIL_PIN_KEY, String(Boolean(pinned)));
-  const button = $("#pinRailBtn");
-  if (button) {
-    button.classList.toggle("active", pinned);
-    button.title = pinned ? "Unpin navigation" : "Pin navigation open";
-    button.setAttribute("aria-label", button.title);
-    button.setAttribute("aria-pressed", String(Boolean(pinned)));
+function applySystemThemePreference(enabled) {
+  localStorage.setItem(SYSTEM_THEME_KEY, String(Boolean(enabled)));
+  const input = $("#systemThemeInput");
+  if (input) input.checked = Boolean(enabled);
+  if (enabled) applyTheme(systemTheme());
+}
+
+function appearancePreference(key, fallback, allowed = null) {
+  const value = localStorage.getItem(key) || fallback;
+  return !allowed || allowed.includes(value) ? value : fallback;
+}
+
+function applyAppearancePreferences() {
+  const highContrast = localStorage.getItem(HIGH_CONTRAST_KEY) === "true";
+  const fontSize = appearancePreference(EDITOR_FONT_SIZE_KEY, "14", ["13", "14", "15", "16"]);
+  const density = appearancePreference(EDITOR_DENSITY_KEY, "comfortable", ["compact", "comfortable", "spacious"]);
+  document.documentElement.dataset.contrast = highContrast ? "high" : "normal";
+  document.documentElement.dataset.editorDensity = density;
+  document.documentElement.style.setProperty("--editor-font-size", `${fontSize}px`);
+  const contrastInput = $("#highContrastInput");
+  const fontInput = $("#editorFontSizeInput");
+  const densityInput = $("#editorDensityInput");
+  if (contrastInput) contrastInput.checked = highContrast;
+  if (fontInput) fontInput.value = fontSize;
+  if (densityInput) densityInput.value = density;
+}
+
+function hydrateAppearance(config = {}) {
+  const systemSync = localStorage.getItem(SYSTEM_THEME_KEY) === "true";
+  if (systemSync) {
+    applySystemThemePreference(true);
+  } else {
+    const input = $("#systemThemeInput");
+    if (input) input.checked = false;
+    hydrateTheme(config);
   }
+  applyAppearancePreferences();
 }
 
 function hydrateTheme(config = {}) {
@@ -299,6 +347,18 @@ function hydrateTheme(config = {}) {
   }
   const stored = localStorage.getItem(THEME_KEY);
   if (THEMES.includes(stored)) applyTheme(stored);
+}
+
+function renderDiagnosticsSettings(config = {}) {
+  const diagnostics = config.diagnostics || {};
+  state.diagnostics = diagnostics;
+  const enabled = Boolean(diagnostics.enabled);
+  const input = $("#diagnosticsEnabledInput");
+  if (input) input.checked = enabled;
+  const storage = diagnostics.storage ? ` Storage: ${diagnostics.storage}` : "";
+  $("#diagnosticsStatus").textContent = enabled
+    ? `Diagnostics enabled locally. Remote upload is disabled.${storage}`
+    : "Diagnostics are disabled until you opt in and save.";
 }
 
 function versionLabel(app = {}) {
@@ -317,8 +377,6 @@ function hydrateAppIdentity(app = {}, build = {}) {
   document.title = displayName;
   $("#chromeAppName").textContent = displayName;
   $("#chromeVersion").textContent = version;
-  $("#brandName").textContent = displayName;
-  $("#brandVersion").textContent = version;
   $("#heroAppName").textContent = displayName;
   $("#modeLine").dataset.version = version || "";
   state.appBuild = build || {};
@@ -339,6 +397,15 @@ function renderReleaseDetails(app = {}, build = {}) {
     <div><span>App data</span><b>${escapeHtml(build.app_data || "")}</b></div>
     <div><span>Artifacts</span><b>${escapeHtml(String(artifacts.length))}</b></div>
   `;
+  const summary = $("#dashboardReleaseDetails");
+  if (summary) {
+    summary.innerHTML = `
+      <div><span>Version</span><b>${escapeHtml(versionLabel(app) || "Unknown")}</b></div>
+      <div><span>Release</span><b>${escapeHtml(release)}</b></div>
+      <div><span>Mode</span><b>${escapeHtml(buildModeLabel(build))}</b></div>
+      <div><span>Artifacts</span><b>${escapeHtml(String(artifacts.length))}</b></div>
+    `;
+  }
 }
 
 function escapeHtml(value) {
@@ -665,6 +732,7 @@ async function refreshRunHistory() {
 async function copySupportBundle() {
   const result = await api("/api/support_bundle?redact=1");
   await copyText(JSON.stringify(result.bundle || {}, null, 2), "#editorStatus");
+  await recordDiagnosticEvent("support_bundle_copied", { workspace: state.selectedWorkspacePath, redacted: true });
   $("#editorStatus").textContent = "Copied redacted support bundle.";
 }
 
@@ -1620,6 +1688,70 @@ function renderStats(payload) {
     .join("");
 }
 
+function readinessItem(label, ready, detail = "") {
+  return `
+    <div class="readiness-item ${ready ? "ready" : "blocked"}">
+      <span class="readiness-dot" aria-hidden="true"></span>
+      <div>
+        <strong>${escapeHtml(label)}</strong>
+        <small>${escapeHtml(detail)}</small>
+      </div>
+    </div>
+  `;
+}
+
+function renderDashboard(payload) {
+  const arduino = payload.arduino || {};
+  const projects = payload.arduino_projects || [];
+  const codex = payload.codex || {};
+  const diagnostics = payload.config?.diagnostics || {};
+  const workspaceReady = Boolean(arduino.valid);
+  const codexReady = codex.ok !== false;
+  const nativeReady = Boolean(payload.native_available);
+  const profile = payload.arduino_profile_readiness || {};
+  const profileReady = profile.ready !== false;
+  const readyCount = [workspaceReady, codexReady, nativeReady, profileReady].filter(Boolean).length;
+  $("#serverSummary").textContent = `${readyCount}/4 core surfaces ready. Arduino sketches detected: ${projects.length}.`;
+  $("#readinessList").innerHTML = [
+    readinessItem("Arduino workspace", workspaceReady, workspaceReady ? arduino.path || "Workspace selected" : "Select a valid Arduino sketch folder."),
+    readinessItem("Codex bridge", codexReady, codexReady ? "Ready to receive workspace context." : "Reconnect Codex before asking for code changes."),
+    readinessItem("Native C helper", nativeReady, nativeReady ? "Loaded for faster local detection." : "Python fallback is active."),
+    readinessItem("Profile and diagnostics", profileReady, diagnostics.enabled ? "Profile ready. Local diagnostics enabled." : "Profile ready. Diagnostics remain local and opt-in."),
+  ].join("");
+}
+
+function logCategory(line = "") {
+  const text = String(line).toLowerCase();
+  if (text.includes("arduino") || text.includes(".ino") || text.includes("sketch")) return "arduino";
+  if (text.includes("codex")) return "codex";
+  if (text.includes("verify") || text.includes("compile") || text.includes("sandbox")) return "verify";
+  if (text.includes("diagnostic")) return "diagnostics";
+  return "app";
+}
+
+function renderLogs(events = []) {
+  const filter = $("#logFilter")?.value || "all";
+  const rows = events
+    .map((event) => String(event || "").trim())
+    .filter(Boolean)
+    .map((event) => ({ text: event, category: logCategory(event) }))
+    .filter((event) => filter === "all" || event.category === filter);
+  $("#logSummary").textContent = rows.length
+    ? `${rows.length} event(s) shown${filter === "all" ? "" : ` for ${filter}`}.`
+    : "No matching runtime events yet.";
+  $("#logText").innerHTML = rows.length
+    ? rows.map((event) => `
+        <article class="event-log-item ${escapeHtml(event.category)}">
+          <span>${escapeHtml(event.category)}</span>
+          <p>${escapeHtml(event.text)}</p>
+        </article>
+      `).join("")
+    : `<div class="event-empty">
+        <strong>No events yet</strong>
+        <p>Open an Arduino sketch, run Verify, or start a Codex turn to populate this stream.</p>
+      </div>`;
+}
+
 function renderArduino(arduino, force = false, ide = {}) {
   if (!arduino) return;
   const nextWorkspacePath = normalizedWindowsPath(arduino.path);
@@ -2330,7 +2462,9 @@ function renderArduinoProjects(projects = []) {
 }
 
 function render(payload) {
-  hydrateTheme(payload.config || {});
+  state.lastPayload = payload;
+  hydrateAppearance(payload.config || {});
+  renderDiagnosticsSettings(payload.config || {});
   hydrateAppIdentity(payload.app || {}, payload.build || {});
   const projects = payload.arduino_projects || [];
   const arduino = payload.arduino || {};
@@ -2346,11 +2480,12 @@ function render(payload) {
   $("#modeLine").textContent = `${payload.role}${versionText} | ${payload.root}`;
   $("#toolList").textContent = (payload.tools || []).join("\n");
   renderStats(payload);
+  renderDashboard(payload);
   renderArduino(arduino, false, selectedProject);
   renderProfileReadiness(payload.arduino_profile_readiness || {});
   renderEnvironmentProfile(payload.arduino_profile || state.workspaceMap.environment_profile || {});
   renderArduinoProjects(projects);
-  $("#logText").textContent = (payload.events || []).join("\n");
+  renderLogs(payload.events || []);
 }
 
 async function refresh() {
@@ -2510,11 +2645,43 @@ async function clearVerifyCache() {
 }
 
 async function saveSettings() {
+  const diagnosticsEnabled = Boolean($("#diagnosticsEnabledInput")?.checked);
   const result = await api("/api/settings", {
     method: "POST",
-    body: JSON.stringify({ theme: currentTheme() }),
+    body: JSON.stringify({
+      theme: currentTheme(),
+      diagnostics: {
+        enabled: diagnosticsEnabled,
+        allow_remote_upload: false,
+      },
+    }),
   });
+  renderDiagnosticsSettings(result.config || {});
   $("#settingsStatus").textContent = `Saved ${result.config?.theme || currentTheme()} theme.`;
+  return result;
+}
+
+async function recordDiagnosticEvent(event, payload = {}) {
+  try {
+    await api("/api/diagnostics_event", {
+      method: "POST",
+      body: JSON.stringify({ event, payload }),
+    });
+  } catch (_) {
+    // Diagnostics must never block the user workflow.
+  }
+}
+
+async function previewDiagnosticsExport(copy = false) {
+  const result = await api("/api/diagnostics_export");
+  const text = JSON.stringify(result.diagnostics || {}, null, 2);
+  $("#diagnosticsPreview").value = text;
+  const count = Number(result.diagnostics?.event_count || 0);
+  $("#diagnosticsStatus").textContent = `Diagnostics preview ready with ${count} event(s).`;
+  if (copy) {
+    await copyText(text);
+    $("#diagnosticsStatus").textContent = `Copied redacted diagnostics export with ${count} event(s).`;
+  }
   return result;
 }
 
@@ -2534,6 +2701,97 @@ async function syncWindowState() {
 async function toggleMaximize() {
   const maximized = await window.pywebview?.api?.toggle_maximize?.();
   setMaximizeIcon(Boolean(maximized));
+  hideWindowMenu();
+}
+
+function hideWindowMenu() {
+  $("#windowMenu")?.setAttribute("hidden", "");
+}
+
+function showWindowMenu(x = null, y = null) {
+  const menu = $("#windowMenu");
+  if (!menu) return;
+  menu.hidden = false;
+  const bounds = menu.getBoundingClientRect();
+  const left = x == null ? window.innerWidth - bounds.width - 8 : Math.min(Math.max(4, x), window.innerWidth - bounds.width - 4);
+  const top = y == null ? 34 : Math.min(Math.max(4, y), window.innerHeight - bounds.height - 4);
+  menu.style.left = `${Math.round(left)}px`;
+  menu.style.top = `${Math.round(top)}px`;
+  menu.style.right = "auto";
+  $("#windowRestoreMenuBtn")?.focus();
+}
+
+function resizeBoundsFromEdge(edge, startBounds, deltaX, deltaY) {
+  let x = Number(startBounds.x || 0);
+  let y = Number(startBounds.y || 0);
+  let width = Number(startBounds.width || WINDOW_MIN_WIDTH);
+  let height = Number(startBounds.height || WINDOW_MIN_HEIGHT);
+
+  if (edge.includes("e")) width += deltaX;
+  if (edge.includes("s")) height += deltaY;
+  if (edge.includes("w")) {
+    width -= deltaX;
+    if (width < WINDOW_MIN_WIDTH) {
+      x += Number(startBounds.width || WINDOW_MIN_WIDTH) - WINDOW_MIN_WIDTH;
+      width = WINDOW_MIN_WIDTH;
+    } else {
+      x += deltaX;
+    }
+  }
+  if (edge.includes("n")) {
+    height -= deltaY;
+    if (height < WINDOW_MIN_HEIGHT) {
+      y += Number(startBounds.height || WINDOW_MIN_HEIGHT) - WINDOW_MIN_HEIGHT;
+      height = WINDOW_MIN_HEIGHT;
+    } else {
+      y += deltaY;
+    }
+  }
+
+  return {
+    x: Math.round(x),
+    y: Math.round(y),
+    width: Math.max(WINDOW_MIN_WIDTH, Math.round(width)),
+    height: Math.max(WINDOW_MIN_HEIGHT, Math.round(height)),
+  };
+}
+
+function bindWindowResizeHandles() {
+  $$(".window-resize-handle").forEach((handle) => {
+    handle.addEventListener("pointerdown", async (event) => {
+      if (event.button !== 0) return;
+      const edge = handle.dataset.resizeEdge || "";
+      const startBounds = await window.pywebview?.api?.get_window_bounds?.();
+      if (!startBounds || startBounds.maximized) return;
+      event.preventDefault();
+      handle.setPointerCapture(event.pointerId);
+      const startX = event.screenX;
+      const startY = event.screenY;
+      let framePending = false;
+      let nextBounds = null;
+      const commit = () => {
+        framePending = false;
+        if (!nextBounds) return;
+        window.pywebview?.api?.set_window_bounds?.(nextBounds.x, nextBounds.y, nextBounds.width, nextBounds.height);
+      };
+      const move = (moveEvent) => {
+        nextBounds = resizeBoundsFromEdge(edge, startBounds, moveEvent.screenX - startX, moveEvent.screenY - startY);
+        if (!framePending) {
+          framePending = true;
+          requestAnimationFrame(commit);
+        }
+      };
+      const finish = () => {
+        handle.removeEventListener("pointermove", move);
+        handle.removeEventListener("pointerup", finish);
+        handle.removeEventListener("pointercancel", finish);
+        syncWindowState();
+      };
+      handle.addEventListener("pointermove", move);
+      handle.addEventListener("pointerup", finish);
+      handle.addEventListener("pointercancel", finish);
+    });
+  });
 }
 
 function snapTarget(kind) {
@@ -2565,16 +2823,27 @@ async function snapWindow(kind) {
 
 function bindEvents() {
   restorePaneWidths();
-  applyRailPinned(railPinned());
+  applyExplorerPanel(explorerPanelOpen());
   applyCodexPanel(codexPanelOpen());
   showCodexTasks(true);
   bindExplorerSplitter("#explorerSplitter");
   bindCodexSplitter("#codexSplitter");
   bindVerifySplitter("#verifySplitter");
-  $$(".nav").forEach((button) => button.addEventListener("click", () => setView(button.dataset.view)));
-  $("#pinRailBtn").addEventListener("click", () => applyRailPinned(!railPinned()));
+  bindWindowResizeHandles();
+  $$(".nav").forEach((button) => button.addEventListener("click", () => {
+    const viewId = button.dataset.view;
+    if (viewId === "workspace" && activeViewId() === "workspace") {
+      applyExplorerPanel(!explorerPanelOpen());
+      return;
+    }
+    setView(viewId);
+    if (viewId === "workspace") applyExplorerPanel(true);
+  }));
+  $$("[data-go-view]").forEach((button) => button.addEventListener("click", () => setView(button.dataset.goView)));
   $("#refreshBtn").addEventListener("click", refresh);
   $("#refreshWorkspaceBtn").addEventListener("click", refresh);
+  $("#dashboardSupportBtn")?.addEventListener("click", copySupportBundle);
+  $("#logFilter")?.addEventListener("change", () => renderLogs(state.lastPayload?.events || []));
   $("#saveArduinoBtn").addEventListener("click", async () => {
     await saveArduinoWorkspace();
     await refreshAfterWorkspaceMutation();
@@ -2685,13 +2954,59 @@ function bindEvents() {
   });
   $$('input[name="theme"]').forEach((input) => {
     input.addEventListener("change", () => {
+      applySystemThemePreference(false);
       if (input.checked) applyTheme(input.value);
       $("#settingsStatus").textContent = "Theme changed. Save to keep it for next launch.";
     });
   });
+  $("#systemThemeInput").addEventListener("change", (event) => {
+    applySystemThemePreference(event.target.checked);
+    $("#settingsStatus").textContent = event.target.checked
+      ? "System theme sync enabled for this device. Save to keep the current resolved theme for next launch."
+      : "System theme sync disabled. Save to keep the selected theme.";
+  });
+  $("#highContrastInput").addEventListener("change", (event) => {
+    localStorage.setItem(HIGH_CONTRAST_KEY, String(Boolean(event.target.checked)));
+    applyAppearancePreferences();
+    $("#settingsStatus").textContent = "Contrast preference updated on this device.";
+  });
+  $("#editorFontSizeInput").addEventListener("change", (event) => {
+    localStorage.setItem(EDITOR_FONT_SIZE_KEY, event.target.value || "14");
+    applyAppearancePreferences();
+    $("#settingsStatus").textContent = "Editor font preference updated on this device.";
+  });
+  $("#editorDensityInput").addEventListener("change", (event) => {
+    localStorage.setItem(EDITOR_DENSITY_KEY, event.target.value || "comfortable");
+    applyAppearancePreferences();
+    $("#settingsStatus").textContent = "Editor density preference updated on this device.";
+  });
+  $("#diagnosticsEnabledInput").addEventListener("change", () => {
+    $("#diagnosticsStatus").textContent = "Diagnostics setting changed. Save to keep it.";
+  });
+  $("#previewDiagnosticsBtn").addEventListener("click", () => previewDiagnosticsExport(false).catch((error) => {
+    $("#diagnosticsStatus").textContent = `Could not preview diagnostics: ${error.message}`;
+  }));
+  $("#copyDiagnosticsBtn").addEventListener("click", () => previewDiagnosticsExport(true).catch((error) => {
+    $("#diagnosticsStatus").textContent = `Could not copy diagnostics: ${error.message}`;
+  }));
   $(".app-chrome").addEventListener("dblclick", (event) => {
     if (event.target.closest(".chrome-actions")) return;
     toggleMaximize();
+  });
+  $(".app-chrome").addEventListener("contextmenu", (event) => {
+    if (event.target.closest(".chrome-actions")) return;
+    event.preventDefault();
+    showWindowMenu(event.clientX, event.clientY);
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") hideWindowMenu();
+    if (event.altKey && event.code === "Space") {
+      event.preventDefault();
+      showWindowMenu(12, 34);
+    }
+  });
+  document.addEventListener("pointerdown", (event) => {
+    if (!event.target.closest("#windowMenu") && !event.target.closest(".app-chrome")) hideWindowMenu();
   });
   $("#minimizeBtn").addEventListener("click", () => window.pywebview?.api?.minimize?.());
   $("#maximizeBtn").addEventListener("click", toggleMaximize);
@@ -2704,6 +3019,17 @@ function bindEvents() {
     });
   });
   $("#closeBtn").addEventListener("click", () => window.pywebview?.api?.close?.());
+  $("#windowRestoreMenuBtn").addEventListener("click", async () => {
+    await window.pywebview?.api?.restore?.();
+    setMaximizeIcon(false);
+    hideWindowMenu();
+  });
+  $("#windowMinimizeMenuBtn").addEventListener("click", () => {
+    hideWindowMenu();
+    window.pywebview?.api?.minimize?.();
+  });
+  $("#windowMaximizeMenuBtn").addEventListener("click", toggleMaximize);
+  $("#windowCloseMenuBtn").addEventListener("click", () => window.pywebview?.api?.close?.());
   syncWindowState();
 }
 

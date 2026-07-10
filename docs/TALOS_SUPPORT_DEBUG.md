@@ -25,12 +25,39 @@ The bundle includes:
 - Arduino environment profile and readiness
 - latest verify result
 - recent run history for the selected workspace
+- included history filters and support scope metadata
 
 Paths are redacted by default as `<workspace>`, `<app-root>`, `<bundle-root>`, `<app-data>`, and `<python-executable>`. Use the non-redacted API form only when exact local paths are needed for private debugging:
 
 ```text
 GET /api/support_bundle?redact=0
 ```
+
+## Review Before Sharing
+
+Before sending a support bundle, check:
+
+- [ ] The bundle says `"redacted": true`.
+- [ ] Workspace paths appear as `<workspace>` or another redacted token.
+- [ ] The latest verify result does not include private serial output or secrets.
+- [ ] Recent history describes actions and statuses without unnecessary source code.
+- [ ] You are comfortable sharing board/profile details such as FQBN, build flags, and library names.
+
+Keep:
+
+- App version/channel.
+- Source vs packaged mode.
+- Windows/Python platform details.
+- Board/FQBN family.
+- Verify status, timing, cache, memory, library, platform, and issue summary.
+- Codex connection outcome and staged-review status when relevant.
+
+Redact or remove:
+
+- Full sketch source unless the bug is impossible to reproduce without it.
+- Full Codex conversation content.
+- Emails, tokens, serial numbers, network credentials, and private folder names.
+- Absolute local paths when public issue reports are enough.
 
 ## Release Evidence
 
@@ -44,3 +71,10 @@ Use `Record Evidence` after a successful manual workflow check. For 0.3.0 Beta, 
 - reconnect/cancel behavior
 
 The recorded evidence appears in the History panel under the `Release evidence` filter.
+
+## Related Guides
+
+- `docs/TALOS_TROUBLESHOOTING.md`
+- `docs/TALOS_USER_GUIDE.md`
+- `docs/TALOS_FIRST_RUN_CHECKLIST.md`
+- `docs/TALOS_RECOVERY_GUIDE.md`
