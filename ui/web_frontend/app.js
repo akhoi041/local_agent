@@ -60,6 +60,9 @@ const state = {
   runHistorySketchOnly: true,
   appBuild: {},
   diagnostics: { enabled: false, allow_remote_upload: false },
+  editorFindQuery: "",
+  editorFindMatches: [],
+  editorFindIndex: -1,
 };
 
 const THEMES = ["light", "dark", "neutral"];
@@ -604,7 +607,10 @@ function renderVerifyOutput(result = null, pendingText = "") {
     ${sandbox ? `<div class="verify-field"><span>Sandbox</span><code>${escapeHtml(sandbox)}</code></div>` : ""}
     ${verifySummaryHtml(result)}
     ${verifyIssuesHtml(result.issues || [])}
-    <pre class="verify-log">${escapeHtml(result.output || "No compiler output.")}</pre>
+    <section class="verify-raw" aria-label="Compiler output">
+      <div class="verify-section-title">Compiler output</div>
+      <pre class="verify-log">${escapeHtml(result.output || "No compiler output.")}</pre>
+    </section>
   `;
 }
 
@@ -750,6 +756,10 @@ async function copyText(text, statusSelector = "") {
       }, 1200);
     }
   }
+}
+
+async function copyRawText(text) {
+  await navigator.clipboard.writeText(String(text ?? ""));
 }
 
 function fileListText() {
@@ -1057,6 +1067,266 @@ function selectEditorLine(lineNumber) {
   const end = Math.min(editor.value.length, start + lines[lineIndex].length);
   editor.focus();
   editor.setSelectionRange(start, end);
+}
+
+function editorLineBoundsAt(position, includeLineBreak = false) {
+  const editor = $("#sourceEditor");
+  const value = editor.value;
+  const cursor = Math.min(Math.max(Number(position || 0), 0), value.length);
+  const start = value.lastIndexOf("\n", Math.max(0, cursor - 1)) + 1;
+  const newline = value.indexOf("\n", cursor);
+  const lineEnd = newline === -1 ? value.length : newline;
+  const end = includeLineBreak && newline !== -1 ? newline + 1 : lineEnd;
+  return { start, end, lineEnd };
+}
+
+function editorSelectionLineBounds() {
+  const editor = $("#sourceEditor");
+  const value = editor.value;
+  const start = value.lastIndexOf("\n", Math.max(0, editor.selectionStart - 1)) + 1;
+  const selectionEnd = editor.selectionEnd > editor.selectionStart ? editor.selectionEnd - 1 : editor.selectionEnd;
+  const newline = value.indexOf("\n", selectionEnd);
+  const end = newline === -1 ? value.length : newline;
+  return { start, end };
+}
+
+function markEditorShortcutChange(message) {
+  renderEditorLineNumbers();
+  setEditorDirty($("#sourceEditor").value !== state.editorOriginalContent);
+  $("#editorStatus").textContent = message;
+  renderCodexContextPreview();
+}
+
+function replaceEditorRangeNative(start, end, text, selectionStart, selectionEnd, message) {
+  const editor = $("#sourceEditor");
+  editor.focus();
+  editor.setSelectionRange(start, end);
+  const inserted = document.execCommand?.("insertText", false, text);
+  if (!inserted) {
+    editor.setRangeText(text, start, end, "end");
+  }
+  editor.setSelectionRange(selectionStart, selectionEnd);
+  markEditorShortcutChange(message);
+}
+
+function copyCurrentEditorLine(cut = false) {
+  const editor = $("#sourceEditor");
+  if (!state.activeFilePath || editor.selectionStart !== editor.selectionEnd) return false;
+  const { start, end } = editorLineBoundsAt(editor.selectionStart, true);
+  const text = editor.value.slice(start, end);
+  if (cut && !editor.disabled) {
+    editor.focus();
+    editor.setSelectionRange(start, end);
+    const cutDone = document.execCommand?.("cut");
+    if (!cutDone) {
+      copyRawText(text).catch((error) => {
+        $("#editorStatus").textContent = `Copy failed: ${error.message}`;
+      });
+      replaceEditorRangeNative(start, end, "", start, start, "Cut current line.");
+      return true;
+    }
+    markEditorShortcutChange("Cut current line.");
+  } else {
+    copyRawText(text).catch((error) => {
+      $("#editorStatus").textContent = `Copy failed: ${error.message}`;
+    });
+    $("#editorStatus").textContent = "Copied current line.";
+  }
+  return true;
+}
+
+function duplicateEditorLine(direction = "down") {
+  const editor = $("#sourceEditor");
+  if (!state.activeFilePath || editor.disabled) return false;
+  const { start, lineEnd } = editorLineBoundsAt(editor.selectionStart, false);
+  const line = editor.value.slice(start, lineEnd);
+  if (direction === "up") {
+    replaceEditorRangeNative(start, start, `${line}\n`, start, start + line.length, "Duplicated current line.");
+  } else {
+    const insertAt = lineEnd < editor.value.length ? lineEnd + 1 : lineEnd;
+    const prefix = lineEnd < editor.value.length ? "" : "\n";
+    const nextStart = insertAt + prefix.length;
+    replaceEditorRangeNative(insertAt, insertAt, `${prefix}${line}\n`, nextStart, nextStart + line.length, "Duplicated current line.");
+  }
+  return true;
+}
+
+function moveEditorLine(direction = "down") {
+  const editor = $("#sourceEditor");
+  if (!state.activeFilePath || editor.disabled) return false;
+  const value = editor.value;
+  const current = editorLineBoundsAt(editor.selectionStart, true);
+  if (direction === "up") {
+    if (current.start === 0) return true;
+    const previousEnd = current.start - 1;
+    const previousStart = value.lastIndexOf("\n", Math.max(0, previousEnd - 1)) + 1;
+    const previous = value.slice(previousStart, current.start);
+    const line = value.slice(current.start, current.end);
+    replaceEditorRangeNative(
+      previousStart,
+      current.end,
+      line + previous,
+      previousStart,
+      previousStart + Math.max(0, line.length - 1),
+      "Moved current line up.",
+    );
+  } else {
+    if (current.end >= value.length) return true;
+    const nextEndNewline = value.indexOf("\n", current.end);
+    const nextEnd = nextEndNewline === -1 ? value.length : nextEndNewline + 1;
+    const line = value.slice(current.start, current.end);
+    const next = value.slice(current.end, nextEnd);
+    const nextStart = current.start + next.length;
+    replaceEditorRangeNative(
+      current.start,
+      nextEnd,
+      next + line,
+      nextStart,
+      nextStart + Math.max(0, line.length - 1),
+      "Moved current line down.",
+    );
+  }
+  return true;
+}
+
+function toggleEditorLineComment() {
+  const editor = $("#sourceEditor");
+  if (!state.activeFilePath || editor.disabled) return false;
+  const { start, end } = editorSelectionLineBounds();
+  const block = editor.value.slice(start, end);
+  const lines = block.split("\n");
+  const commentable = lines.filter((line) => line.trim().length);
+  const shouldUncomment = commentable.length && commentable.every((line) => /^\s*\/\//.test(line));
+  const nextLines = lines.map((line) => {
+    if (!line.trim()) return line;
+    if (shouldUncomment) return line.replace(/^(\s*)\/\/\s?/, "$1");
+    return line.replace(/^(\s*)/, "$1// ");
+  });
+  const nextBlock = nextLines.join("\n");
+  replaceEditorRangeNative(
+    start,
+    end,
+    nextBlock,
+    start,
+    start + nextBlock.length,
+    shouldUncomment ? "Uncommented selected line(s)." : "Commented selected line(s).",
+  );
+  return true;
+}
+
+function updateFindStatus() {
+  const status = $("#editorFindStatus");
+  if (!status) return;
+  if (!state.editorFindQuery) {
+    status.textContent = "";
+  } else if (!state.editorFindMatches.length) {
+    status.textContent = "No results";
+  } else {
+    status.textContent = `${state.editorFindIndex + 1}/${state.editorFindMatches.length}`;
+  }
+}
+
+function collectEditorFindMatches(query) {
+  const editor = $("#sourceEditor");
+  const matches = [];
+  if (!query) return matches;
+  const haystack = editor.value.toLowerCase();
+  const needle = query.toLowerCase();
+  let index = haystack.indexOf(needle);
+  while (index !== -1) {
+    matches.push({ start: index, end: index + query.length });
+    index = haystack.indexOf(needle, index + Math.max(1, query.length));
+  }
+  return matches;
+}
+
+function selectEditorFindMatch(index) {
+  const editor = $("#sourceEditor");
+  if (!state.editorFindMatches.length) {
+    updateFindStatus();
+    return;
+  }
+  state.editorFindIndex = (index + state.editorFindMatches.length) % state.editorFindMatches.length;
+  const match = state.editorFindMatches[state.editorFindIndex];
+  editor.setSelectionRange(match.start, match.end);
+  updateFindStatus();
+}
+
+function runEditorFind(direction = 1) {
+  const input = $("#editorFindInput");
+  const editor = $("#sourceEditor");
+  state.editorFindQuery = input.value;
+  state.editorFindMatches = collectEditorFindMatches(state.editorFindQuery);
+  if (!state.editorFindMatches.length) {
+    updateFindStatus();
+    input.focus();
+    return;
+  }
+  const current = state.editorFindMatches.findIndex((match) => (
+    match.start === editor.selectionStart && match.end === editor.selectionEnd
+  ));
+  const startIndex = current === -1
+    ? state.editorFindMatches.findIndex((match) => match.start >= editor.selectionEnd)
+    : current + direction;
+  selectEditorFindMatch(startIndex === -1 ? 0 : startIndex);
+}
+
+function showEditorFind() {
+  const editor = $("#sourceEditor");
+  if (!state.activeFilePath) return false;
+  const selected = editor.value.slice(editor.selectionStart, editor.selectionEnd).trim();
+  const input = $("#editorFindInput");
+  $("#editorFindBar").hidden = false;
+  input.value = selected || state.editorFindQuery || "";
+  input.focus();
+  input.select();
+  if (input.value) runEditorFind(1);
+  else updateFindStatus();
+  return true;
+}
+
+function hideEditorFind() {
+  $("#editorFindBar").hidden = true;
+  $("#sourceEditor").focus();
+  return true;
+}
+
+function handleEditorShortcut(event) {
+  const key = event.key.toLowerCase();
+  const command = event.ctrlKey || event.metaKey;
+  if (command && key === "s") {
+    event.preventDefault();
+    saveWorkspaceFile();
+    return;
+  }
+  if (command && event.shiftKey && key === "b") {
+    event.preventDefault();
+    verifyArduinoWorkspace();
+    return;
+  }
+  if (command && key === "f") {
+    event.preventDefault();
+    showEditorFind();
+    return;
+  }
+  if (command && key === "/" && toggleEditorLineComment()) {
+    event.preventDefault();
+    return;
+  }
+  if (command && key === "c" && copyCurrentEditorLine(false)) {
+    event.preventDefault();
+    return;
+  }
+  if (command && key === "x" && copyCurrentEditorLine(true)) {
+    event.preventDefault();
+    return;
+  }
+  if (event.altKey && !event.ctrlKey && !event.metaKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+    event.preventDefault();
+    const direction = event.key === "ArrowUp" ? "up" : "down";
+    if (event.shiftKey) duplicateEditorLine(direction);
+    else moveEditorLine(direction);
+  }
 }
 
 function lineFromGutterEvent(event) {
@@ -2919,14 +3189,24 @@ function bindEvents() {
     renderEditorLineNumbers();
     setEditorDirty($("#sourceEditor").value !== state.editorOriginalContent);
     $("#editorStatus").textContent = state.editorDirty ? "Unsaved changes." : "No changes.";
+    if (!$("#editorFindBar").hidden) runEditorFind(1);
     renderCodexContextPreview();
   });
-  $("#sourceEditor").addEventListener("keydown", (event) => {
-    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+  $("#sourceEditor").addEventListener("keydown", handleEditorShortcut);
+  $("#editorFindInput").addEventListener("input", () => runEditorFind(1));
+  $("#editorFindInput").addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
       event.preventDefault();
-      saveWorkspaceFile();
+      runEditorFind(event.shiftKey ? -1 : 1);
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      hideEditorFind();
     }
   });
+  $("#findPreviousBtn").addEventListener("click", () => runEditorFind(-1));
+  $("#findNextBtn").addEventListener("click", () => runEditorFind(1));
+  $("#closeFindBtn").addEventListener("click", hideEditorFind);
   $("#sourceEditor").addEventListener("scroll", () => {
     $("#editorLineNumbers").scrollTop = $("#sourceEditor").scrollTop;
   });
@@ -3000,6 +3280,15 @@ function bindEvents() {
   });
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") hideWindowMenu();
+    if (event.defaultPrevented) return;
+    if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === "b" && activeViewId() === "workspace") {
+      event.preventDefault();
+      verifyArduinoWorkspace();
+    }
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s" && activeViewId() === "workspace") {
+      event.preventDefault();
+      saveWorkspaceFile();
+    }
     if (event.altKey && event.code === "Space") {
       event.preventDefault();
       showWindowMenu(12, 34);
