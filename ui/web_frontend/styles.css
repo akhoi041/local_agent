@@ -28,6 +28,9 @@
   --danger: #cf222e;
   --disabled: #8c959f;
   --shadow: rgba(27, 31, 36, 0.08);
+  --scrollbar-track: var(--canvas-inset);
+  --scrollbar-thumb: #afb8c1;
+  --scrollbar-thumb-hover: #8c959f;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
 }
 
@@ -66,6 +69,9 @@
   --danger: #f85149;
   --disabled: #6e7681;
   --shadow: rgba(1, 4, 9, 0.48);
+  --scrollbar-track: #0d1117;
+  --scrollbar-thumb: #30363d;
+  --scrollbar-thumb-hover: #484f58;
 }
 
 :root[data-theme="neutral"] {
@@ -88,12 +94,15 @@
   --danger: #cf222e;
   --disabled: #8c959f;
   --shadow: rgba(27, 31, 36, 0.06);
+  --scrollbar-track: #eef0f2;
+  --scrollbar-thumb: #b7bec6;
+  --scrollbar-thumb-hover: #8c959f;
 }
 
 * {
   box-sizing: border-box;
   scrollbar-width: thin;
-  scrollbar-color: #8c959f #f6f8fa;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
 }
 
 [hidden] {
@@ -101,24 +110,24 @@
 }
 
 ::-webkit-scrollbar {
-  width: 12px;
-  height: 12px;
+  width: 10px;
+  height: 10px;
 }
 
 ::-webkit-scrollbar-track,
 ::-webkit-scrollbar-corner {
-  background: var(--canvas-subtle);
+  background: var(--scrollbar-track);
 }
 
 ::-webkit-scrollbar-thumb {
   min-height: 42px;
-  border: 3px solid var(--canvas-subtle);
+  border: 2px solid var(--scrollbar-track);
   border-radius: 999px;
-  background: #8c959f;
+  background: var(--scrollbar-thumb);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #6e7781;
+  background: var(--scrollbar-thumb-hover);
 }
 
 html,
@@ -180,10 +189,17 @@ body {
   place-items: center;
   width: 24px;
   height: 24px;
-  color: #ffffff;
-  font-weight: 700;
-  background: var(--text);
-  border-radius: 50%;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+}
+
+.app-logo-mark img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .chrome-version,
@@ -451,9 +467,11 @@ body {
 .brand-icon {
   width: 40px;
   height: 40px;
-  color: #ffffff;
-  background: var(--text);
-  border-radius: 50%;
+  overflow: hidden;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
 }
 
 .nav,
@@ -499,6 +517,22 @@ body {
   stroke-width: 1.8;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.nav-glyph .arduino-logo {
+  width: 24px;
+  height: 24px;
+}
+
+.nav-glyph .arduino-logo rect {
+  fill: currentColor;
+  stroke: none;
+}
+
+.nav-glyph .arduino-logo path {
+  fill: none;
+  stroke: var(--canvas-subtle);
+  stroke-width: 1.8;
 }
 
 .nav.active .nav-glyph,
@@ -1021,11 +1055,67 @@ textarea:focus {
 }
 
 .source-editor {
+  position: relative;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   gap: 8px;
   min-height: 0;
   padding-top: 10px;
+}
+
+.editor-find-bar {
+  position: absolute;
+  top: 10px;
+  right: 14px;
+  z-index: 18;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: min(560px, calc(100% - 32px));
+  min-height: 36px;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 8px 24px var(--shadow);
+}
+
+.editor-find-bar[hidden] {
+  display: none;
+}
+
+.editor-find-bar input {
+  flex: 1 1 auto;
+  min-width: 120px;
+  height: 26px;
+  padding: 3px 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--canvas-inset);
+  font: inherit;
+  font-size: 12px;
+}
+
+.editor-find-bar input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.editor-find-bar span {
+  flex: 0 0 auto;
+  min-width: 64px;
+  color: var(--muted);
+  font-size: 11px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.editor-find-bar .icon-button {
+  min-width: 28px;
+  min-height: 26px;
+  padding: 2px 7px;
+  font-size: 13px;
 }
 
 #sourceEditor {
@@ -2774,7 +2864,8 @@ button.run-history-item:hover {
 
 .verify-output {
   display: grid;
-  grid-template-rows: repeat(4, auto) minmax(0, 1fr);
+  grid-template-rows: auto;
+  align-content: start;
   gap: 10px;
   min-height: 180px;
   max-width: 100%;
@@ -2786,6 +2877,10 @@ button.run-history-item:hover {
   color: var(--text);
   background: var(--canvas-inset);
   user-select: text;
+}
+
+.verify-output > * {
+  min-width: 0;
 }
 
 .verify-output.empty,
@@ -2903,6 +2998,12 @@ button.run-history-item:hover {
   min-width: 0;
 }
 
+.verify-raw {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
 .verify-section-title {
   margin-bottom: 6px;
   color: var(--muted);
@@ -2962,10 +3063,13 @@ button.run-history-item:hover {
 }
 
 .verify-log {
-  min-height: 120px;
-  max-height: none;
+  min-width: 0;
+  min-height: 96px;
+  max-height: min(220px, 32vh);
   padding: 10px;
-  overflow: visible;
+  overflow: auto;
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   word-break: break-word;
