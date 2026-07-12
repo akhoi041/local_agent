@@ -1240,6 +1240,22 @@ function collectEditorFindMatches(query) {
   return matches;
 }
 
+function scrollEditorToPosition(position) {
+  const editor = $("#sourceEditor");
+  const valueBefore = editor.value.slice(0, Math.max(0, position));
+  const lineIndex = valueBefore.split("\n").length - 1;
+  const lineStart = valueBefore.lastIndexOf("\n") + 1;
+  const columnIndex = Math.max(0, valueBefore.length - lineStart);
+  const style = window.getComputedStyle(editor);
+  const lineHeight = Number.parseFloat(style.lineHeight) || 20;
+  const fontSize = Number.parseFloat(style.fontSize) || 14;
+  const targetTop = Math.max(0, (lineIndex * lineHeight) - (editor.clientHeight * 0.35));
+  const targetLeft = Math.max(0, (columnIndex * fontSize * 0.62) - (editor.clientWidth * 0.25));
+  editor.scrollTop = targetTop;
+  editor.scrollLeft = targetLeft;
+  $("#editorLineNumbers").scrollTop = editor.scrollTop;
+}
+
 function selectEditorFindMatch(index) {
   const editor = $("#sourceEditor");
   if (!state.editorFindMatches.length) {
@@ -1248,16 +1264,19 @@ function selectEditorFindMatch(index) {
   }
   state.editorFindIndex = (index + state.editorFindMatches.length) % state.editorFindMatches.length;
   const match = state.editorFindMatches[state.editorFindIndex];
+  scrollEditorToPosition(match.start);
+  editor.focus({ preventScroll: true });
   editor.setSelectionRange(match.start, match.end);
   updateFindStatus();
 }
 
-function runEditorFind(direction = 1) {
+function runEditorFind(direction = 1, keepCurrent = false) {
   const input = $("#editorFindInput");
   const editor = $("#sourceEditor");
   state.editorFindQuery = input.value;
   state.editorFindMatches = collectEditorFindMatches(state.editorFindQuery);
   if (!state.editorFindMatches.length) {
+    state.editorFindIndex = -1;
     updateFindStatus();
     input.focus();
     return;
@@ -1265,6 +1284,10 @@ function runEditorFind(direction = 1) {
   const current = state.editorFindMatches.findIndex((match) => (
     match.start === editor.selectionStart && match.end === editor.selectionEnd
   ));
+  if (keepCurrent && current !== -1) {
+    selectEditorFindMatch(current);
+    return;
+  }
   const startIndex = current === -1
     ? state.editorFindMatches.findIndex((match) => match.start >= editor.selectionEnd)
     : current + direction;
@@ -1280,18 +1303,50 @@ function showEditorFind() {
   input.value = selected || state.editorFindQuery || "";
   input.focus();
   input.select();
-  if (input.value) runEditorFind(1);
+  if (input.value) runEditorFind(1, Boolean(selected));
   else updateFindStatus();
   return true;
 }
 
 function hideEditorFind() {
   $("#editorFindBar").hidden = true;
+  state.editorFindIndex = -1;
   $("#sourceEditor").focus();
   return true;
 }
 
+function redirectEditorFindKeystroke(event) {
+  if ($("#editorFindBar").hidden) return false;
+  if (event.ctrlKey || event.metaKey || event.altKey) return false;
+  const input = $("#editorFindInput");
+  const key = event.key;
+  if (key === "Escape") {
+    event.preventDefault();
+    hideEditorFind();
+    return true;
+  }
+  if (key === "Enter") {
+    event.preventDefault();
+    runEditorFind(event.shiftKey ? -1 : 1);
+    return true;
+  }
+  if (key === "Backspace") {
+    event.preventDefault();
+    input.value = input.value.slice(0, -1);
+    runEditorFind(1);
+    return true;
+  }
+  if (key.length === 1) {
+    event.preventDefault();
+    input.value += key;
+    runEditorFind(1);
+    return true;
+  }
+  return false;
+}
+
 function handleEditorShortcut(event) {
+  if (redirectEditorFindKeystroke(event)) return;
   const key = event.key.toLowerCase();
   const command = event.ctrlKey || event.metaKey;
   if (command && key === "s") {
@@ -3281,6 +3336,10 @@ function bindEvents() {
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") hideWindowMenu();
     if (event.defaultPrevented) return;
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f" && activeViewId() === "workspace") {
+      if (showEditorFind()) event.preventDefault();
+      return;
+    }
     if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === "b" && activeViewId() === "workspace") {
       event.preventDefault();
       verifyArduinoWorkspace();
