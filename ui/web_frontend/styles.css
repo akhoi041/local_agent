@@ -14,6 +14,15 @@
   --canvas-subtle: #f6f8fa;
   --canvas-inset: #f6f8fa;
   --panel: #ffffff;
+  --panel-strong: #f6f8fa;
+  --titlebar-bg: #f3f6f9;
+  --activity-bg: #f6f8fa;
+  --sidebar-bg: #f6f8fa;
+  --sidebar-section-bg: #ffffff;
+  --toolbar-bg: #f6f8fa;
+  --terminal-bg: #f6f8fa;
+  --assistant-bg: #ffffff;
+  --assistant-head-bg: #f6f8fa;
   --editor-bg: #ffffff;
   --gutter-bg: #f6f8fa;
   --field: #ffffff;
@@ -27,6 +36,10 @@
   --active-item-bg: #eaf5ff;
   --selection-bg: rgba(9, 105, 218, 0.28);
   --selection-text: #0b1f3a;
+  --find-bg: rgba(187, 128, 9, 0.34);
+  --find-current-bg: rgba(9, 105, 218, 0.42);
+  --find-line-bg: rgba(9, 105, 218, 0.08);
+  --cursor-line-bg: rgba(175, 184, 193, 0.16);
   --green: #1a7f37;
   --green-hover: #116329;
   --warning: #9a6700;
@@ -60,6 +73,15 @@
   --canvas-subtle: #161b22;
   --canvas-inset: #010409;
   --panel: #0d1117;
+  --panel-strong: #1f242d;
+  --titlebar-bg: #181818;
+  --activity-bg: #181818;
+  --sidebar-bg: #181f27;
+  --sidebar-section-bg: #161b22;
+  --toolbar-bg: #1e1e1e;
+  --terminal-bg: #010409;
+  --assistant-bg: #111820;
+  --assistant-head-bg: #161b22;
   --editor-bg: #0d1117;
   --gutter-bg: #161b22;
   --field: #0d1117;
@@ -73,6 +95,10 @@
   --active-item-bg: rgba(56, 139, 253, 0.22);
   --selection-bg: #264f78;
   --selection-text: #ffffff;
+  --find-bg: rgba(187, 128, 9, 0.44);
+  --find-current-bg: rgba(56, 139, 253, 0.48);
+  --find-line-bg: rgba(56, 139, 253, 0.12);
+  --cursor-line-bg: rgba(110, 118, 129, 0.16);
   --green: #238636;
   --green-hover: #2ea043;
   --warning: #d29922;
@@ -90,6 +116,15 @@
   --canvas-subtle: #e5e7eb;
   --canvas-inset: #eef0f2;
   --panel: #f9fafb;
+  --panel-strong: #eef0f2;
+  --titlebar-bg: #e7eaee;
+  --activity-bg: #e5e7eb;
+  --sidebar-bg: #eceff3;
+  --sidebar-section-bg: #f7f8fa;
+  --toolbar-bg: #eceff3;
+  --terminal-bg: #f4f6f8;
+  --assistant-bg: #f7f8fa;
+  --assistant-head-bg: #eceff3;
   --editor-bg: #fbfcfd;
   --gutter-bg: #eef0f2;
   --field: #ffffff;
@@ -103,6 +138,10 @@
   --active-item-bg: #dde5ee;
   --selection-bg: rgba(87, 96, 106, 0.28);
   --selection-text: #111827;
+  --find-bg: rgba(154, 103, 0, 0.28);
+  --find-current-bg: rgba(87, 96, 106, 0.34);
+  --find-line-bg: rgba(87, 96, 106, 0.1);
+  --cursor-line-bg: rgba(87, 96, 106, 0.13);
   --green: #1f883d;
   --green-hover: #1a7f37;
   --warning: #9a6700;
@@ -184,12 +223,12 @@ body {
 
 .app-chrome {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   height: 42px;
   padding: 0 8px 0 16px;
   border-bottom: 1px solid var(--line);
-  background: var(--canvas-subtle);
+  background: var(--titlebar-bg);
   user-select: none;
   -webkit-app-region: drag;
 }
@@ -227,6 +266,114 @@ body {
   color: var(--muted);
   font-size: 12px;
   font-weight: 500;
+}
+
+.app-menu-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  height: 100%;
+  margin-left: 18px;
+  overflow: visible;
+  -webkit-app-region: no-drag;
+}
+
+.app-menu {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.app-menu-button {
+  height: 28px;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--muted);
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.app-menu.open > .app-menu-button,
+.app-menu-button:hover,
+.app-menu-button:focus-visible {
+  color: var(--text);
+  border-color: var(--line);
+  background: var(--active-item-bg);
+  outline: none;
+}
+
+.app-menu-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 120;
+  display: grid;
+  gap: 2px;
+  width: 300px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 16px 36px var(--shadow);
+}
+
+.app-menu-panel[hidden] {
+  display: none;
+}
+
+.app-menu:nth-last-child(-n + 2) .app-menu-panel {
+  right: 0;
+  left: auto;
+}
+
+.app-menu-separator {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--line);
+}
+
+.app-menu-action {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 30px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  color: var(--text);
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.app-menu-action:hover:not(:disabled),
+.app-menu-action:focus-visible {
+  background: var(--active-item-bg);
+  outline: none;
+}
+
+.app-menu-action:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+  opacity: 0.68;
+}
+
+.app-menu-action span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-menu-action kbd {
+  color: var(--muted);
+  font: 11px var(--mono);
 }
 
 .chrome-actions {
@@ -438,7 +585,7 @@ body {
   max-width: none;
   min-height: calc(var(--app-min-height) - 42px);
   height: auto;
-  background: var(--bg);
+  background: var(--editor-bg);
 }
 
 .rail {
@@ -453,7 +600,7 @@ body {
   height: 100%;
   padding: 12px 6px;
   overflow: hidden;
-  background: var(--canvas-subtle);
+  background: var(--activity-bg);
   border-right: 1px solid var(--line);
   box-shadow: none;
 }
@@ -519,7 +666,7 @@ body {
 }
 
 .nav.active {
-  background: var(--panel);
+  background: var(--active-item-bg);
   border-color: var(--line);
   font-weight: 600;
 }
@@ -570,7 +717,7 @@ body {
   min-height: 0;
   padding: 24px 32px;
   overflow: hidden;
-  background: var(--bg);
+  background: var(--editor-bg);
 }
 
 .topbar {
@@ -1188,7 +1335,7 @@ textarea:focus {
   min-height: 0;
   overflow: hidden;
   border-top: 1px solid var(--line);
-  background: var(--bg);
+  background: var(--editor-bg);
 }
 
 .ide-workbench.codex-hidden {
@@ -1288,7 +1435,7 @@ textarea:focus {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  background: var(--canvas-subtle);
+  background: var(--sidebar-bg);
 }
 
 .ide-pane-head,
@@ -1302,6 +1449,7 @@ textarea:focus {
   min-height: 38px;
   padding: 6px 10px;
   border-bottom: 1px solid var(--line);
+  background: var(--toolbar-bg);
   color: var(--text);
   font-size: 12px;
   font-weight: 600;
@@ -1312,6 +1460,7 @@ textarea:focus {
   min-width: 0;
   padding: 12px;
   border-bottom: 1px solid var(--line);
+  background: var(--sidebar-section-bg);
 }
 
 .ide-section-label {
@@ -1343,7 +1492,7 @@ textarea:focus {
 }
 
 .ide-explorer .project-row:hover {
-  background: var(--accent-subtle);
+  background: var(--active-item-bg);
 }
 
 .ide-explorer .project-title {
@@ -1480,16 +1629,18 @@ textarea:focus {
 }
 
 .editor-tabbar {
-  overflow: hidden;
+  position: relative;
+  z-index: 12;
+  overflow: visible;
 }
 
 .editor-actions {
-  overflow-x: auto;
+  overflow: visible;
   scrollbar-width: thin;
 }
 
 .editor-command-controls {
-  min-width: max-content;
+  min-width: 0;
 }
 
 .editor-command-controls .button.primary {
@@ -1698,7 +1849,7 @@ textarea:focus {
   min-width: 0;
   max-width: 100%;
   margin-left: auto;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .editor-mode-controls,
@@ -1719,8 +1870,7 @@ textarea:focus {
   max-inline-size: 100%;
   max-width: 100%;
   padding-left: 10px;
-  overflow-x: auto;
-  overflow-y: hidden;
+  overflow: visible;
   scrollbar-width: none;
   border-left: 1px solid var(--line);
   overscroll-behavior-x: contain;
@@ -1846,7 +1996,7 @@ textarea:focus {
   max-width: none;
   min-height: 0;
   overflow: hidden;
-  background: var(--panel);
+  background: var(--assistant-bg);
   border-left: 1px solid var(--line);
   box-shadow: none;
   transition: opacity 120ms ease, visibility 120ms ease;
@@ -1873,7 +2023,7 @@ textarea:focus {
   inline-size: 100%;
   padding: 6px 8px 6px 10px;
   border-bottom: 1px solid var(--line);
-  background: var(--canvas-subtle);
+  background: var(--assistant-head-bg);
 }
 
 .codex-panel > * {
@@ -2620,6 +2770,24 @@ textarea:focus {
   overflow: hidden;
   position: relative;
   background: var(--editor-bg);
+  --cursor-line-top: -999px;
+  --cursor-line-height: calc(var(--editor-font-size) * var(--editor-line-height));
+}
+
+.editor-canvas::after {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  top: var(--cursor-line-top);
+  left: 48px;
+  right: 0;
+  height: var(--cursor-line-height);
+  background: transparent;
+  pointer-events: none;
+}
+
+.editor-canvas.has-cursor-line::after {
+  background: var(--cursor-line-bg);
 }
 
 .editor-line-numbers {
@@ -2650,7 +2818,7 @@ textarea:focus {
   padding: 16px 18px 16px 14px;
   border: 0;
   border-radius: 0;
-  background: var(--editor-bg);
+  background: transparent;
   font-family: var(--mono);
   font-size: var(--editor-font-size);
   line-height: var(--editor-line-height);
@@ -2658,6 +2826,61 @@ textarea:focus {
   overflow-wrap: normal;
   white-space: pre;
   word-break: normal;
+}
+
+.editor-find-render {
+  position: absolute;
+  z-index: 1;
+  inset: 0 0 0 48px;
+  height: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 16px 18px 16px 14px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  color: transparent;
+  background: transparent;
+  font-family: var(--mono);
+  font-size: var(--editor-font-size);
+  line-height: var(--editor-line-height);
+  letter-spacing: 0;
+  pointer-events: none;
+  tab-size: 2;
+  white-space: pre;
+}
+
+.editor-find-line {
+  display: block;
+  min-width: max-content;
+}
+
+.editor-find-line.cursor-line {
+  background: var(--find-line-bg);
+}
+
+.editor-find-match {
+  border-radius: 2px;
+  color: transparent;
+  background: var(--find-bg);
+}
+
+.editor-find-match.current {
+  color: transparent;
+  background: var(--find-current-bg);
+  box-shadow: inset 0 -1px 0 var(--accent);
+  font-weight: 800;
+}
+
+.editor-canvas.finding #sourceEditor {
+  color: var(--text);
+  background: transparent;
+  caret-color: var(--text);
+}
+
+.editor-canvas.finding #sourceEditor::selection {
+  color: var(--selection-text);
+  background: var(--selection-bg);
 }
 
 .ide-editor-area #sourceEditor:focus {
@@ -2668,6 +2891,11 @@ textarea:focus {
   color: var(--text);
   background: var(--editor-bg);
   cursor: default;
+}
+
+.editor-canvas.finding #sourceEditor:disabled {
+  color: var(--text);
+  background: transparent;
 }
 
 .editor-statusbar {
@@ -2685,12 +2913,13 @@ textarea:focus {
   min-height: 0;
   overflow: hidden;
   border-top: 1px solid var(--line);
+  background: var(--terminal-bg);
 }
 
 .output-tabbar {
   min-height: 36px;
   padding: 0 10px;
-  background: var(--canvas-subtle);
+  background: var(--toolbar-bg);
 }
 
 .output-tab {
@@ -2728,6 +2957,7 @@ textarea:focus {
 #arduinoOutput {
   min-height: 0;
   height: 100%;
+  background: var(--terminal-bg);
 }
 
 .run-history {
@@ -2738,7 +2968,7 @@ textarea:focus {
   height: 100%;
   padding: 10px;
   overflow: auto;
-  background: var(--canvas-inset);
+  background: var(--terminal-bg);
 }
 
 .history-filter,
@@ -3161,7 +3391,7 @@ pre {
   overflow: auto;
   border: 1px solid var(--line);
   border-radius: 6px;
-  background: var(--canvas-inset);
+  background: var(--terminal-bg);
 }
 
 .event-log-item {
@@ -3302,7 +3532,7 @@ input[type="checkbox"] {
   padding: 14px;
   border: 1px solid var(--line);
   border-radius: 6px;
-  background: var(--canvas-subtle);
+  background: var(--panel);
   cursor: pointer;
 }
 
@@ -3431,7 +3661,7 @@ input[type="checkbox"] {
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: 6px;
-  background: var(--canvas-subtle);
+  background: var(--panel);
 }
 
 .settings-toggle.compact {

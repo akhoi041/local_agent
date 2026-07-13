@@ -21,6 +21,178 @@
         <span id="chromeAppName" class="pywebview-drag-region">Talos</span>
         <span id="chromeVersion" class="chrome-version pywebview-drag-region"></span>
       </div>
+      <nav class="app-menu-bar" aria-label="Talos commands">
+        <div class="app-menu" data-menu="file">
+          <button class="app-menu-button" type="button" data-menu-button="file" aria-haspopup="true" aria-expanded="false">File</button>
+          <div class="app-menu-panel" data-menu-panel="file" hidden>
+            <button class="app-menu-action" type="button" data-command="refresh">
+              <span>Refresh Workspace</span><kbd>F5</kbd>
+            </button>
+            <div class="app-menu-separator" role="separator"></div>
+            <button id="saveFileBtn" class="app-menu-action" type="button" title="Save the Talos editor draft to Arduino IDE" disabled>
+              <span>Save File</span><kbd>Ctrl+S</kbd>
+            </button>
+            <button id="saveAndVerifyBtn" class="app-menu-action" type="button" title="Save the Talos draft, then verify in the sandbox" disabled>
+              <span>Save + Verify</span><kbd>Ctrl+Shift+S</kbd>
+            </button>
+            <div class="app-menu-separator" role="separator"></div>
+            <button class="app-menu-action" type="button" data-command="support-bundle">
+              <span>Copy Support Bundle</span><kbd></kbd>
+            </button>
+            <button class="app-menu-action" type="button" data-command="settings-view">
+              <span>Preferences</span><kbd></kbd>
+            </button>
+          </div>
+        </div>
+        <div class="app-menu" data-menu="edit">
+          <button class="app-menu-button" type="button" data-menu-button="edit" aria-haspopup="true" aria-expanded="false">Edit</button>
+          <div class="app-menu-panel" data-menu-panel="edit" hidden>
+            <button id="rollbackFileBtn" class="app-menu-action" type="button" title="Restore the file before Talos's last save" disabled>
+              <span>Undo Saved File</span><kbd>Ctrl+Z</kbd>
+            </button>
+            <div class="app-menu-separator" role="separator"></div>
+            <button class="app-menu-action" type="button" data-command="cut-line">
+              <span>Cut Line</span><kbd>Ctrl+X</kbd>
+            </button>
+            <button class="app-menu-action" type="button" data-command="copy-line">
+              <span>Copy Line</span><kbd>Ctrl+C</kbd>
+            </button>
+            <button class="app-menu-action" type="button" data-command="find">
+              <span>Find In File</span><kbd>Ctrl+F</kbd>
+            </button>
+            <div class="app-menu-separator" role="separator"></div>
+            <button class="app-menu-action" type="button" data-command="comment-line">
+              <span>Toggle Line Comment</span><kbd>Ctrl+/</kbd>
+            </button>
+          </div>
+        </div>
+        <div class="app-menu" data-menu="selection">
+          <button class="app-menu-button" type="button" data-menu-button="selection" aria-haspopup="true" aria-expanded="false">Selection</button>
+          <div class="app-menu-panel" data-menu-panel="selection" hidden>
+            <button class="app-menu-action" type="button" data-command="select-line">
+              <span>Select Current Line</span><kbd>Ctrl+L</kbd>
+            </button>
+            <div class="app-menu-separator" role="separator"></div>
+            <button class="app-menu-action" type="button" data-command="duplicate-line-up">
+              <span>Duplicate Line Up</span><kbd>Shift+Alt+Up</kbd>
+            </button>
+            <button class="app-menu-action" type="button" data-command="duplicate-line-down">
+              <span>Duplicate Line Down</span><kbd>Shift+Alt+Down</kbd>
+            </button>
+            <button class="app-menu-action" type="button" data-command="move-line-up">
+              <span>Move Line Up</span><kbd>Alt+Up</kbd>
+            </button>
+            <button class="app-menu-action" type="button" data-command="move-line-down">
+              <span>Move Line Down</span><kbd>Alt+Down</kbd>
+            </button>
+          </div>
+        </div>
+        <div class="app-menu" data-menu="view">
+          <button class="app-menu-button" type="button" data-menu-button="view" aria-haspopup="true" aria-expanded="false">View</button>
+          <div class="app-menu-panel" data-menu-panel="view" hidden>
+            <button class="app-menu-action" type="button" data-command="server-view">
+              <span>Server Overview</span><kbd></kbd>
+            </button>
+            <button class="app-menu-action" type="button" data-command="workspace-view">
+              <span>Arduino Workspace</span><kbd></kbd>
+            </button>
+            <button class="app-menu-action" type="button" data-command="logs-view">
+              <span>Logs</span><kbd></kbd>
+            </button>
+            <div class="app-menu-separator" role="separator"></div>
+            <button class="app-menu-action" type="button" data-command="toggle-explorer">
+              <span>Toggle Explorer</span><kbd>Ctrl+B</kbd>
+            </button>
+            <button class="app-menu-action" type="button" data-command="toggle-codex">
+              <span>Toggle Codex</span><kbd>Ctrl+Alt+C</kbd>
+            </button>
+            <button class="app-menu-action" type="button" data-command="verify-output">
+              <span>Show Verify Output</span><kbd></kbd>
+            </button>
+            <button class="app-menu-action" type="button" data-command="run-history">
+              <span>Show Run History</span><kbd></kbd>
+            </button>
+            <div class="app-menu-separator" role="separator"></div>
+            <button class="app-menu-action" type="button" data-command="reset-layout">
+              <span>Reset Pane Layout</span><kbd></kbd>
+            </button>
+          </div>
+        </div>
+        <div class="app-menu" data-menu="go">
+          <button class="app-menu-button" type="button" data-menu-button="go" aria-haspopup="true" aria-expanded="false">Go</button>
+          <div class="app-menu-panel" data-menu-panel="go" hidden>
+            <button class="app-menu-action" type="button" data-command="server-view">
+              <span>Server</span><kbd></kbd>
+            </button>
+            <button class="app-menu-action" type="button" data-command="workspace-view">
+              <span>Arduino</span><kbd></kbd>
+            </button>
+            <button class="app-menu-action" type="button" data-command="logs-view">
+              <span>Logs</span><kbd></kbd>
+            </button>
+            <button class="app-menu-action" type="button" data-command="settings-view">
+              <span>Settings</span><kbd></kbd>
+            </button>
+          </div>
+        </div>
+        <div class="app-menu" data-menu="run">
+          <button class="app-menu-button" type="button" data-menu-button="run" aria-haspopup="true" aria-expanded="false">Run</button>
+          <div class="app-menu-panel" data-menu-panel="run" hidden>
+            <button class="app-menu-action" type="button" data-command="verify">
+              <span>Verify Sandbox</span><kbd>Ctrl+Enter</kbd>
+            </button>
+            <button class="app-menu-action" type="button" data-command="save-verify">
+              <span>Save + Verify</span><kbd>Ctrl+Shift+S</kbd>
+            </button>
+            <button class="app-menu-action" type="button" data-command="cancel-verify">
+              <span>Cancel Verify</span><kbd>Esc</kbd>
+            </button>
+            <div class="app-menu-separator" role="separator"></div>
+            <button id="clearVerifyCacheBtn" class="app-menu-action" type="button" title="Clear cached sandbox verification">
+              <span>Clear Verify Cache</span><kbd></kbd>
+            </button>
+            <button class="app-menu-action" type="button" data-command="record-evidence">
+              <span>Record Evidence</span><kbd></kbd>
+            </button>
+          </div>
+        </div>
+        <div class="app-menu" data-menu="codex">
+          <button class="app-menu-button" type="button" data-menu-button="codex" aria-haspopup="true" aria-expanded="false">Codex</button>
+          <div class="app-menu-panel" data-menu-panel="codex" hidden>
+            <button class="app-menu-action" type="button" data-command="toggle-codex">
+              <span>Open Codex Column</span><kbd>Ctrl+Alt+C</kbd>
+            </button>
+            <div class="app-menu-separator" role="separator"></div>
+            <button class="app-menu-action" type="button" data-command="new-codex">
+              <span>New Thread</span><kbd></kbd>
+            </button>
+            <button class="app-menu-action" type="button" data-command="copy-context">
+              <span>Copy Context Package</span><kbd></kbd>
+            </button>
+            <button class="app-menu-action" type="button" data-command="reconnect-codex">
+              <span>Reconnect Codex</span><kbd></kbd>
+            </button>
+          </div>
+        </div>
+        <div class="app-menu" data-menu="help">
+          <button class="app-menu-button" type="button" data-menu-button="help" aria-haspopup="true" aria-expanded="false">Help</button>
+          <div class="app-menu-panel" data-menu-panel="help" hidden>
+            <button class="app-menu-action" type="button" data-command="server-view">
+              <span>Server Overview</span><kbd></kbd>
+            </button>
+            <button class="app-menu-action" type="button" data-command="logs-view">
+              <span>Event Log</span><kbd></kbd>
+            </button>
+            <button class="app-menu-action" type="button" data-command="support-bundle">
+              <span>Copy Support Bundle</span><kbd></kbd>
+            </button>
+            <div class="app-menu-separator" role="separator"></div>
+            <button class="app-menu-action" type="button" data-command="settings-view">
+              <span>Settings</span><kbd></kbd>
+            </button>
+          </div>
+        </div>
+      </nav>
       <div class="chrome-actions">
         <button id="minimizeBtn" class="chrome-button" title="Minimize">-</button>
         <div class="maximize-wrap">
@@ -213,12 +385,8 @@
                     <button id="editInTalosBtn" class="icon-button" type="button" title="Enable local editing in Talos" disabled>Edit</button>
                   </div>
                   <div class="editor-command-controls">
-                    <button id="saveFileBtn" class="icon-button" type="button" title="Save the Talos editor draft to Arduino IDE" disabled>Save</button>
-                    <button id="saveAndVerifyBtn" class="button" type="button" title="Save the Talos draft, then verify in the sandbox" disabled>Save + Verify</button>
-                    <button id="rollbackFileBtn" class="icon-button" type="button" title="Restore the file before Talos's last save" disabled>Undo</button>
                     <button id="verifyArduinoBtn" class="button primary" title="Compile the selected sketch in the Talos sandbox">Verify</button>
                     <button id="cancelArduinoVerifyBtn" class="icon-button" type="button" title="Cancel active sandbox verification" hidden>Cancel</button>
-                    <button id="clearVerifyCacheBtn" class="icon-button" type="button" title="Clear cached sandbox verification">Clear</button>
                     <button id="toggleCodexBtn" class="icon-button active" type="button" title="Toggle Codex panel" aria-label="Toggle Codex panel">Codex</button>
                   </div>
                 </div>
@@ -289,6 +457,7 @@
                 <div id="codexDiffPreview" class="codex-diff-preview" hidden></div>
                 <div class="editor-canvas">
                   <pre id="editorLineNumbers" class="editor-line-numbers" role="button" aria-label="Select source line" title="Click a line number to select that line">1</pre>
+                  <pre id="editorFindRender" class="editor-find-render" aria-hidden="true" hidden></pre>
                   <textarea id="sourceEditor" spellcheck="false" wrap="off" disabled placeholder="Select a file from Files to inspect it. Arduino IDE owns the saved sketch; Save writes Talos edits back."></textarea>
                 </div>
                 <div id="editorStatus" class="editor-statusbar">No file selected.</div>

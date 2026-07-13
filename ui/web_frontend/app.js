@@ -87,6 +87,21 @@ const ARDUINO_EVENT_POLL_MS = 300;
 const TALOS_WRITE_DEBOUNCE_MS = 1500;
 const WINDOW_MIN_WIDTH = 640;
 const WINDOW_MIN_HEIGHT = 460;
+const APP_MENU_COMMANDS = {
+  refresh: "#refreshWorkspaceBtn",
+  "save-file": "#saveFileBtn",
+  "save-verify": "#saveAndVerifyBtn",
+  rollback: "#rollbackFileBtn",
+  verify: "#verifyArduinoBtn",
+  "cancel-verify": "#cancelArduinoVerifyBtn",
+  "clear-cache": "#clearVerifyCacheBtn",
+  "record-evidence": "#recordEvidenceBtn",
+  "toggle-codex": "#toggleCodexBtn",
+  "new-codex": "#newCodexThreadBtn",
+  "copy-context": "#copyCodexContextBtn",
+  "reconnect-codex": "#reconnectCodexBtn",
+  "support-bundle": "#copySupportBundleBtn",
+};
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -118,6 +133,68 @@ function codexPanelOpen() {
 
 function explorerPanelOpen() {
   return localStorage.getItem(EXPLORER_PANEL_KEY) !== "false";
+}
+
+function closeAppMenus() {
+  $$(".app-menu").forEach((menu) => menu.classList.remove("open"));
+  $$("[data-menu-button]").forEach((button) => button.setAttribute("aria-expanded", "false"));
+  $$("[data-menu-panel]").forEach((panel) => {
+    panel.hidden = true;
+  });
+}
+
+function toggleAppMenu(menuName) {
+  const menu = $(`.app-menu[data-menu="${menuName}"]`);
+  const button = $(`[data-menu-button="${menuName}"]`);
+  const panel = $(`[data-menu-panel="${menuName}"]`);
+  if (!menu || !button || !panel) return;
+  const shouldOpen = panel.hidden;
+  closeAppMenus();
+  if (!shouldOpen) return;
+  syncAppMenuState();
+  menu.classList.add("open");
+  button.setAttribute("aria-expanded", "true");
+  panel.hidden = false;
+}
+
+function syncAppMenuState() {
+  Object.entries(APP_MENU_COMMANDS).forEach(([command, selector]) => {
+    const source = selector ? $(selector) : null;
+    $$(`[data-command="${command}"]`).forEach((button) => {
+      if (source) button.disabled = Boolean(source.disabled);
+    });
+  });
+}
+
+function runAppMenuCommand(command) {
+  const selector = APP_MENU_COMMANDS[command];
+  if (selector) {
+    $(selector)?.click();
+    return;
+  }
+  if (command === "find") showEditorFind();
+  else if (command === "copy-line") copyCurrentEditorLine(false);
+  else if (command === "cut-line") copyCurrentEditorLine(true);
+  else if (command === "comment-line") toggleEditorLineComment();
+  else if (command === "select-line") selectEditorLine(editorCursorLineIndex() + 1);
+  else if (command === "duplicate-line-up") duplicateEditorLine("up");
+  else if (command === "duplicate-line-down") duplicateEditorLine("down");
+  else if (command === "move-line-up") moveEditorLine("up");
+  else if (command === "move-line-down") moveEditorLine("down");
+  else if (command === "toggle-explorer") applyExplorerPanel(!explorerPanelOpen());
+  else if (command === "reset-layout") {
+    resetExplorerWidth();
+    resetCodexWidth();
+    resetVerifyHeight();
+  } else if (command === "server-view") setView("dashboard");
+  else if (command === "workspace-view") setView("workspace");
+  else if (command === "logs-view") setView("logs");
+  else if (command === "settings-view") setView("settings");
+  else if (command === "verify-output") setOutputView("verify");
+  else if (command === "run-history") {
+    setOutputView("history");
+    refreshRunHistory();
+  }
 }
 
 function applyExplorerPanel(open) {
@@ -839,6 +916,7 @@ function renderEditorLineNumbers() {
     { length: lineCount },
     (_value, index) => String(index + 1),
   ).join("\n");
+  updateEditorCursorLine();
 }
 
 function applyEditorFileResult(result, statusText = "") {
@@ -1240,6 +1318,81 @@ function collectEditorFindMatches(query) {
   return matches;
 }
 
+function editorCursorLineIndex() {
+  const editor = $("#sourceEditor");
+  if (!editor) return 0;
+  return editor.value.slice(0, Math.max(0, editor.selectionStart || 0)).split("\n").length - 1;
+}
+
+function updateEditorCursorLine() {
+  const editor = $("#sourceEditor");
+  const canvas = $(".editor-canvas");
+  if (!editor || !canvas || !state.activeFilePath) {
+    canvas?.classList.remove("has-cursor-line");
+    return;
+  }
+  const style = window.getComputedStyle(editor);
+  const lineHeight = Number.parseFloat(style.lineHeight) || 20;
+  const paddingTop = Number.parseFloat(style.paddingTop) || 0;
+  const top = paddingTop + (editorCursorLineIndex() * lineHeight) - editor.scrollTop;
+  canvas.style.setProperty("--cursor-line-top", `${top}px`);
+  canvas.style.setProperty("--cursor-line-height", `${lineHeight}px`);
+  canvas.classList.add("has-cursor-line");
+  renderEditorFindLayer();
+}
+
+function syncEditorFindRenderScroll() {
+  const editor = $("#sourceEditor");
+  const render = $("#editorFindRender");
+  if (!editor || !render || render.hidden) return;
+  render.style.transform = `translate(${-editor.scrollLeft}px, ${-editor.scrollTop}px)`;
+}
+
+function renderEditorFindLayer() {
+  const editor = $("#sourceEditor");
+  const render = $("#editorFindRender");
+  const canvas = $(".editor-canvas");
+  if (!editor || !render || !canvas) return;
+  const active = !$("#editorFindBar").hidden && Boolean(state.editorFindQuery);
+  if (!active) {
+    render.hidden = true;
+    render.innerHTML = "";
+    render.style.transform = "";
+    canvas.classList.remove("finding");
+    return;
+  }
+
+  const value = editor.value || "";
+  const matches = state.editorFindMatches || [];
+  const current = matches[state.editorFindIndex] || null;
+  const cursorLineIndex = editorCursorLineIndex();
+  const lines = value.split("\n");
+  let cursor = 0;
+  render.innerHTML = lines.map((line, index) => {
+    const lineStart = cursor;
+    const lineEnd = lineStart + line.length;
+    const activeLine = index === cursorLineIndex;
+    const lineMatches = matches.filter((match) => match.start < lineEnd && match.end > lineStart);
+    let lineCursor = 0;
+    const html = lineMatches.map((match) => {
+      const start = Math.max(0, match.start - lineStart);
+      const end = Math.min(line.length, match.end - lineStart);
+      if (end <= lineCursor) return "";
+      const before = escapeHtml(line.slice(lineCursor, start));
+      const text = escapeHtml(line.slice(start, end)) || "&nbsp;";
+      lineCursor = end;
+      const currentClass = current && match.start === current.start && match.end === current.end ? " current" : "";
+      return `${before}<span class="editor-find-match${currentClass}">${text}</span>`;
+    }).join("");
+    const tail = escapeHtml(line.slice(lineCursor)) || (line.length ? "" : "&#8203;");
+    cursor = lineEnd + 1;
+    return `<span class="editor-find-line${activeLine ? " cursor-line" : ""}">${html}${tail}</span>`;
+  }).join("");
+  render.hidden = false;
+  canvas.classList.add("finding");
+  syncEditorFindRenderScroll();
+}
+
 function scrollEditorToPosition(position) {
   const editor = $("#sourceEditor");
   const valueBefore = editor.value.slice(0, Math.max(0, position));
@@ -1254,6 +1407,8 @@ function scrollEditorToPosition(position) {
   editor.scrollTop = targetTop;
   editor.scrollLeft = targetLeft;
   $("#editorLineNumbers").scrollTop = editor.scrollTop;
+  syncEditorFindRenderScroll();
+  updateEditorCursorLine();
 }
 
 function selectEditorFindMatch(index) {
@@ -1268,6 +1423,8 @@ function selectEditorFindMatch(index) {
   editor.focus({ preventScroll: true });
   editor.setSelectionRange(match.start, match.end);
   updateFindStatus();
+  updateEditorCursorLine();
+  renderEditorFindLayer();
 }
 
 function runEditorFind(direction = 1, keepCurrent = false) {
@@ -1278,6 +1435,7 @@ function runEditorFind(direction = 1, keepCurrent = false) {
   if (!state.editorFindMatches.length) {
     state.editorFindIndex = -1;
     updateFindStatus();
+    renderEditorFindLayer();
     input.focus();
     return;
   }
@@ -1305,12 +1463,14 @@ function showEditorFind() {
   input.select();
   if (input.value) runEditorFind(1, Boolean(selected));
   else updateFindStatus();
+  renderEditorFindLayer();
   return true;
 }
 
 function hideEditorFind() {
   $("#editorFindBar").hidden = true;
   state.editorFindIndex = -1;
+  renderEditorFindLayer();
   $("#sourceEditor").focus();
   return true;
 }
@@ -3208,6 +3368,27 @@ function bindEvents() {
   $("#saveFileBtn").addEventListener("click", saveWorkspaceFile);
   $("#saveAndVerifyBtn").addEventListener("click", saveAndVerifyWorkspace);
   $("#rollbackFileBtn").addEventListener("click", rollbackWorkspaceFile);
+  $$("[data-menu-button]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      toggleAppMenu(button.dataset.menuButton);
+    });
+  });
+  $$(".app-menu-action[data-command]").forEach((button) => {
+    button.addEventListener("click", () => {
+      runAppMenuCommand(button.dataset.command);
+      closeAppMenus();
+    });
+  });
+  $$(".app-menu-action[id]").forEach((button) => {
+    button.addEventListener("click", closeAppMenus);
+  });
+  document.addEventListener("click", (event) => {
+    if (!event.target.closest(".app-menu")) closeAppMenus();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeAppMenus();
+  });
   $("#applyCodexPatchBtn").addEventListener("click", () => applyCodexPatch());
   $("#verifyCodexPatchBtn").addEventListener("click", verifyCodexPatch);
   $("#rejectCodexPatchBtn").addEventListener("click", rejectCodexPatch);
@@ -3245,9 +3426,13 @@ function bindEvents() {
     setEditorDirty($("#sourceEditor").value !== state.editorOriginalContent);
     $("#editorStatus").textContent = state.editorDirty ? "Unsaved changes." : "No changes.";
     if (!$("#editorFindBar").hidden) runEditorFind(1);
+    else renderEditorFindLayer();
     renderCodexContextPreview();
   });
   $("#sourceEditor").addEventListener("keydown", handleEditorShortcut);
+  ["click", "keyup", "mouseup", "select", "focus"].forEach((eventName) => {
+    $("#sourceEditor").addEventListener(eventName, updateEditorCursorLine);
+  });
   $("#editorFindInput").addEventListener("input", () => runEditorFind(1));
   $("#editorFindInput").addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
@@ -3264,6 +3449,8 @@ function bindEvents() {
   $("#closeFindBtn").addEventListener("click", hideEditorFind);
   $("#sourceEditor").addEventListener("scroll", () => {
     $("#editorLineNumbers").scrollTop = $("#sourceEditor").scrollTop;
+    syncEditorFindRenderScroll();
+    updateEditorCursorLine();
   });
   $("#editorLineNumbers").addEventListener("mousedown", (event) => {
     event.preventDefault();
