@@ -35,7 +35,7 @@ Carry-over guarantees from 0.3.0:
 
 - External testers need clearer docs, first-run guidance, troubleshooting, and recovery instructions.
 - Support data must be useful without silently collecting sketch source, Codex chat content, or sensitive local identifiers.
-- UI/UX needs a more polished GitHub-inspired appearance and more convenient tool workflows before broader testing.
+- UI/UX needs a more polished VS Code-inspired workbench appearance and workflow structure. GitHub-style polish is now limited to quiet settings/help documentation surfaces, not the main coding workspace.
 - Clean install, upgrade, uninstall, signing status, and distribution wording must be explicit before public handoff.
 
 ## 0.4.0 Release Criteria
@@ -46,7 +46,7 @@ Talos 0.4.0 Pre-Alpha is ready only when these are true:
 - User-facing docs explain install, first run, Arduino workflow, Codex workflow, support bundle, recovery, uninstall, and known limitations.
 - Troubleshooting guidance covers common failures: Arduino IDE not detected, board/FQBN missing, `arduino-cli` missing, Codex disconnected, verify failed, installer blocked, and unsigned Beta warnings.
 - Product feedback is privacy-aware: diagnostics are opt-in, redacted, previewable by the user, and useful for development without collecting sketch source, Codex chat content, account identifiers, or full local paths by default.
-- UI/UX is polished enough for broader testers: GitHub-inspired appearance, clear active states, better theme/appearance controls, responsive layouts, and tool actions that are grouped by workflow instead of scattered by implementation detail.
+- UI/UX is polished enough for broader testers: VS Code-inspired workbench structure and color hierarchy, clear active states, better theme/appearance controls, responsive layouts, a compact activity-bar navigation model, and tool actions grouped by workflow instead of scattered by implementation detail.
 - Release artifacts include current 0.4.0 identity, release notes, legal/support docs, installer evidence, installed-app evidence, and distribution checklist.
 - Clean install/uninstall validation works on a fresh Windows profile, VM, or documented equivalent clean app-data scenario.
 - Code-signing state is either fully configured or explicitly documented as unsigned Pre-Alpha/Beta with user-facing warnings.
@@ -191,11 +191,11 @@ Stage 5 implementation notes:
 
 Exit condition: installed Talos can be trusted on a clean tester machine and the app-data lifecycle is explicit.
 
-## Stage 6 - GitHub-Inspired UI/UX And Structural Tool Ergonomics
+## Stage 6 - VS Code-Inspired UI/UX And Structural Tool Ergonomics
 
 Purpose: make Talos feel like a polished developer product, not only a functional bridge, and keep the Arduino/Codex workspace structurally simple at real desktop sizes.
 
-- [x] Define a GitHub-inspired visual refresh for Talos: typography, spacing, borders, cards/panels, selected states, focus states, contrast, and light/dark/neutral theme consistency.
+- [x] Define a VS Code-inspired visual refresh for Talos workbench panels: titlebar, activity bar, Explorer, editor, bottom output panel, and Codex column each get their own role-based surface, spacing, borders, selected states, focus states, contrast, and light/dark/neutral theme consistency.
 - [x] Redesign Settings/Appearance into a richer product surface with theme previews, system-sync option, saved theme behavior, contrast preference, and editor display preferences where practical.
 - [x] Rework workspace structure around three primary regions: navigation rail, Arduino context/files, and the main workbench; treat Codex as a real resizable workbench column when opened, not as a floating support overlay.
 - [x] Keep the selected source file highlighted in Files instead of relying on a large editor tab, so toolbar space is reserved for actions.
@@ -205,13 +205,19 @@ Purpose: make Talos feel like a polished developer product, not only a functiona
 - [x] Optimize tool ergonomics for core workflows: Verify Sandbox, Save File, Save & Verify, Rollback, Codex context, support bundle, diagnostics export, history filters, and copy actions.
 - [x] Review UI behavior at normal, maximized, and narrow desktop window sizes; keep splitters, panels, action bars, and Codex side panel responsive without overflow.
 - [x] Add screenshot/manual checklist coverage for the main UI states: no sketch, selected sketch, review mode, edit mode, verify passed/failed, Codex connected/disconnected, diagnostics disabled/enabled, and settings appearance.
+- [x] Split the color system by workbench role so titlebar, activity bar, Explorer, editor, output/terminal, and Codex side panel have distinct but harmonious VS Code-like surfaces.
+- [x] Replace the crowded always-visible editor command row with a VS Code-style top menu bar for secondary actions, grouped by File, Edit, Selection, View, Go, Run, Codex, and Help.
+- [x] Keep Codex as a real right-side workbench column with its own history, context preview, composer, and resize behavior instead of treating it as a small helper tab.
 
 Stage 6 implementation notes:
 
-- Added a richer Settings/Appearance surface with GitHub-style theme preview cards, system theme sync, high-contrast toggle, editor font-size preference, and editor density preference.
+- Added a richer Settings/Appearance surface with theme preview cards, system theme sync, high-contrast toggle, editor font-size preference, and editor density preference.
 - Added local UI preference persistence for system theme sync, high contrast, editor font size, and editor density without changing the 0.4.0 backend config contract.
 - Refined CSS tokens for mono font, editor font size, editor line height, high contrast borders, selected states, and theme preview cards across light, dark, and neutral themes.
+- Added VS Code-like workbench surface tokens so titlebar, activity bar, Explorer, toolbar, editor, output/terminal, and Codex panels no longer share one flat application background.
 - Improved tool ergonomics by making editor action groups stay on one polished row with internal horizontal scrolling at constrained widths, preventing Verify, Save, Save & Verify, Rollback, Cancel, Clear, and Codex from wrapping into noisy multi-row layouts.
+- Replaced the crowded editor toolbar with a workflow-first command model: the editor keeps only primary in-context actions, while `File`, `Edit`, `Selection`, `View`, `Go`, `Run`, `Codex`, and `Help` live in a VS Code-style top menu bar that closes after selection or outside click.
+- Expanded the menu bar into a real Talos command surface rather than a decorative dropdown: line copy/cut/comment, line selection, move/duplicate line, verify/history navigation, support bundle, Codex context, reconnect, and workspace navigation now live in predictable groups.
 - Strengthened active-file selection cues in the Files panel so the selected source file is visible without relying on a large editor tab.
 - Simplified the workbench structure so Codex behaves as a resizeable right column when opened instead of a floating overlay, keeping the editor, verify output, and Codex conversation in predictable regions.
 - Kept Explorer as the Arduino context/file surface, made it toggleable from the Arduino activity button, and kept Verify/History as the bottom workbench panel so the main workspace reads closer to VS Code.
