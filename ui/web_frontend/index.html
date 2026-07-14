@@ -12,7 +12,7 @@
     </script>
     <link rel="stylesheet" href="/styles.css" />
   </head>
-  <body class="native-window">
+  <body>
     <div class="app-chrome pywebview-drag-region">
       <div class="chrome-title pywebview-drag-region">
         <span class="chrome-mark app-logo-mark" aria-hidden="true">
@@ -90,6 +90,10 @@
         <div class="app-menu" data-menu="view">
           <button class="app-menu-button" type="button" data-menu-button="view" aria-haspopup="true" aria-expanded="false">View</button>
           <div class="app-menu-panel" data-menu-panel="view" hidden>
+            <button class="app-menu-action" type="button" data-command="command-palette">
+              <span>Command Palette...</span><kbd>Ctrl+Shift+P</kbd>
+            </button>
+            <div class="app-menu-separator" role="separator"></div>
             <button class="app-menu-action" type="button" data-command="server-view">
               <span>Server Overview</span><kbd></kbd>
             </button>
@@ -177,6 +181,10 @@
         <div class="app-menu" data-menu="help">
           <button class="app-menu-button" type="button" data-menu-button="help" aria-haspopup="true" aria-expanded="false">Help</button>
           <div class="app-menu-panel" data-menu-panel="help" hidden>
+            <button class="app-menu-action" type="button" data-command="command-palette">
+              <span>Show All Commands</span><kbd>Ctrl+Shift+P</kbd>
+            </button>
+            <div class="app-menu-separator" role="separator"></div>
             <button class="app-menu-action" type="button" data-command="server-view">
               <span>Server Overview</span><kbd></kbd>
             </button>
@@ -193,19 +201,14 @@
           </div>
         </div>
       </nav>
+      <button id="commandCenterBtn" class="command-center" type="button" title="Show Command Palette (Ctrl+Shift+P)">
+        <span class="command-center-prefix" aria-hidden="true">&gt;</span>
+        <span class="command-center-label">Search commands...</span>
+        <kbd>Ctrl+Shift+P</kbd>
+      </button>
       <div class="chrome-actions">
         <button id="minimizeBtn" class="chrome-button" title="Minimize">-</button>
-        <div class="maximize-wrap">
-          <button id="maximizeBtn" class="chrome-button" title="Maximize" aria-label="Maximize">&#9633;</button>
-          <div id="snapMenu" class="snap-menu" role="menu" aria-label="Snap layouts">
-            <button class="snap-option two-left" data-snap="left" title="Snap left"><span></span><span></span></button>
-            <button class="snap-option two-right" data-snap="right" title="Snap right"><span></span><span></span></button>
-            <button class="snap-option three-left" data-snap="third-left" title="Snap left third"><span></span><span></span><span></span></button>
-            <button class="snap-option three-center" data-snap="third-center" title="Snap center third"><span></span><span></span><span></span></button>
-            <button class="snap-option quad" data-snap="top-left" title="Snap top left"><span></span><span></span><span></span><span></span></button>
-            <button class="snap-option quad" data-snap="bottom-right" title="Snap bottom right"><span></span><span></span><span></span><span></span></button>
-          </div>
-        </div>
+        <button id="maximizeBtn" class="chrome-button" title="Maximize" aria-label="Maximize">&#9633;</button>
         <button id="closeBtn" class="chrome-button danger" title="Close">&times;</button>
       </div>
       <div id="windowMenu" class="window-menu" role="menu" hidden>
@@ -714,6 +717,19 @@
         </section>
       </main>
     </div>
+    <div id="commandPaletteOverlay" class="command-palette-overlay" hidden>
+      <section class="command-palette" role="dialog" aria-modal="true" aria-label="Command Palette">
+        <input id="commandPaletteInput" type="text" autocomplete="off" spellcheck="false" placeholder="Type a command..." aria-label="Command Palette input" />
+        <div id="commandPaletteList" class="command-palette-list" role="listbox" aria-label="Available commands"></div>
+      </section>
+    </div>
+    <footer class="status-bar" aria-label="Talos status">
+      <button id="statusWorkspace" class="status-item" type="button">Workspace: none</button>
+      <button id="statusFile" class="status-item" type="button">File: none</button>
+      <button id="statusBoard" class="status-item" type="button">Board: unknown</button>
+      <button id="statusVerify" class="status-item" type="button">Verify: idle</button>
+      <button id="statusCodex" class="status-item" type="button">Codex: ready</button>
+    </footer>
     <script src="/app.js"></script>
   </body>
 </html>
