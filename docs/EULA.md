@@ -1,9 +1,9 @@
 # Talos End User License Agreement
 
-Version: 0.2.0 Beta
+Version: 0.4.0 Pre-Alpha
 Publisher: T-Engine
 
-This Beta is provided for evaluation, development, and controlled Arduino workflow testing.
+This Pre-Alpha/Beta is provided for evaluation, development, and controlled Arduino workflow testing.
 
 ## License
 
@@ -11,7 +11,7 @@ Talos source code is distributed under the MIT License included in `LICENSE`. Th
 
 ## Beta Status
 
-Talos 0.2.0 Beta is pre-commercial software. It may contain defects, incomplete features, or behavior that changes in later versions. Use it only with sketches and files that you are prepared to back up and review.
+Talos 0.4.0 Pre-Alpha is pre-commercial software. It may contain defects, incomplete features, or behavior that changes in later versions. Use it only with sketches and files that you are prepared to back up and review.
 
 ## User Responsibility
 

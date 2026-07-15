@@ -28,7 +28,7 @@ Copy-Item -LiteralPath (Join-Path $root "config\default_config.json") -Destinati
 Copy-Item -LiteralPath $identityPath -Destination (Join-Path $installDir "config\app_identity.json") -Force
 Copy-Item -LiteralPath (Join-Path $sourceIconDir "*") -Destination $installIconDir -Force
 Copy-Item -LiteralPath (Join-Path $root "docs\README.md") -Destination (Join-Path $installDir "README.md") -Force
-foreach ($docName in @("LICENSE", "RELEASE_NOTES.md", "EULA.md", "PRIVACY.md", "THIRD_PARTY_NOTICES.md", "CODE_SIGNING.md", "INSTALLED_APP_SMOKE_TEST.md", "TALOS_USER_GUIDE.md", "TALOS_FIRST_RUN_CHECKLIST.md", "TALOS_TROUBLESHOOTING.md", "TALOS_DIAGNOSTICS.md", "TALOS_INSTALL_LIFECYCLE.md", "TALOS_UI_UX_CHECKLIST.md", "TALOS_RECOVERY_GUIDE.md", "TALOS_SUPPORT_DEBUG.md")) {
+foreach ($docName in @("LICENSE", "RELEASE_NOTES.md", "EULA.md", "PRIVACY.md", "THIRD_PARTY_NOTICES.md", "CODE_SIGNING.md", "DISTRIBUTION_COPY.md", "INSTALLED_APP_SMOKE_TEST.md", "TALOS_USER_GUIDE.md", "TALOS_FIRST_RUN_CHECKLIST.md", "TALOS_TROUBLESHOOTING.md", "TALOS_DIAGNOSTICS.md", "TALOS_INSTALL_LIFECYCLE.md", "TALOS_UI_UX_CHECKLIST.md", "TALOS_RECOVERY_GUIDE.md", "TALOS_SUPPORT_DEBUG.md")) {
   Copy-Item -LiteralPath (Join-Path $root "docs\$docName") -Destination (Join-Path $installDir "docs\$docName") -Force
 }
 

@@ -1189,7 +1189,8 @@ class TalosArduinoTests(unittest.TestCase):
             "EULA.md": ["End User License Agreement", "Beta Status"],
             "PRIVACY.md": ["Privacy Notes", "Codex"],
             "THIRD_PARTY_NOTICES.md": ["Third-Party Notices", "pywebview", "PyInstaller", "Pillow"],
-            "CODE_SIGNING.md": ["Code Signing", "signtool.exe", "Get-AuthenticodeSignature", "unsigned-Beta"],
+            "CODE_SIGNING.md": ["Code Signing", "signtool.exe", "Get-AuthenticodeSignature", "unsigned Pre-Alpha/Beta"],
+            "DISTRIBUTION_COPY.md": ["Talos Distribution Copy", "Arduino-first local bridge", "not an embedded AI model"],
             "INSTALLED_APP_SMOKE_TEST.md": ["Installed App Smoke Test", "Manual Arduino/Codex Checks", "Pass Criteria"],
             "TALOS_USER_GUIDE.md": ["Talos User Guide", "Arduino IDE remains the owner", "Verify Sandbox", "Use Codex"],
             "TALOS_FIRST_RUN_CHECKLIST.md": ["Talos First-Run Checklist", "Simple `.ino` Sketch", "Multi-File Sketch", "Codex Review Flow"],
@@ -1251,6 +1252,28 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("CODE_SIGNING.md", release_script)
         self.assertIn("scripts\\sign_release.ps1", readme)
         self.assertIn("[x] Define the code-signing path", pipeline)
+
+    def test_stage_040_distribution_copy_and_unsigned_release_gate_are_current(self) -> None:
+        root = Path(__file__).parents[1]
+        policy = json.loads((root / "config" / "signing_policy.json").read_text(encoding="utf-8"))
+        signing_doc = (root / "docs" / "CODE_SIGNING.md").read_text(encoding="utf-8")
+        privacy_doc = (root / "docs" / "PRIVACY.md").read_text(encoding="utf-8")
+        distribution_doc = (root / "docs" / "DISTRIBUTION_COPY.md").read_text(encoding="utf-8")
+        checklist_script = (root / "scripts" / "distribution_checklist.ps1").read_text(encoding="utf-8")
+        pipeline = (root / "docs" / "TALOS_PIPELINE_040.md").read_text(encoding="utf-8")
+
+        self.assertEqual(policy["status"], "documented_unsigned_prealpha_beta")
+        self.assertEqual(policy["unsigned_release_label"], "UNSIGNED PRE-ALPHA/BETA")
+        self.assertIn("0.4.0", signing_doc)
+        self.assertIn("unsigned Pre-Alpha/Beta", signing_doc)
+        self.assertIn("Windows SmartScreen", signing_doc)
+        self.assertIn("disabled by default", privacy_doc)
+        self.assertIn("does not upload", privacy_doc)
+        self.assertIn("Codex-authenticated", distribution_doc)
+        self.assertIn("not an embedded AI model", distribution_doc)
+        self.assertIn("does not silently upload", distribution_doc)
+        self.assertIn("explicit unsigned Pre-Alpha/Beta", checklist_script)
+        self.assertIn("[x] Add distribution copy", pipeline)
 
     def test_stage_10_installed_app_smoke_is_scripted_and_documented(self) -> None:
         root = Path(__file__).parents[1]

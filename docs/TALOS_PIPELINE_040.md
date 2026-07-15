@@ -239,12 +239,22 @@ Exit condition: a tester can understand the available tools visually, use common
 
 Purpose: make the release posture honest and user-facing.
 
-- [ ] Revisit `config/signing_policy.json` and decide whether 0.4.0 remains explicitly unsigned or moves to a signed artifact path.
-- [ ] Update `docs/CODE_SIGNING.md` with 0.4.0 status, user verification steps, and expected Windows warning behavior.
-- [ ] Review `docs/PRIVACY.md`, `docs/EULA.md`, and `docs/THIRD_PARTY_NOTICES.md` for 0.4.0 accuracy.
-- [ ] Add privacy documentation for opt-in diagnostics, local support export, redaction guarantees, disabled-by-default behavior, and what data Talos never collects silently.
-- [ ] Add distribution copy that clearly states Talos is Arduino-first, Codex-authenticated, local-bridge software, not an embedded AI model.
-- [ ] Add a release-readiness check that refuses final checklist generation when signing/unsigned status is missing.
+- [x] Revisit `config/signing_policy.json` and decide whether 0.4.0 remains explicitly unsigned or moves to a signed artifact path.
+- [x] Update `docs/CODE_SIGNING.md` with 0.4.0 status, user verification steps, and expected Windows warning behavior.
+- [x] Review `docs/PRIVACY.md`, `docs/EULA.md`, and `docs/THIRD_PARTY_NOTICES.md` for 0.4.0 accuracy.
+- [x] Add privacy documentation for opt-in diagnostics, local support export, redaction guarantees, disabled-by-default behavior, and what data Talos never collects silently.
+- [x] Add distribution copy that clearly states Talos is Arduino-first, Codex-authenticated, local-bridge software, not an embedded AI model.
+- [x] Add a release-readiness check that refuses final checklist generation when signing/unsigned status is missing.
+
+Stage 7 implementation notes:
+
+- 0.4.0 remains explicitly unsigned Pre-Alpha/Beta unless a T-Engine signing certificate is configured before the release gate.
+- `config/signing_policy.json` now records `documented_unsigned_prealpha_beta` and the `UNSIGNED PRE-ALPHA/BETA` release label.
+- `docs/CODE_SIGNING.md`, `docs/EULA.md`, `docs/THIRD_PARTY_NOTICES.md`, and `docs/RELEASE_NOTES.md` were updated for the 0.4.0 release posture.
+- `docs/PRIVACY.md`, `docs/TALOS_DIAGNOSTICS.md`, and `docs/TALOS_SUPPORT_DEBUG.md` keep diagnostics local, opt-in, redacted, and disabled by default.
+- Added `docs/DISTRIBUTION_COPY.md` and packaged it in release/local install docs so testers understand Talos as Arduino-first, Codex-authenticated, local-bridge software rather than an embedded AI model.
+- `scripts/distribution_checklist.ps1` now treats missing signing or explicit unsigned Pre-Alpha/Beta status as release-blocking when `-RequireReady` is used.
+- Regression coverage locks the distribution copy, unsigned release gate wording, and packaged legal docs.
 
 Exit condition: distribution materials clearly explain trust, privacy, limitations, and signing status.
 

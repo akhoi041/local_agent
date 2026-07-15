@@ -118,7 +118,7 @@ scripts/launch_desktop.ps1 Open source app or installed app
 scripts/pipeline_status.ps1 Show pipeline progress
 scripts/build_release.ps1 Build a versioned release folder
 scripts/build_installer.ps1 Build the Windows installer with Inno Setup
-scripts/sign_release.ps1 Sign release artifacts or record an explicit unsigned Beta
+scripts/sign_release.ps1 Sign release artifacts or record an explicit unsigned Pre-Alpha/Beta
 scripts/smoke_installer.ps1 Build, silently install, verify shortcuts, and uninstall the installer
 scripts/smoke_installed_app.ps1 Launch installed Talos outside the repo and record smoke evidence
 scripts/smoke_app_lifecycle.ps1 Validate isolated app-data upgrade/uninstall lifecycle evidence
@@ -133,11 +133,12 @@ Release/legal documentation for packaged builds:
 
 ```text
 docs/LICENSE                 Project license
-docs/EULA.md                 Beta packaged-app terms
+docs/EULA.md                 Pre-Alpha/Beta packaged-app terms
 docs/PRIVACY.md              Local data and Codex data-flow notes
 docs/RELEASE_NOTES.md        Current release highlights and known limitations
 docs/THIRD_PARTY_NOTICES.md  Dependency and tooling notices
-docs/CODE_SIGNING.md         Signing policy, unsigned-Beta path, and verification commands
+docs/CODE_SIGNING.md         Signing policy, unsigned Pre-Alpha/Beta path, and verification commands
+docs/DISTRIBUTION_COPY.md    Release copy explaining Talos as an Arduino-first Codex local bridge
 docs/INSTALLED_APP_SMOKE_TEST.md Installed-app Arduino/Codex smoke-test checklist
 docs/TALOS_USER_GUIDE.md     User-facing install, first-run, Arduino, Codex, verify, save, and recovery guide
 docs/TALOS_FIRST_RUN_CHECKLIST.md New-tester checklist for simple `.ino`, multi-file sketches, Codex review, recovery, and support
@@ -262,16 +263,16 @@ Build the Windows installer:
 The installer is written into the same versioned release folder and creates a Start Menu shortcut by default. Desktop shortcut creation is optional in the installer wizard.
 Installed builds include `release_manifest.json` beside `Talos.exe` so the UI and API can show release/build metadata.
 
-Record the Beta as deliberately unsigned while the publisher certificate is not configured:
+Record the current Pre-Alpha/Beta as deliberately unsigned while the publisher certificate is not configured:
 
 ```powershell
-.\scripts\sign_release.ps1 -ReleaseDir releases\Talos-0.3.0-beta -AllowUnsignedBeta
+.\scripts\sign_release.ps1 -ReleaseDir releases\<versioned-release-folder> -AllowUnsignedBeta
 ```
 
 Sign release artifacts after a certificate is available:
 
 ```powershell
-.\scripts\sign_release.ps1 -ReleaseDir releases\Talos-0.3.0-beta -CertificateThumbprint "<thumbprint>"
+.\scripts\sign_release.ps1 -ReleaseDir releases\<versioned-release-folder> -CertificateThumbprint "<thumbprint>"
 ```
 
 Smoke-test the installer install/uninstall behavior:
