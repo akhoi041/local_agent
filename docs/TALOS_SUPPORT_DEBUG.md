@@ -61,7 +61,7 @@ Redact or remove:
 
 ## Release Evidence
 
-Use `Record Evidence` after a successful manual workflow check. For 0.3.0 Beta, release evidence should cover:
+Use `Record Evidence` after a successful manual workflow check. For 0.4.0 Pre-Alpha, release evidence should cover:
 
 - simple `.ino` sketch
 - multi-file `.h/.cpp` sketch

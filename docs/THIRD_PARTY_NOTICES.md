@@ -1,6 +1,6 @@
 # Talos Third-Party Notices
 
-Version: 0.2.0 Beta
+Version: 0.4.0 Pre-Alpha
 
 Talos uses third-party software and tools. Keep this file with binary distributions.
 

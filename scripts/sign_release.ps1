@@ -99,17 +99,17 @@ $statusPath = Join-Path $resolvedReleaseDir "signing_status.json"
 
 if (-not $CertificateThumbprint -and -not $CertificateSubject) {
   if (-not $AllowUnsignedBeta -or -not [bool]$policy.unsigned_beta_allowed) {
-    throw "No signing certificate was provided. Use -CertificateThumbprint, -CertificateSubject, or explicitly pass -AllowUnsignedBeta for the Beta channel."
+    throw "No signing certificate was provided. Use -CertificateThumbprint, -CertificateSubject, or explicitly pass -AllowUnsignedBeta for the Pre-Alpha/Beta channel."
   }
   $artifactStatus = @($artifacts | ForEach-Object { Get-ArtifactStatus $_ })
   Write-SigningStatus `
     -Path $statusPath `
     -Status "unsigned-beta" `
     -Signed $false `
-    -Reason "Unsigned Beta was explicitly allowed for this release." `
+    -Reason "Unsigned Pre-Alpha/Beta was explicitly allowed for this release." `
     -Artifacts $artifactStatus `
     -Policy $policy
-  Write-Warning "Release recorded as unsigned Beta: $statusPath"
+  Write-Warning "Release recorded as unsigned Pre-Alpha/Beta: $statusPath"
   return
 }
 

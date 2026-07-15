@@ -29,6 +29,7 @@ MATLAB and other targets are intentionally deferred until the Arduino product li
 | 0.4.0 Pre-Alpha | `docs/TALOS_PIPELINE_040.md` | Active pipeline for product readiness, opt-in feedback, UI/UX polish, and broader tester preparation. |
 | 0.4.5 Pre-Alpha | `docs/TALOS_PIPELINE_045.md` | Planned policy, consent, privacy wording, and user-trust gate before any hosted telemetry. |
 | 0.5.0 Pre-Alpha | `docs/TALOS_PIPELINE_050.md` | Planned opt-in server-side feedback/telemetry foundation after policy and consent are ready. |
+| 1.1.0 Alpha | `docs/TALOS_PIPELINE_110.md` | Planned native-quality desktop shell/chrome upgrade after the first official Arduino release. |
 
 Future version pipelines should follow the same naming rule:
 
@@ -38,6 +39,7 @@ Future version pipelines should follow the same naming rule:
 0.4.5 -> docs/TALOS_PIPELINE_045.md
 0.5.0 -> docs/TALOS_PIPELINE_050.md
 1.0.0 -> docs/TALOS_PIPELINE_100.md
+1.1.0 -> docs/TALOS_PIPELINE_110.md
 ```
 
 ## Version Roadmap
@@ -177,6 +179,27 @@ Purpose:
 Expected pipeline:
 
 - `docs/TALOS_PIPELINE_100.md`
+
+### 1.1.0 Alpha - Native-Quality Desktop Shell
+
+Status: planned.
+
+Purpose:
+
+- Upgrade Talos from a pywebview-style custom chrome toward a VS Code-class desktop shell while preserving the Arduino-first product behavior.
+- Keep the existing Python/Talos backend and web frontend as the product core, but evaluate or migrate the outer desktop shell to a framework with stronger native window integration, such as Electron, Tauri, WinUI/WebView2, or a small native Windows host.
+- Provide a theme-aware custom title bar with menu bar, command center, window controls, drag-to-restore, resize hit-testing, and Windows Snap Layout behavior that feels native rather than simulated.
+- Preserve `desktop_app.py` or an equivalent lightweight debug launcher so development remains fast even if the commercial shell changes.
+
+Non-goals:
+
+- No rewrite of Arduino detection, sandbox verify, Codex context, or staged save logic unless the shell boundary requires a small adapter.
+- No second IDE target.
+- No UI novelty that weakens the VS Code-style developer workflow.
+
+Expected pipeline:
+
+- `docs/TALOS_PIPELINE_110.md`
 
 ## Deferred Until After 1.0.0 Alpha
 

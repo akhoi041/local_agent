@@ -208,6 +208,9 @@ Purpose: make Talos feel like a polished developer product, not only a functiona
 - [x] Split the color system by workbench role so titlebar, activity bar, Explorer, editor, output/terminal, and Codex side panel have distinct but harmonious VS Code-like surfaces.
 - [x] Replace the crowded always-visible editor command row with a VS Code-style top menu bar for secondary actions, grouped by File, Edit, Selection, View, Go, Run, Codex, and Help.
 - [x] Keep Codex as a real right-side workbench column with its own history, context preview, composer, and resize behavior instead of treating it as a small helper tab.
+- [x] Add a compact Command Palette and titlebar command center so advanced actions are searchable, visible, and discoverable without adding more permanent toolbar buttons.
+- [x] Add a bottom Status Bar for workspace, active file, board, verify, and Codex state so important context remains visible without opening extra panels.
+- [x] Keep a VS Code-style custom frame that follows Talos themes, contains the menu bar, command center, and window controls, while avoiding the earlier custom Snap Layout flyout that made window behavior feel noisy.
 
 Stage 6 implementation notes:
 
@@ -222,9 +225,11 @@ Stage 6 implementation notes:
 - Simplified the workbench structure so Codex behaves as a resizeable right column when opened instead of a floating overlay, keeping the editor, verify output, and Codex conversation in predictable regions.
 - Kept Explorer as the Arduino context/file surface, made it toggleable from the Arduino activity button, and kept Verify/History as the bottom workbench panel so the main workspace reads closer to VS Code.
 - Removed the pin/unpin navigation mode and replaced the wide rail with a fixed icon activity bar, reducing dead space and making the app feel closer to VS Code.
-- Switched the desktop shell to Talos custom chrome so the title/frame area follows the selected theme instead of showing a mismatched native Windows title bar, and removed the obsolete blue editor-toolbar marker.
-- Added native-behavior parity for the custom chrome: 8-edge/corner resize handles, title-bar context menu, Alt+Space menu access, restore/minimize/maximize/close actions, and native window bounds updates through the pywebview bridge.
+- Restored the Talos custom chrome so the frame behaves like a VS Code-style workbench titlebar: theme-aware, compact, and able to host the menu bar, command center, and minimize/maximize/close controls in one product surface.
+- Removed the Talos Snap Layout flyout from the custom frame; window controls remain in the themed frame, but snap layout simulation is intentionally deferred instead of being faked with an unreliable HTML flyout.
 - Reworked Server, Logs, and Settings so they present tester-ready status, actions, filters, and grouped information instead of raw debug-only panels.
+- Added a VS Code-style Command Palette (`Ctrl+Shift+P`) plus an always-visible titlebar command center for workspace, editor, view, run, Codex, and support commands, with keyboard navigation and disabled-state awareness.
+- Added a bottom Status Bar with clickable workspace, active file, board, verify, and Codex state shortcuts so users can jump back to the right surface quickly.
 - Added `docs/TALOS_UI_UX_CHECKLIST.md` for manual/screenshot coverage across window sizes, Arduino states, editor/review states, verify/history states, Codex states, and Settings/Appearance.
 - Added the UI/UX checklist to Settings Help, release packaging, local install packaging, installer smoke coverage, README, and regression tests.
 
@@ -234,12 +239,22 @@ Exit condition: a tester can understand the available tools visually, use common
 
 Purpose: make the release posture honest and user-facing.
 
-- [ ] Revisit `config/signing_policy.json` and decide whether 0.4.0 remains explicitly unsigned or moves to a signed artifact path.
-- [ ] Update `docs/CODE_SIGNING.md` with 0.4.0 status, user verification steps, and expected Windows warning behavior.
-- [ ] Review `docs/PRIVACY.md`, `docs/EULA.md`, and `docs/THIRD_PARTY_NOTICES.md` for 0.4.0 accuracy.
-- [ ] Add privacy documentation for opt-in diagnostics, local support export, redaction guarantees, disabled-by-default behavior, and what data Talos never collects silently.
-- [ ] Add distribution copy that clearly states Talos is Arduino-first, Codex-authenticated, local-bridge software, not an embedded AI model.
-- [ ] Add a release-readiness check that refuses final checklist generation when signing/unsigned status is missing.
+- [x] Revisit `config/signing_policy.json` and decide whether 0.4.0 remains explicitly unsigned or moves to a signed artifact path.
+- [x] Update `docs/CODE_SIGNING.md` with 0.4.0 status, user verification steps, and expected Windows warning behavior.
+- [x] Review `docs/PRIVACY.md`, `docs/EULA.md`, and `docs/THIRD_PARTY_NOTICES.md` for 0.4.0 accuracy.
+- [x] Add privacy documentation for opt-in diagnostics, local support export, redaction guarantees, disabled-by-default behavior, and what data Talos never collects silently.
+- [x] Add distribution copy that clearly states Talos is Arduino-first, Codex-authenticated, local-bridge software, not an embedded AI model.
+- [x] Add a release-readiness check that refuses final checklist generation when signing/unsigned status is missing.
+
+Stage 7 implementation notes:
+
+- 0.4.0 remains explicitly unsigned Pre-Alpha/Beta unless a T-Engine signing certificate is configured before the release gate.
+- `config/signing_policy.json` now records `documented_unsigned_prealpha_beta` and the `UNSIGNED PRE-ALPHA/BETA` release label.
+- `docs/CODE_SIGNING.md`, `docs/EULA.md`, `docs/THIRD_PARTY_NOTICES.md`, and `docs/RELEASE_NOTES.md` were updated for the 0.4.0 release posture.
+- `docs/PRIVACY.md`, `docs/TALOS_DIAGNOSTICS.md`, and `docs/TALOS_SUPPORT_DEBUG.md` keep diagnostics local, opt-in, redacted, and disabled by default.
+- Added `docs/DISTRIBUTION_COPY.md` and packaged it in release/local install docs so testers understand Talos as Arduino-first, Codex-authenticated, local-bridge software rather than an embedded AI model.
+- `scripts/distribution_checklist.ps1` now treats missing signing or explicit unsigned Pre-Alpha/Beta status as release-blocking when `-RequireReady` is used.
+- Regression coverage locks the distribution copy, unsigned release gate wording, and packaged legal docs.
 
 Exit condition: distribution materials clearly explain trust, privacy, limitations, and signing status.
 
@@ -281,3 +296,13 @@ Exit condition: Talos 0.4.0 Pre-Alpha can be installed by a broader tester, used
 - Auto-update infrastructure.
 - Public plugin/target SDK.
 - 1.0.0 Alpha release gate.
+
+## Deferred Until After 1.0.0
+
+These are valuable product upgrades, but they are not required to finish the Arduino-first path to 1.0.0:
+
+- Full editor parity with VS Code, including customizable keybindings, multi-cursor editing, replace-in-file, find-in-files, minimap, and advanced selection commands.
+- Marketplace-style theme/icon customization beyond the built-in light, dark, neutral, contrast, and density preferences.
+- Full accessibility certification pass for screen readers, keyboard-only flows, high-contrast variants, and reduced-motion preferences.
+- Remote telemetry ingestion, dashboards, and automated product analytics; 0.4.x only keeps local, explicit, opt-in diagnostics export until policy, consent, and server stages are complete.
+- Plugin/target marketplace infrastructure for non-Arduino targets after the core Arduino workflow is stable.

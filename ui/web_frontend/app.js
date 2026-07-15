@@ -63,6 +63,8 @@ const state = {
   editorFindQuery: "",
   editorFindMatches: [],
   editorFindIndex: -1,
+  commandPaletteQuery: "",
+  commandPaletteIndex: 0,
 };
 
 const THEMES = ["light", "dark", "neutral"];
@@ -102,6 +104,38 @@ const APP_MENU_COMMANDS = {
   "reconnect-codex": "#reconnectCodexBtn",
   "support-bundle": "#copySupportBundleBtn",
 };
+const COMMAND_PALETTE_ITEMS = [
+  { label: "Refresh Workspace", command: "refresh", shortcut: "F5", group: "File" },
+  { label: "Save File", command: "save-file", shortcut: "Ctrl+S", group: "File" },
+  { label: "Save + Verify", command: "save-verify", shortcut: "Ctrl+Shift+S", group: "File" },
+  { label: "Undo Saved File", command: "rollback", shortcut: "Ctrl+Z", group: "Edit" },
+  { label: "Find In File", command: "find", shortcut: "Ctrl+F", group: "Edit" },
+  { label: "Copy Current Line", command: "copy-line", shortcut: "Ctrl+C", group: "Edit" },
+  { label: "Cut Current Line", command: "cut-line", shortcut: "Ctrl+X", group: "Edit" },
+  { label: "Toggle Line Comment", command: "comment-line", shortcut: "Ctrl+/", group: "Edit" },
+  { label: "Select Current Line", command: "select-line", shortcut: "Ctrl+L", group: "Selection" },
+  { label: "Duplicate Line Up", command: "duplicate-line-up", shortcut: "Shift+Alt+Up", group: "Selection" },
+  { label: "Duplicate Line Down", command: "duplicate-line-down", shortcut: "Shift+Alt+Down", group: "Selection" },
+  { label: "Move Line Up", command: "move-line-up", shortcut: "Alt+Up", group: "Selection" },
+  { label: "Move Line Down", command: "move-line-down", shortcut: "Alt+Down", group: "Selection" },
+  { label: "Go To Server Overview", command: "server-view", group: "Go" },
+  { label: "Go To Arduino Workspace", command: "workspace-view", group: "Go" },
+  { label: "Go To Logs", command: "logs-view", group: "Go" },
+  { label: "Go To Settings", command: "settings-view", group: "Go" },
+  { label: "Toggle Explorer", command: "toggle-explorer", shortcut: "Ctrl+B", group: "View" },
+  { label: "Toggle Codex Column", command: "toggle-codex", shortcut: "Ctrl+Alt+C", group: "View" },
+  { label: "Show Verify Output", command: "verify-output", group: "View" },
+  { label: "Show Run History", command: "run-history", group: "View" },
+  { label: "Reset Pane Layout", command: "reset-layout", group: "View" },
+  { label: "Verify Sandbox", command: "verify", shortcut: "Ctrl+Enter", group: "Run" },
+  { label: "Cancel Verify", command: "cancel-verify", shortcut: "Esc", group: "Run" },
+  { label: "Clear Verify Cache", command: "clear-cache", group: "Run" },
+  { label: "Record Release Evidence", command: "record-evidence", group: "Run" },
+  { label: "New Codex Thread", command: "new-codex", group: "Codex" },
+  { label: "Copy Codex Context Package", command: "copy-context", group: "Codex" },
+  { label: "Reconnect Codex", command: "reconnect-codex", group: "Codex" },
+  { label: "Copy Support Bundle", command: "support-bundle", group: "Help" },
+];
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -172,7 +206,8 @@ function runAppMenuCommand(command) {
     $(selector)?.click();
     return;
   }
-  if (command === "find") showEditorFind();
+  if (command === "command-palette") showCommandPalette();
+  else if (command === "find") showEditorFind();
   else if (command === "copy-line") copyCurrentEditorLine(false);
   else if (command === "cut-line") copyCurrentEditorLine(true);
   else if (command === "comment-line") toggleEditorLineComment();
@@ -197,12 +232,112 @@ function runAppMenuCommand(command) {
   }
 }
 
+function commandPaletteOpen() {
+  const overlay = $("#commandPaletteOverlay");
+  return Boolean(overlay && !overlay.hidden);
+}
+
+function commandPaletteItemDisabled(item) {
+  const selector = APP_MENU_COMMANDS[item.command];
+  return selector ? Boolean($(selector)?.disabled) : false;
+}
+
+function commandPaletteMatches(query = "") {
+  const normalized = query.trim().toLowerCase();
+  const items = COMMAND_PALETTE_ITEMS.map((item) => ({
+    ...item,
+    disabled: commandPaletteItemDisabled(item),
+    searchText: `${item.group} ${item.label} ${item.command} ${item.shortcut || ""}`.toLowerCase(),
+  }));
+  if (!normalized) return items;
+  const terms = normalized.split(/\s+/).filter(Boolean);
+  return items
+    .filter((item) => terms.every((term) => item.searchText.includes(term)))
+    .sort((a, b) => {
+      const aStarts = a.label.toLowerCase().startsWith(normalized) ? 0 : 1;
+      const bStarts = b.label.toLowerCase().startsWith(normalized) ? 0 : 1;
+      return aStarts - bStarts || a.label.localeCompare(b.label);
+    });
+}
+
+function renderCommandPalette() {
+  const input = $("#commandPaletteInput");
+  const list = $("#commandPaletteList");
+  if (!input || !list) return;
+  state.commandPaletteQuery = input.value || "";
+  const items = commandPaletteMatches(state.commandPaletteQuery);
+  if (state.commandPaletteIndex >= items.length) state.commandPaletteIndex = Math.max(0, items.length - 1);
+  if (!items.length) {
+    list.innerHTML = `<div class="command-palette-empty">No commands match "${escapeHtml(state.commandPaletteQuery)}".</div>`;
+    return;
+  }
+  list.innerHTML = items.map((item, index) => `
+    <button
+      class="command-palette-item ${index === state.commandPaletteIndex ? "active" : ""}"
+      type="button"
+      role="option"
+      aria-selected="${index === state.commandPaletteIndex}"
+      data-command="${escapeHtml(item.command)}"
+      data-index="${index}"
+      ${item.disabled ? "disabled" : ""}
+    >
+      <span>${escapeHtml(item.label)}</span>
+      <small>${escapeHtml(item.shortcut || item.group)}</small>
+    </button>
+  `).join("");
+  $$(".command-palette-item").forEach((button) => {
+    button.addEventListener("mouseenter", () => {
+      state.commandPaletteIndex = Number(button.dataset.index || 0);
+      renderCommandPalette();
+    });
+    button.addEventListener("click", () => runCommandPaletteSelection());
+  });
+}
+
+function showCommandPalette(seed = "") {
+  closeAppMenus();
+  const overlay = $("#commandPaletteOverlay");
+  const input = $("#commandPaletteInput");
+  if (!overlay || !input) return false;
+  overlay.hidden = false;
+  input.value = seed;
+  state.commandPaletteIndex = 0;
+  renderCommandPalette();
+  input.focus();
+  input.select();
+  return true;
+}
+
+function hideCommandPalette() {
+  const overlay = $("#commandPaletteOverlay");
+  if (overlay) overlay.hidden = true;
+  state.commandPaletteIndex = 0;
+  $("#sourceEditor")?.focus({ preventScroll: true });
+}
+
+function moveCommandPaletteSelection(delta) {
+  const items = commandPaletteMatches($("#commandPaletteInput")?.value || "");
+  if (!items.length) return;
+  state.commandPaletteIndex = (state.commandPaletteIndex + delta + items.length) % items.length;
+  renderCommandPalette();
+  $(`.command-palette-item[data-index="${state.commandPaletteIndex}"]`)?.scrollIntoView({ block: "nearest" });
+}
+
+function runCommandPaletteSelection() {
+  const items = commandPaletteMatches($("#commandPaletteInput")?.value || "");
+  const item = items[state.commandPaletteIndex];
+  if (!item || commandPaletteItemDisabled(item)) return;
+  hideCommandPalette();
+  runAppMenuCommand(item.command);
+}
+
 function applyExplorerPanel(open) {
   $(".ide-workbench")?.classList.toggle("explorer-hidden", !open);
   const workspaceButton = $('.nav[data-view="workspace"]');
   workspaceButton?.classList.toggle("panel-open", open);
   workspaceButton?.setAttribute("aria-pressed", String(Boolean(open)));
   localStorage.setItem(EXPLORER_PANEL_KEY, String(Boolean(open)));
+  renderStatusBar();
 }
 
 function applyCodexPanel(open) {
@@ -211,6 +346,7 @@ function applyCodexPanel(open) {
   $("#toggleCodexBtn")?.setAttribute("aria-pressed", String(Boolean(open)));
   localStorage.setItem(CODEX_PANEL_KEY, String(Boolean(open)));
   scheduleCodexRefresh(0);
+  renderStatusBar();
 }
 
 function clampPaneWidth(value, minimum, maximum) {
@@ -654,6 +790,7 @@ function renderVerifyOutput(result = null, pendingText = "") {
     state.lastIssueText = "";
     $("#copyIssuesBtn").disabled = true;
     output.textContent = state.lastVerifyText;
+    renderStatusBar();
     return;
   }
   const ok = Boolean(result.ok);
@@ -689,6 +826,7 @@ function renderVerifyOutput(result = null, pendingText = "") {
       <pre class="verify-log">${escapeHtml(result.output || "No compiler output.")}</pre>
     </section>
   `;
+  renderStatusBar();
 }
 
 function setOutputView(view) {
@@ -850,6 +988,7 @@ function setEditorDirty(dirty) {
   $("#saveFileBtn").disabled = !state.activeFilePath || !state.editorDirty || state.editorSaving || conflicted;
   $("#saveAndVerifyBtn").disabled = !state.activeFilePath || !state.editorDirty || state.editorSaving || conflicted;
   $("#rollbackFileBtn").disabled = !state.activeFilePath || !state.lastCheckpoint || state.editorSaving || conflicted;
+  renderStatusBar();
 }
 
 function setCheckpoint(checkpoint = null, history = [], retention = {}) {
@@ -943,6 +1082,7 @@ function applyEditorFileResult(result, statusText = "") {
   updateEditorAccess();
   $("#editorStatus").textContent = statusText || `Review mode | ${Number(result.bytes || 0)} bytes | Arduino IDE owns the saved sketch.`;
   setEditorDirty(false);
+  renderStatusBar();
 }
 
 function markTalosWrite(path, content, mtimeNs = 0) {
@@ -1019,6 +1159,7 @@ function resetEditor(message = "No file selected.") {
   updateEditorAccess();
   $("#editorStatus").textContent = message;
   setEditorDirty(false);
+  renderStatusBar();
 }
 
 function canDiscardEditorChanges() {
@@ -2387,6 +2528,34 @@ function codexVerifySummary() {
   return firstLine.length > 120 ? `${firstLine.slice(0, 117)}...` : firstLine;
 }
 
+function pathLeaf(path = "") {
+  return String(path || "").split(/[\\/]/).filter(Boolean).pop() || "";
+}
+
+function setStatusItem(selector, text, title = "") {
+  const item = $(selector);
+  if (!item) return;
+  item.textContent = text;
+  item.title = title || text;
+}
+
+function renderStatusBar() {
+  const workspace = state.selectedWorkspacePath || $("#arduinoPathInput")?.value || "";
+  const file = state.activeFilePath || "";
+  const board = state.arduinoBoardName || $("#arduinoFqbnInput")?.value || "unknown";
+  const verifyState = state.arduinoVerifyRunning
+    ? "running"
+    : state.lastVerifyResult
+      ? (state.lastVerifyOk ? "passed" : "failed")
+      : "idle";
+  const codexText = $("#codexStatus")?.textContent || (state.codexBusy ? "working" : "ready");
+  setStatusItem("#statusWorkspace", `Workspace: ${pathLeaf(workspace) || "none"}`, workspace || "No Arduino workspace selected");
+  setStatusItem("#statusFile", `File: ${pathLeaf(file) || "none"}`, file || "No source file selected");
+  setStatusItem("#statusBoard", `Board: ${board}`, state.arduinoFqbnFull || board);
+  setStatusItem("#statusVerify", `Verify: ${verifyState}`, codexVerifySummary());
+  setStatusItem("#statusCodex", `Codex: ${state.codexBusy ? "working" : codexText}`, codexText);
+}
+
 function codexPayloadForNextTurn(message = "") {
   return {
     message,
@@ -2646,6 +2815,7 @@ function renderCodex(payload = {}) {
   $("#reconnectCodexBtn").hidden = payload.connected && !payload.error;
   $("#reconnectCodexBtn").disabled = state.codexBusy || payload.initializing || connection.state === "connecting";
   $("#codexStatus").textContent = codexConnectionStatus(payload);
+  renderStatusBar();
   const messages = payload.messages || [];
   const patches = payload.patches || [];
   const conversations = payload.conversations || [];
@@ -2971,6 +3141,7 @@ function render(payload) {
   renderEnvironmentProfile(payload.arduino_profile || state.workspaceMap.environment_profile || {});
   renderArduinoProjects(projects);
   renderLogs(payload.events || []);
+  renderStatusBar();
 }
 
 async function refresh() {
@@ -3107,6 +3278,7 @@ function setArduinoVerifyRunning(running) {
   $("#verifyArduinoBtn").disabled = state.arduinoVerifyRunning;
   $("#cancelArduinoVerifyBtn").hidden = !state.arduinoVerifyRunning;
   $("#cancelArduinoVerifyBtn").disabled = !state.arduinoVerifyRunning;
+  renderStatusBar();
 }
 
 async function cancelArduinoVerify() {
@@ -3279,32 +3451,6 @@ function bindWindowResizeHandles() {
   });
 }
 
-function snapTarget(kind) {
-  const screenInfo = window.screen;
-  const left = Number(screenInfo.availLeft ?? 0);
-  const top = Number(screenInfo.availTop ?? 0);
-  const width = Number(screenInfo.availWidth || screenInfo.width || 1200);
-  const height = Number(screenInfo.availHeight || screenInfo.height || 800);
-  const halfW = Math.round(width / 2);
-  const halfH = Math.round(height / 2);
-  const thirdW = Math.round(width / 3);
-  const targets = {
-    left: [left, top, halfW, height],
-    right: [left + width - halfW, top, halfW, height],
-    "third-left": [left, top, thirdW, height],
-    "third-center": [left + thirdW, top, width - thirdW * 2, height],
-    "top-left": [left, top, halfW, halfH],
-    "bottom-right": [left + width - halfW, top + height - halfH, halfW, halfH],
-  };
-  return targets[kind] || targets.left;
-}
-
-async function snapWindow(kind) {
-  const [x, y, width, height] = snapTarget(kind);
-  await window.pywebview?.api?.snap_to?.(x, y, width, height);
-  setMaximizeIcon(false);
-  $("#snapMenu")?.classList.remove("open");
-}
 
 function bindEvents() {
   restorePaneWidths();
@@ -3373,6 +3519,9 @@ function bindEvents() {
       event.stopPropagation();
       toggleAppMenu(button.dataset.menuButton);
     });
+    button.addEventListener("mouseenter", () => {
+      if ($(".app-menu.open")) toggleAppMenu(button.dataset.menuButton);
+    });
   });
   $$(".app-menu-action[data-command]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -3388,6 +3537,36 @@ function bindEvents() {
   });
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") closeAppMenus();
+  });
+  $("#commandCenterBtn")?.addEventListener("click", () => showCommandPalette());
+  $("#commandPaletteInput")?.addEventListener("input", () => {
+    state.commandPaletteIndex = 0;
+    renderCommandPalette();
+  });
+  $("#commandPaletteOverlay")?.addEventListener("mousedown", (event) => {
+    if (event.target.id === "commandPaletteOverlay") hideCommandPalette();
+  });
+  $("#statusWorkspace")?.addEventListener("click", () => {
+    setView("workspace");
+    applyExplorerPanel(true);
+  });
+  $("#statusFile")?.addEventListener("click", () => {
+    setView("workspace");
+    applyExplorerPanel(true);
+    $("#sourceEditor")?.focus({ preventScroll: true });
+  });
+  $("#statusBoard")?.addEventListener("click", () => {
+    setView("workspace");
+    applyExplorerPanel(true);
+    $("#arduinoFqbnInput")?.focus({ preventScroll: true });
+  });
+  $("#statusVerify")?.addEventListener("click", () => {
+    setView("workspace");
+    setOutputView("verify");
+  });
+  $("#statusCodex")?.addEventListener("click", () => {
+    setView("workspace");
+    applyCodexPanel(true);
   });
   $("#applyCodexPatchBtn").addEventListener("click", () => applyCodexPatch());
   $("#verifyCodexPatchBtn").addEventListener("click", verifyCodexPatch);
@@ -3521,6 +3700,27 @@ function bindEvents() {
     showWindowMenu(event.clientX, event.clientY);
   });
   document.addEventListener("keydown", (event) => {
+    if (commandPaletteOpen()) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        hideCommandPalette();
+      } else if (event.key === "Enter") {
+        event.preventDefault();
+        runCommandPaletteSelection();
+      } else if (event.key === "ArrowDown") {
+        event.preventDefault();
+        moveCommandPaletteSelection(1);
+      } else if (event.key === "ArrowUp") {
+        event.preventDefault();
+        moveCommandPaletteSelection(-1);
+      }
+      return;
+    }
+    if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === "p") {
+      event.preventDefault();
+      showCommandPalette();
+      return;
+    }
     if (event.key === "Escape") hideWindowMenu();
     if (event.defaultPrevented) return;
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f" && activeViewId() === "workspace") {
@@ -3545,14 +3745,6 @@ function bindEvents() {
   });
   $("#minimizeBtn").addEventListener("click", () => window.pywebview?.api?.minimize?.());
   $("#maximizeBtn").addEventListener("click", toggleMaximize);
-  $("#maximizeBtn").addEventListener("pointerdown", () => $("#snapMenu")?.classList.add("open"));
-  $$(".snap-option").forEach((button) => {
-    button.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      snapWindow(button.dataset.snap);
-    });
-  });
   $("#closeBtn").addEventListener("click", () => window.pywebview?.api?.close?.());
   $("#windowRestoreMenuBtn").addEventListener("click", async () => {
     await window.pywebview?.api?.restore?.();

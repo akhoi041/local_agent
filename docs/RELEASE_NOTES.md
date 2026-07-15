@@ -1,5 +1,31 @@
 # Talos Release Notes
 
+## 0.4.0 Pre-Alpha
+
+Talos 0.4.0 Pre-Alpha focuses on product readiness for broader Arduino/Codex testing.
+
+### Highlights
+
+- Adds user-facing documentation for first run, troubleshooting, support bundles, diagnostics, install lifecycle, recovery, and UI/UX smoke checks.
+- Adds local-only opt-in diagnostics with previewable redacted exports. Diagnostics are disabled by default and do not upload to a server in 0.4.0.
+- Refreshes the workbench toward a VS Code-inspired developer-tool layout with a compact activity bar, Explorer, editor/review surface, bottom output panel, Codex column, menu bar, command palette, and status bar.
+- Clarifies that Arduino IDE remains the saved-source owner while Talos stages, reviews, verifies, and optionally saves changes back to the sketch folder.
+- Improves release-readiness evidence for clean install, upgrade, uninstall, app-data lifecycle, support bundle review, and distribution checklist gates.
+
+### Known Limitations
+
+- Arduino remains the only supported target in this release; MATLAB and other app integrations are intentionally deferred.
+- Codex reasoning runs through the user's authenticated Codex environment. Talos does not include, replace, or embed an AI model.
+- Hardware upload and serial workflows are not yet treated as commercial-release guarantees.
+- Diagnostics are local-only in 0.4.0. Hosted opt-in feedback belongs to a later version after policy and consent are complete.
+- The Pre-Alpha/Beta installer may be unsigned until code signing is configured; Windows may show SmartScreen or unknown-publisher warnings.
+
+### Upgrade Notes
+
+- Existing 0.3.0 runtime data under `%LOCALAPPDATA%\T-Engine\Talos` is reused.
+- The 0.4.0 diagnostics feature is disabled by default. Users must explicitly enable it in Settings before new diagnostics are recorded.
+- Pending review, checkpoint, history, and workspace profile data should remain under the per-user Talos app-data folder.
+
 ## 0.3.0 Beta
 
 Talos 0.3.0 Beta focuses on maturing the Codex-Arduino workflow after the packaged 0.2.0 baseline.

@@ -106,7 +106,7 @@ $appLifecycleSmokeReady = $appLifecycleSmoke -and [string]$appLifecycleSmoke.sta
 $requiredReady = $manifest -and $hasExecutable -and $hasInstaller -and $signingReady -and $installerSmokeReady -and $installedAppSmokeReady -and $appLifecycleSmokeReady
 
 if ($RequireReady -and -not $requiredReady) {
-  throw "Distribution checklist is not release-ready. Build artifacts, signing status, installer smoke, installed-app smoke, and app lifecycle smoke must all be present and passing."
+  throw "Distribution checklist is not release-ready. Build artifacts, signing or explicit unsigned Pre-Alpha/Beta status, installer smoke, installed-app smoke, and app lifecycle smoke must all be present and passing."
 }
 
 $lines = New-Object System.Collections.Generic.List[string]
@@ -123,7 +123,7 @@ $lines.Add("| --- | --- | --- |")
 $lines.Add(("| Release manifest | {0} | ``release_manifest.json`` |" -f $(if ($manifest) { "present" } else { "missing" })))
 $lines.Add(("| Standalone executable artifact | {0} | ``release_manifest.json`` artifacts |" -f $(if ($hasExecutable) { "present" } else { "missing" })))
 $lines.Add(("| Windows installer artifact | {0} | ``release_manifest.json`` artifacts |" -f $(if ($hasInstaller) { "present" } else { "missing" })))
-$lines.Add(("| Signing or explicit unsigned Beta | {0} | ``signing_status.json`` |" -f $(if ($signingReady) { "ready" } else { "missing" })))
+$lines.Add(("| Signing or explicit unsigned Pre-Alpha/Beta | {0} | ``signing_status.json`` |" -f $(if ($signingReady) { "ready" } else { "missing" })))
 $lines.Add(("| Installer install/uninstall smoke | {0} | ``installer_smoke.json`` |" -f $(if ($installerSmokeReady) { "passed" } else { "missing" })))
 $lines.Add(("| Installed app Arduino/Codex smoke | {0} | ``installed_app_smoke.json`` |" -f $(if ($installedAppSmokeReady) { "passed" } else { "missing/manual" })))
 $lines.Add(("| App-data lifecycle smoke | {0} | ``app_lifecycle_smoke.json`` |" -f $(if ($appLifecycleSmokeReady) { "passed" } else { "missing" })))
@@ -188,7 +188,7 @@ $lines.Add("")
 $lines.Add("## Distribution Decision")
 $lines.Add("")
 $lines.Add("- [ ] Artifact names and hashes reviewed.")
-$lines.Add("- [ ] Signing status reviewed.")
+$lines.Add("- [ ] Signing or explicit unsigned Pre-Alpha/Beta status reviewed.")
 $lines.Add("- [ ] Installer install/uninstall evidence reviewed.")
 $lines.Add("- [ ] Installed app smoke evidence reviewed.")
 $lines.Add("- [ ] App-data lifecycle evidence reviewed.")
