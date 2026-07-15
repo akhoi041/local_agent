@@ -267,6 +267,7 @@ Purpose: remove rough edges before the broader Pre-Alpha release.
 - [ ] Add or update timing thresholds for diagnostics export and UI refresh paths introduced in 0.4.0.
 - [ ] Run folder/code cleanup to remove stale generated files, unused docs, dead code, and obsolete pipeline references.
 - [ ] Optimize repeated tool actions so Verify Sandbox, Save & Verify, support export, and diagnostics preview report progress clearly and do not block the main UI.
+- [ ] Audit the current Codex runtime dependency and document the 0.4.0 limitation clearly: Talos uses an available Codex runtime, may fall back to the VS Code extension runtime, and does not yet provide the 0.5.0 Runtime Manager.
 - [ ] Add regression tests for any product-readiness polish fixes.
 
 Exit condition: Talos feels stable enough for external testers and does not disrupt normal Windows desktop use.
@@ -285,12 +286,13 @@ Purpose: package and validate the completed 0.4.0 Pre-Alpha.
 - [ ] Run clean install/upgrade/uninstall validation and record evidence.
 - [ ] Generate final 0.4.0 distribution checklist with `-RequireReady`.
 - [ ] Bump app identity, release manifest naming, Inno fallback metadata, and release notes from 0.3.0 to 0.4.0 only at the final release gate.
-- [ ] Update release notes with 0.4.0 product-readiness fixes, UI/UX refresh, opt-in diagnostics behavior, known limitations, upgrade notes, and support instructions.
+- [ ] Update release notes with 0.4.0 product-readiness fixes, UI/UX refresh, opt-in diagnostics behavior, known limitations, Codex runtime dependency notes, upgrade notes, and support instructions.
 
 Exit condition: Talos 0.4.0 Pre-Alpha can be installed by a broader tester, used for the Arduino/Codex workflow, debugged through support evidence, and distributed with honest release documentation.
 
 ## Deferred Until After 0.4.0
 
+- Codex Runtime Manager: runtime discovery, pinning, health checks, sign-in readiness, and VS Code extension fallback treated as one provider rather than the product dependency.
 - MATLAB target integration.
 - Hardware upload and serial-monitor guarantees.
 - Auto-update infrastructure.
