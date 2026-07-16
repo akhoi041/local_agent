@@ -41,6 +41,7 @@ from talos.arduino import (
 from talos.codex_bridge import CODEX_BRIDGE
 from talos.arduino_events import ArduinoEventWatcher
 from talos.diagnostics import diagnostics_export, diagnostics_settings, record_diagnostic
+from talos.performance import performance_guardrails
 from talos.checkpoints import (
     create_before_save_checkpoint,
     discard_checkpoint,
@@ -179,6 +180,7 @@ def state_payload() -> dict[str, Any]:
             "GET /api/run_history",
             "GET /api/support_bundle",
             "GET /api/diagnostics_export",
+            "GET /api/performance_guardrails",
             "POST /api/codex_reconnect",
             "POST /api/codex_context_package",
             "POST /api/codex_message",
@@ -284,6 +286,7 @@ class TalosWebHandler(BaseHTTPRequestHandler):
                 history=filtered_run_history(workspace=workspace),
                 redact=redacted,
             )
+            bundle["performance"] = performance_guardrails()
             self.send_json({"ok": True, "bundle": bundle})
             return
         if parsed.path == "/api/diagnostics_export":
@@ -291,6 +294,9 @@ class TalosWebHandler(BaseHTTPRequestHandler):
             app_identity = load_app_identity()
             build_metadata = load_build_metadata(app_identity)
             self.send_json({"ok": True, "diagnostics": diagnostics_export(config, app_identity, build_metadata)})
+            return
+        if parsed.path == "/api/performance_guardrails":
+            self.send_json({"ok": True, "performance": performance_guardrails()})
             return
         path = parsed.path
         if path == "/":
@@ -412,7 +418,7 @@ class TalosWebHandler(BaseHTTPRequestHandler):
                 readiness,
                 verify_result,
                 payload.get("blocked_cases") if isinstance(payload.get("blocked_cases"), list) else [],
-                str(payload.get("release") or "0.3.0-beta"),
+                str(payload.get("release") or "0.4.0-pre-alpha"),
             )
             log_event(f"{now()} recorded Arduino release evidence: {evidence.get('status')}")
             self.send_json({"ok": True, "evidence": evidence})

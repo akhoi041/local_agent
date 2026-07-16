@@ -2,7 +2,7 @@
   "schema_version": 1,
   "app_name": "Talos",
   "publisher": "T-Engine",
-  "release_channel": "Beta",
+  "release_channel": "Pre-Alpha",
   "status": "documented_unsigned_prealpha_beta",
   "unsigned_beta_allowed": true,
   "unsigned_release_label": "UNSIGNED PRE-ALPHA/BETA",

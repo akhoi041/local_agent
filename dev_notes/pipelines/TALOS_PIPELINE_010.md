@@ -1,4 +1,4 @@
-# Talos Pipeline - First Version 0.1.0 Beta
+﻿# Talos Pipeline - First Version 0.1.0 Beta
 
 ## Final Goal
 
@@ -17,10 +17,10 @@ Talos = local AI control layer between Codex and external IDEs/apps, starting wi
 
 ```text
 Current active stage: Completed - 0.1.0 Beta first-version pipeline
-Next pipeline file: docs/TALOS_PIPELINE_020.md
+Next pipeline file: dev_notes/pipelines/TALOS_PIPELINE_020.md
 ```
 
-Stages 0 through 10 are complete. This file is now the frozen first-version pipeline for Talos 0.1.0 Beta and should be kept for release-history comparison. New implementation planning continues in `docs/TALOS_PIPELINE_020.md`.
+Stages 0 through 10 are complete. This file is now the frozen first-version pipeline for Talos 0.1.0 Beta and should be kept for release-history comparison. New implementation planning continues in `dev_notes/pipelines/TALOS_PIPELINE_020.md`.
 
 Talos can detect Arduino sketches and boards, present structured verify results, safely read or edit source files, host a real Codex app-server conversation beside the editor, stage Codex changes outside the original sketch, use native C for speed-sensitive Windows detection, protect real sketches with conflicts, checkpoints, rollback, staged sandbox verification, profile readiness checks, release evidence, recovery smoke tests, and commercial packaging gates. MATLAB and other app integrations remain paused.
 

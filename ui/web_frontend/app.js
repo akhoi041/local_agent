@@ -3260,9 +3260,15 @@ async function recordReleaseEvidence() {
   const button = $("#recordEvidenceBtn");
   button.disabled = true;
   try {
+    const app = state.app || {};
+    const channel = String(app.channel || "pre-alpha")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "");
+    const release = `${app.version || "0.4.0"}${channel ? `-${channel}` : ""}`;
     const result = await api("/api/release_evidence", {
       method: "POST",
-      body: JSON.stringify({ verify_result: state.lastVerifyResult, blocked_cases: [], release: "0.3.0-beta" }),
+      body: JSON.stringify({ verify_result: state.lastVerifyResult, blocked_cases: [], release }),
     });
     $("#editorStatus").textContent = `Recorded release evidence: ${result.evidence?.status || "unknown"}.`;
     await refreshRunHistory();

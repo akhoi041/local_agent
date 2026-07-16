@@ -66,7 +66,7 @@ def record_release_evidence(
     profile_readiness: dict[str, Any],
     verify_result: dict[str, Any],
     blocked_cases: list[str] | None = None,
-    release: str = "0.3.0-beta",
+    release: str = "0.4.0-pre-alpha",
 ) -> dict[str, Any]:
     summary = verify_result.get("summary") if isinstance(verify_result.get("summary"), dict) else {}
     result = verify_result.get("result") if isinstance(verify_result.get("result"), dict) else verify_result
@@ -74,7 +74,7 @@ def record_release_evidence(
         "id": f"release-evidence-{uuid.uuid4().hex}",
         "type": "release_evidence",
         "schema_version": 1,
-        "release": str(release or "0.3.0-beta"),
+        "release": str(release or "0.4.0-pre-alpha"),
         "time": now(),
         "workspace": str(workspace_map.get("workspace") or summary.get("path") or ""),
         "main_sketch": str(workspace_map.get("main_sketch") or summary.get("main_sketch") or ""),
