@@ -1,4 +1,4 @@
-# Talos
+﻿# Talos
 
 Talos is a local Windows control layer for Codex and Arduino IDE.
 
@@ -126,10 +126,11 @@ scripts/distribution_checklist.ps1 Generate the final release distribution check
 installer/talos.iss     Inno Setup installer definition
 scripts/smoke_release_recovery.py Validate restart/recovery safety for pending Codex reviews
 tests/                  Regression tests
-docs/                   README and license
+docs/                   User, release, legal, support, and trust docs
+dev_notes/              Internal roadmap, version pipelines, and stage evidence
 ```
 
-Release/legal documentation for packaged builds:
+Documentation inventory:
 
 ```text
 docs/LICENSE                 Project license
@@ -139,6 +140,7 @@ docs/RELEASE_NOTES.md        Current release highlights and known limitations
 docs/THIRD_PARTY_NOTICES.md  Dependency and tooling notices
 docs/CODE_SIGNING.md         Signing policy, unsigned Pre-Alpha/Beta path, and verification commands
 docs/DISTRIBUTION_COPY.md    Release copy explaining Talos as an Arduino-first Codex local bridge
+docs/DOCS_INDEX.md           Navigation index and cleanup taxonomy for active, release, evidence, and version docs
 docs/INSTALLED_APP_SMOKE_TEST.md Installed-app Arduino/Codex smoke-test checklist
 docs/TALOS_USER_GUIDE.md     User-facing install, first-run, Arduino, Codex, verify, save, and recovery guide
 docs/TALOS_FIRST_RUN_CHECKLIST.md New-tester checklist for simple `.ino`, multi-file sketches, Codex review, recovery, and support
@@ -148,12 +150,19 @@ docs/TALOS_INSTALL_LIFECYCLE.md Clean install, upgrade, uninstall, and app-data 
 docs/TALOS_UI_UX_CHECKLIST.md UI/UX smoke checklist for window sizes, tools, Codex, verify, and settings states
 docs/TALOS_RECOVERY_GUIDE.md Safe recovery path for Codex review, Arduino external edits, and rollback conflicts
 docs/TALOS_SUPPORT_DEBUG.md Support bundle, run-history filters, and release-evidence workflow
-docs/TALOS_ROADMAP.md        Version-level roadmap across Talos releases
-docs/TALOS_PIPELINE_010.md   Completed 0.1.0 Beta first-version pipeline
-docs/TALOS_PIPELINE_020.md   Completed 0.2.0 Beta pipeline
-docs/TALOS_PIPELINE_030.md   Completed 0.3.0 Beta pipeline
-docs/TALOS_PIPELINE_040.md   Active 0.4.0 Pre-Alpha pipeline
-docs/TALOS_030_BASELINE.md   0.3.0 starting baseline and carry-over guarantees
+```
+
+Internal developer planning notes:
+
+```text
+dev_notes/roadmap/TALOS_ROADMAP.md              Version-level roadmap across Talos releases
+dev_notes/pipelines/TALOS_PIPELINE_010.md       Completed 0.1.0 Beta first-version pipeline
+dev_notes/pipelines/TALOS_PIPELINE_020.md       Completed 0.2.0 Beta pipeline
+dev_notes/pipelines/TALOS_PIPELINE_030.md       Completed 0.3.0 Beta pipeline
+dev_notes/pipelines/TALOS_PIPELINE_040.md       Active 0.4.0 Beta pipeline
+dev_notes/pipelines/TALOS_PIPELINE_055.md       Planned 0.5.5 Beta architecture-slimming pipeline
+dev_notes/evidence/TALOS_020_STAGE1_VALIDATION.md 0.2.0 Stage 1 validation evidence
+dev_notes/evidence/TALOS_030_BASELINE.md       0.3.0 starting baseline and carry-over guarantees
 ```
 
 User-writable runtime data is stored under `%LOCALAPPDATA%\T-Engine\Talos` by default. `config.json`, `run_history.json`, `checkpoints.json`, and `codex_reviews.json` live there, while disposable compile and Codex staging copies live under `sandbox\` and `staging\`. Set `TALOS_APP_DATA_DIR` only for tests or isolated debug runs.

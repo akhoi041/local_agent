@@ -1,4 +1,4 @@
-# Talos 0.3.0 Baseline
+﻿# Talos 0.3.0 Baseline
 
 Date: 2026-07-08
 
@@ -8,12 +8,12 @@ Talos 0.3.0 starts from the completed 0.2.0 Beta foundation.
 
 Frozen comparison records:
 
-- `docs/TALOS_PIPELINE_010.md`
-- `docs/TALOS_PIPELINE_020.md`
+- `dev_notes/pipelines/TALOS_PIPELINE_010.md`
+- `dev_notes/pipelines/TALOS_PIPELINE_020.md`
 
 Active development record:
 
-- `docs/TALOS_PIPELINE_030.md`
+- `dev_notes/pipelines/TALOS_PIPELINE_030.md`
 
 ## Carry-Over Guarantees
 

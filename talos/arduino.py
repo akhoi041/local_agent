@@ -988,7 +988,7 @@ def codex_context_package(
         "estimated_bytes": active_bytes + len(str(verify_context or "").encode("utf-8")),
     }
     return {
-        "version": "0.3.0",
+        "version": "0.4.0",
         "message": str(message or ""),
         "workspace": {
             "path": str(summary.get("path") or ""),

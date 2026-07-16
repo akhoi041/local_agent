@@ -192,7 +192,7 @@ $lines.Add("- [ ] Signing or explicit unsigned Pre-Alpha/Beta status reviewed.")
 $lines.Add("- [ ] Installer install/uninstall evidence reviewed.")
 $lines.Add("- [ ] Installed app smoke evidence reviewed.")
 $lines.Add("- [ ] App-data lifecycle evidence reviewed.")
-$lines.Add("- [ ] Known limitations accepted for this Beta channel.")
+$lines.Add("- [ ] Known limitations accepted for this Pre-Alpha/Beta channel.")
 $lines.Add("- [ ] Release approved for distribution.")
 
 $outputDir = Split-Path -Parent $outputPathFull

@@ -19,11 +19,13 @@ Talos 0.4.0 Pre-Alpha focuses on product readiness for broader Arduino/Codex tes
 - Hardware upload and serial workflows are not yet treated as commercial-release guarantees.
 - Diagnostics are local-only in 0.4.0. Hosted opt-in feedback belongs to a later version after policy and consent are complete.
 - The Pre-Alpha/Beta installer may be unsigned until code signing is configured; Windows may show SmartScreen or unknown-publisher warnings.
+- Talos 0.4.0 uses an available Codex runtime and may fall back to the VS Code extension runtime. First-class runtime discovery, pinning, and sign-in readiness move to the 0.5.0 Runtime Manager.
 
 ### Upgrade Notes
 
 - Existing 0.3.0 runtime data under `%LOCALAPPDATA%\T-Engine\Talos` is reused.
 - The 0.4.0 diagnostics feature is disabled by default. Users must explicitly enable it in Settings before new diagnostics are recorded.
+- Use `docs/TALOS_FIRST_RUN_CHECKLIST.md`, `docs/TALOS_TROUBLESHOOTING.md`, and `docs/TALOS_SUPPORT_DEBUG.md` when handing this build to external testers.
 - Pending review, checkpoint, history, and workspace profile data should remain under the per-user Talos app-data folder.
 
 ## 0.3.0 Beta

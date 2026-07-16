@@ -71,6 +71,7 @@ from talos.run_history import (
     support_bundle,
 )
 from talos.diagnostics import diagnostics_export, diagnostics_settings, record_diagnostic, sanitize_payload
+from talos.performance import performance_guardrails
 from talos.server import state_payload
 
 class TalosArduinoTests(unittest.TestCase):
@@ -886,8 +887,8 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertNotIn(".editor-command-menu-panel", style)
         self.assertNotIn(".menu-action", style)
         self.assertIn("overflow: visible", style)
-        self.assertIn("Simplified", (Path(__file__).parents[1] / "docs" / "TALOS_PIPELINE_040.md").read_text(encoding="utf-8"))
-        self.assertIn("VS Code-style top menu bar", (Path(__file__).parents[1] / "docs" / "TALOS_PIPELINE_040.md").read_text(encoding="utf-8"))
+        self.assertIn("Simplified", (Path(__file__).parents[1] / "dev_notes" / "pipelines" / "TALOS_PIPELINE_040.md").read_text(encoding="utf-8"))
+        self.assertIn("VS Code-style top menu bar", (Path(__file__).parents[1] / "dev_notes" / "pipelines" / "TALOS_PIPELINE_040.md").read_text(encoding="utf-8"))
         self.assertIn("explorer-hidden", style)
         self.assertIn("minmax(300px, var(--codex-pane-width))", style)
         self.assertNotIn("translateX(100%)", style)
@@ -1208,7 +1209,7 @@ class TalosArduinoTests(unittest.TestCase):
         installer_script = (root / "installer" / "talos.iss").read_text(encoding="utf-8")
         local_install = (root / "scripts" / "install_app.ps1").read_text(encoding="utf-8")
         readme = (root / "docs" / "README.md").read_text(encoding="utf-8")
-        pipeline = (root / "docs" / "TALOS_PIPELINE_010.md").read_text(encoding="utf-8")
+        pipeline = (root / "dev_notes" / "pipelines" / "TALOS_PIPELINE_010.md").read_text(encoding="utf-8")
 
         for doc_name in required_docs:
             self.assertIn(doc_name, release_script)
@@ -1224,7 +1225,7 @@ class TalosArduinoTests(unittest.TestCase):
         sign_script = (root / "scripts" / "sign_release.ps1").read_text(encoding="utf-8")
         release_script = (root / "scripts" / "build_release.ps1").read_text(encoding="utf-8")
         readme = (root / "docs" / "README.md").read_text(encoding="utf-8")
-        pipeline = (root / "docs" / "TALOS_PIPELINE_010.md").read_text(encoding="utf-8")
+        pipeline = (root / "dev_notes" / "pipelines" / "TALOS_PIPELINE_010.md").read_text(encoding="utf-8")
 
         self.assertEqual(policy["schema_version"], 1)
         self.assertEqual(policy["publisher"], "T-Engine")
@@ -1260,7 +1261,7 @@ class TalosArduinoTests(unittest.TestCase):
         privacy_doc = (root / "docs" / "PRIVACY.md").read_text(encoding="utf-8")
         distribution_doc = (root / "docs" / "DISTRIBUTION_COPY.md").read_text(encoding="utf-8")
         checklist_script = (root / "scripts" / "distribution_checklist.ps1").read_text(encoding="utf-8")
-        pipeline = (root / "docs" / "TALOS_PIPELINE_040.md").read_text(encoding="utf-8")
+        pipeline = (root / "dev_notes" / "pipelines" / "TALOS_PIPELINE_040.md").read_text(encoding="utf-8")
 
         self.assertEqual(policy["status"], "documented_unsigned_prealpha_beta")
         self.assertEqual(policy["unsigned_release_label"], "UNSIGNED PRE-ALPHA/BETA")
@@ -1281,7 +1282,7 @@ class TalosArduinoTests(unittest.TestCase):
         smoke_doc = (root / "docs" / "INSTALLED_APP_SMOKE_TEST.md").read_text(encoding="utf-8")
         release_script = (root / "scripts" / "build_release.ps1").read_text(encoding="utf-8")
         readme = (root / "docs" / "README.md").read_text(encoding="utf-8")
-        pipeline = (root / "docs" / "TALOS_PIPELINE_010.md").read_text(encoding="utf-8")
+        pipeline = (root / "dev_notes" / "pipelines" / "TALOS_PIPELINE_010.md").read_text(encoding="utf-8")
 
         self.assertIn("[switch]$ManualArduinoConfirmed", smoke_script)
         self.assertIn("[switch]$AutoArduinoHarness", smoke_script)
@@ -1375,7 +1376,7 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("TALOS_UI_UX_CHECKLIST.md", readme)
 
     def test_pipeline_defines_exit_condition_for_every_stage(self) -> None:
-        pipeline = (Path(__file__).parents[1] / "docs" / "TALOS_PIPELINE_010.md").read_text(encoding="utf-8")
+        pipeline = (Path(__file__).parents[1] / "dev_notes" / "pipelines" / "TALOS_PIPELINE_010.md").read_text(encoding="utf-8")
         stages = re.split(r"(?=^## Stage \d+ - )", pipeline, flags=re.MULTILINE)
         stage_sections = [section for section in stages if section.startswith("## Stage ")]
 
@@ -1524,7 +1525,7 @@ class TalosArduinoTests(unittest.TestCase):
 
             self.assertEqual(events[0]["type"], "release_evidence")
             self.assertEqual(events[0]["schema_version"], 1)
-            self.assertEqual(events[0]["release"], "0.3.0-beta")
+            self.assertEqual(events[0]["release"], "0.4.0-pre-alpha")
             self.assertTrue(events[0]["profile_ready"])
             self.assertEqual(events[0]["verify_summary"]["memory"]["program"]["percent"], 12)
             self.assertEqual(events[0]["blocked_cases"], ["none"])
@@ -1957,17 +1958,33 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertEqual(tool_scan.call_count, 1)
         self.assertEqual(window_scan.call_count, 1)
         self.assertEqual(payload["app"]["publisher"], "T-Engine")
-        self.assertEqual(payload["app"]["version"], "0.3.0")
-        self.assertEqual(payload["app"]["channel"], "Beta")
+        self.assertEqual(payload["app"]["version"], "0.4.0")
+        self.assertEqual(payload["app"]["channel"], "Pre-Alpha")
         self.assertEqual(payload["build"]["schema_version"], 1)
-        self.assertEqual(payload["build"]["version"], "0.3.0")
-        self.assertEqual(payload["build"]["channel"], "Beta")
+        self.assertEqual(payload["build"]["version"], "0.4.0")
+        self.assertEqual(payload["build"]["channel"], "Pre-Alpha")
         self.assertIn(payload["build"]["mode"], {"source", "packaged"})
         self.assertIn("python", payload["build"])
         self.assertTrue(payload["arduino_ide"]["running"])
         self.assertIn("arduino_profile_readiness", payload)
         self.assertIn("POST /api/release_evidence", payload["tools"])
         self.assertIn("GET /api/support_bundle", payload["tools"])
+        self.assertIn("GET /api/performance_guardrails", payload["tools"])
+
+    def test_performance_guardrails_document_runtime_and_process_policy(self) -> None:
+        guardrails = performance_guardrails()
+
+        self.assertEqual(guardrails["schema_version"], 1)
+        self.assertGreater(guardrails["thresholds"]["verify_total_seconds"], 0)
+        self.assertIn("native_detection_ms", guardrails["thresholds"])
+        self.assertIn("verify_cache_lookup_ms", guardrails["thresholds"])
+        self.assertIn("support_bundle_seconds", guardrails["thresholds"])
+        self.assertIn("diagnostics_export_seconds", guardrails["thresholds"])
+        self.assertIn("ui_refresh_ms", guardrails["thresholds"])
+        self.assertTrue(guardrails["process_policy"]["no_interactive_powershell_during_normal_use"])
+        self.assertTrue(guardrails["process_policy"]["no_interactive_cmd_during_normal_use"])
+        self.assertFalse(guardrails["codex_runtime_040"]["runtime_manager_available"])
+        self.assertEqual(guardrails["codex_runtime_040"]["planned_runtime_manager_version"], "0.5.0")
 
     def test_arduino_discovery_does_not_include_configured_folder_without_open_ide_signal(self) -> None:
         with TemporaryDirectory() as tmp:

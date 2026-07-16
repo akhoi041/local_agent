@@ -92,9 +92,10 @@ The diagnostics export is a redacted JSON object:
 }
 ```
 
-## Future Server Step
+## Future Runtime And Server Steps
 
 Server-side feedback belongs to a later version after policy and consent are complete:
 
 - 0.4.5: policy, consent, retention, deletion, and trust gate.
-- 0.5.0: opt-in feedback server.
+- 0.5.0: Codex Runtime Manager with sign-in/runtime readiness and VS Code extension fallback treated as one provider.
+- Later server phase: opt-in feedback ingestion after consent, retention, deletion, and owner data access rules are implemented.

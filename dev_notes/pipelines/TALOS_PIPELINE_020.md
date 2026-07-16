@@ -1,4 +1,4 @@
-# Talos Pipeline - Version 0.2.0 Beta
+﻿# Talos Pipeline - Version 0.2.0 Beta
 
 ## Final Goal For 0.2.0
 
@@ -13,9 +13,9 @@ This version is not a MATLAB release and not the final 1.0.0 Alpha. It focuses o
 ## Baseline
 
 ```text
-Roadmap: docs/TALOS_ROADMAP.md
-Previous completed pipeline: docs/TALOS_PIPELINE_010.md
-Current active pipeline: docs/TALOS_PIPELINE_020.md
+Roadmap: dev_notes/roadmap/TALOS_ROADMAP.md
+Previous completed pipeline: dev_notes/pipelines/TALOS_PIPELINE_010.md
+Current active pipeline: dev_notes/pipelines/TALOS_PIPELINE_020.md
 Target version: 0.2.0 Beta
 ```
 
@@ -42,22 +42,22 @@ Talos 0.2.0 Beta is ready only when these are true:
 
 ## Progress Rules
 
-- Keep `docs/TALOS_PIPELINE_010.md` as the frozen 0.1.0 Beta comparison record.
+- Keep `dev_notes/pipelines/TALOS_PIPELINE_010.md` as the frozen 0.1.0 Beta comparison record.
 - Track all 0.2.0 work in this file.
 - Every completed 0.2.0 task must update this file.
 - Do not add MATLAB or unrelated app targets to this pipeline.
 - Use the pipeline status checker with this file:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\pipeline_status.ps1 -Path docs\TALOS_PIPELINE_020.md
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\pipeline_status.ps1 -Path dev_notes\pipelines\TALOS_PIPELINE_020.md
 ```
 
 ## Stage 0 - 0.2.0 Pipeline Setup
 
 Purpose: establish this file as the active version-specific pipeline.
 
-- [x] Preserve the completed 0.1.0 Beta pipeline as `docs/TALOS_PIPELINE_010.md`.
-- [x] Create a dedicated 0.2.0 Beta pipeline as `docs/TALOS_PIPELINE_020.md`.
+- [x] Preserve the completed 0.1.0 Beta pipeline as `dev_notes/pipelines/TALOS_PIPELINE_010.md`.
+- [x] Create a dedicated 0.2.0 Beta pipeline as `dev_notes/pipelines/TALOS_PIPELINE_020.md`.
 - [x] Update documentation and pipeline status defaults to use the active 0.2.0 pipeline.
 - [x] Remove obsolete generic pipeline filenames after references are migrated.
 
@@ -76,7 +76,7 @@ Purpose: prove that the current app can be built, installed, launched, and unins
 - [x] Confirm `desktop_app.py` still launches the source app for debug.
 - [x] Record packaging/runtime issues found during release-candidate validation.
 
-Stage evidence: `docs/TALOS_020_STAGE1_VALIDATION.md`.
+Stage evidence: `dev_notes/evidence/TALOS_020_STAGE1_VALIDATION.md`.
 
 Exit condition: the app can be installed and launched outside the source tree, uninstalled cleanly, and represented by complete release evidence.
 

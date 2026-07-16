@@ -1,5 +1,5 @@
-param(
-    [string]$Path = "docs/TALOS_PIPELINE_030.md"
+﻿param(
+    [string]$Path = "dev_notes/pipelines/TALOS_PIPELINE_040.md"
 )
 
 $ErrorActionPreference = "Stop"
