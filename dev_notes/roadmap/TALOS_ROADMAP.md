@@ -66,9 +66,9 @@ These are direction bands, not strict release promises. A pipeline file becomes 
 | 0.1.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_010.md` | Completed first-version technical MVP and packaging foundation. |
 | 0.2.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_020.md` | Completed packaged Arduino reliability and daily-use readiness release. |
 | 0.3.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_030.md` | Completed Codex-Arduino workflow maturity release. |
-| 0.4.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_040.md` | Active pipeline for product readiness, opt-in feedback, UI/UX polish, and broader tester preparation. |
+| 0.4.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_040.md` | Completed product-readiness, opt-in feedback, UI/UX polish, and broader tester preparation pipeline. |
 | 0.4.5 Beta | `dev_notes/pipelines/TALOS_PIPELINE_045.md` | Planned policy, consent, privacy wording, and user-trust gate before any hosted telemetry. |
-| 0.5.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_050.md` | Planned Codex Runtime Manager release to make Talos depend on a verified Codex runtime, not the VS Code extension UI. |
+| 0.5.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_050.md` | Active Codex Runtime Manager release to make Talos depend on a verified Codex runtime, not the VS Code extension UI. |
 | 0.5.5 Beta | `dev_notes/pipelines/TALOS_PIPELINE_055.md` | Planned architecture slimming release for docs taxonomy, Python boundary cleanup, frontend module split, and native-helper planning before new target work. |
 | 0.6.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_060.md` | Planned Arduino reference-target hardening release. |
 | 0.7.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_070.md` | Planned MATLAB foundation release. |
@@ -166,7 +166,7 @@ Expected pipeline:
 
 ### 0.4.0 Beta - Product Readiness
 
-Status: active.
+Status: complete.
 
 Purpose:
 
@@ -211,7 +211,7 @@ Expected pipeline:
 
 ### 0.5.0 Beta - Codex Runtime Manager
 
-Status: planned.
+Status: active.
 
 Purpose:
 
