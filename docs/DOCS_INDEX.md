@@ -54,7 +54,8 @@ These files intentionally live outside `docs/` because they are planning notes f
 | `../dev_notes/pipelines/TALOS_PIPELINE_010.md` | Completed 0.1.0 Beta first-version pipeline. |
 | `../dev_notes/pipelines/TALOS_PIPELINE_020.md` | Completed 0.2.0 Beta pipeline. |
 | `../dev_notes/pipelines/TALOS_PIPELINE_030.md` | Completed 0.3.0 Beta pipeline. |
-| `../dev_notes/pipelines/TALOS_PIPELINE_040.md` | Active 0.4.0 Beta pipeline. |
+| `../dev_notes/pipelines/TALOS_PIPELINE_040.md` | Completed 0.4.0 Beta product-readiness pipeline. |
+| `../dev_notes/pipelines/TALOS_PIPELINE_050.md` | Active 0.5.0 Beta Codex Runtime Manager pipeline. |
 | `../dev_notes/pipelines/TALOS_PIPELINE_055.md` | Planned 0.5.5 Beta architecture-slimming pipeline. |
 | `../dev_notes/evidence/TALOS_020_STAGE1_VALIDATION.md` | 0.2.0 Stage 1 validation evidence. |
 | `../dev_notes/evidence/TALOS_030_BASELINE.md` | 0.3.0 starting baseline and carry-over guarantees. |
