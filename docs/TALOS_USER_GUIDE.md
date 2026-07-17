@@ -103,7 +103,7 @@ Do not send full source code, full Codex chat content, account details, or unred
 
 ## Local Diagnostics
 
-Diagnostics are disabled by default. If you enable local product diagnostics in Settings, Talos stores redacted product-health events on your machine only. Version 0.4.0 does not upload diagnostics to a server.
+Diagnostics are disabled by default. If you enable local product diagnostics in Settings, Talos stores redacted product-health events on your machine only. Version 0.5.0 does not upload diagnostics to a server.
 
 Use `Preview Export` before sharing diagnostics. The export is designed to avoid sketch source code, Codex chat content, account identifiers, and raw absolute local paths.
 

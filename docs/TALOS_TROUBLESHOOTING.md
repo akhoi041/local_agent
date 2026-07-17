@@ -79,6 +79,43 @@ Try:
 
 If a Codex turn was interrupted, Talos should not replay it automatically. Review the status text, then decide whether to send a new prompt.
 
+## Codex Runtime Is Missing, Changed, Or Unhealthy
+
+Talos can still open, inspect Arduino sketches, and run Arduino verification without a Codex runtime. Codex chat/edit actions need a selected runtime.
+
+Talos support evidence records only redacted runtime details: provider, display path, short hash, health state, pin state, fallback state, and warnings. It must not include tokens, cookies, full account identifiers, source code, or full local paths.
+
+Missing runtime:
+
+1. Open `Settings > Codex Runtime`.
+2. Use `Refresh Health`.
+3. Select or pin a runtime only if you trust it.
+4. If no runtime exists, install or restore the official runtime surface you use for Codex.
+
+Fallback runtime:
+
+1. Review the provider label in `Settings > Codex Runtime`.
+2. If the fallback is intentional, pin it.
+3. Prefer a standalone or explicitly selected runtime when available.
+
+Pinned or changed runtime:
+
+1. Use `Refresh Health`.
+2. If the change is expected, clear the old pin and pin the new runtime.
+3. If the change is unexpected, do not send a Codex prompt until the runtime source is verified.
+
+Health check failed or was cancelled:
+
+1. Run `Refresh Health` once more.
+2. Check the warning text for timeout, missing executable, cancelled check, or version failure.
+3. Copy a redacted support bundle from Talos if the problem repeats.
+
+Startup without runtime:
+
+- Talos should still load `Server`, `Arduino`, `Logs`, and `Settings`.
+- Arduino detection, file review, profile display, and sandbox verify should remain usable.
+- Codex send/reconnect is blocked until runtime readiness is restored.
+
 ## Installer Is Blocked Or Windows Shows An Unsigned Warning
 
 Talos Pre-Alpha/Beta builds may be unsigned unless `docs/CODE_SIGNING.md` says otherwise.

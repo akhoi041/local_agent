@@ -173,11 +173,13 @@ Exit condition: Codex messaging is safer and clearer, while the Arduino workflow
 
 Purpose: make runtime problems debuggable without leaking user secrets.
 
-- [ ] Add runtime diagnostics to support bundle with redacted path/hash policy.
-- [ ] Add run-history events for runtime changed, health check failed, pin changed, and fallback used.
-- [ ] Add recovery instructions to troubleshooting docs.
-- [ ] Add a manual smoke path for missing runtime, fallback runtime, pinned runtime, and changed runtime.
-- [ ] Confirm app startup remains usable when no Codex runtime is available.
+- [x] Add runtime diagnostics to support bundle with redacted path/hash policy.
+- [x] Add run-history events for runtime changed, health check failed, pin changed, and fallback used.
+- [x] Add recovery instructions to troubleshooting docs.
+- [x] Add a manual smoke path for missing runtime, fallback runtime, pinned runtime, and changed runtime.
+- [x] Confirm app startup remains usable when no Codex runtime is available.
+
+Stage 6 implementation note: runtime evidence now stays redacted in support bundles, runtime lifecycle events are filterable in run history, and troubleshooting documents the manual recovery paths for no-runtime, fallback, pinned/changed, and failed-health states.
 
 Exit condition: runtime failures are recoverable and supportable without requiring source-code inspection.
 
@@ -185,11 +187,20 @@ Exit condition: runtime failures are recoverable and supportable without requiri
 
 Purpose: close 0.5.0 without weakening 0.4.0 product-readiness guarantees.
 
-- [ ] Run full automated checks.
-- [ ] Run runtime-manager smoke checks from source.
-- [ ] Run packaged/installed smoke checks if release artifacts are built.
-- [ ] Confirm Arduino detection, context package, staged review, verify, save, rollback, diagnostics, and support bundle still work.
-- [ ] Update release notes and roadmap status.
-- [ ] Create and push the 0.5.0 release branch/tag only after validation.
+- [x] Run full automated checks.
+- [x] Run runtime-manager smoke checks from source.
+- [x] Run packaged/installed smoke checks if release artifacts are built.
+- [x] Confirm Arduino detection, context package, staged review, verify, save, rollback, diagnostics, and support bundle still work.
+- [x] Update release notes and roadmap status.
+- [x] Create and push the 0.5.0 release branch/tag only after validation.
+
+Stage 7 implementation notes:
+
+- Full `scripts/check.ps1` gate passed with native DLL build/export, native benchmark, 113/113 unit tests, and release recovery smoke.
+- Runtime-manager source smoke found a ready standalone Codex runtime: `codex-cli 0.144.5`.
+- 0.5.0 app-data lifecycle smoke passed and wrote `releases/Talos-0.5.0-beta/app_lifecycle_smoke.json`.
+- No full 0.5.0 executable/installer artifact was built during this source gate, so packaged/installed smoke is not applicable for this closure.
+- Release metadata, release notes, roadmap status, and 0.5.0 evidence were updated.
+- `release/0.5.0-beta` and `v0.5.0-beta` are created from this validated release-gate commit.
 
 Exit condition: Talos can use and explain a selected Codex runtime reliably, 0.4.0 behavior remains intact, and 0.5.5 can begin architecture slimming from a stable runtime boundary.

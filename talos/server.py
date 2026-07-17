@@ -71,6 +71,7 @@ from talos.run_history import (
     record_patch_verification,
     record_release_evidence,
     record_rollback,
+    record_runtime_event,
     record_verify,
     latest_verify_for_workspace,
     run_history,
@@ -176,6 +177,57 @@ def selected_runtime_payload(config: dict[str, Any] | None = None, *, force: boo
     active = full_status.get("active") if isinstance(full_status.get("active"), dict) else {}
     CODEX_BRIDGE.set_runtime_path(str(active.get("path") or ""))
     return full_status, summary, gate
+
+def runtime_event_detail(status: dict[str, Any]) -> dict[str, Any]:
+    active = status.get("active") if isinstance(status.get("active"), dict) else {}
+    health = status.get("health") if isinstance(status.get("health"), dict) else {}
+    candidates = status.get("candidates") if isinstance(status.get("candidates"), list) else []
+    warning_sources = [
+        active.get("warnings") if isinstance(active.get("warnings"), list) else [],
+        status.get("warnings") if isinstance(status.get("warnings"), list) else [],
+        health.get("warnings") if isinstance(health.get("warnings"), list) else [],
+    ]
+    warnings = sorted({str(item) for source in warning_sources for item in source if str(item).strip()})
+    return {
+        "provider": str(active.get("provider") or PROVIDER_NONE),
+        "display_path": str(active.get("display_path") or ""),
+        "version": str(active.get("version") or health.get("version") or ""),
+        "hash_short": str(active.get("hash_short") or ""),
+        "pinned": bool(active.get("pinned")),
+        "changed": bool(active.get("changed")),
+        "candidate_count": len(candidates),
+        "health_status": str(health.get("status") or "unknown"),
+        "ready": bool(health.get("ready")),
+        "warnings": warnings[:12],
+    }
+
+def runtime_outcomes(status: dict[str, Any]) -> list[tuple[str, str]]:
+    active = status.get("active") if isinstance(status.get("active"), dict) else {}
+    health = status.get("health") if isinstance(status.get("health"), dict) else {}
+    provider = str(active.get("provider") or PROVIDER_NONE)
+    health_status = str(health.get("status") or "unknown")
+    warnings = set(runtime_event_detail(status)["warnings"])
+    outcomes: list[tuple[str, str]] = []
+    if provider == PROVIDER_NONE or health_status == "missing":
+        outcomes.append(("runtime_missing", "codex_runtime_missing"))
+    if bool(active.get("changed")):
+        outcomes.append(("runtime_changed", "codex_runtime_changed"))
+    if health_status == "cancelled":
+        outcomes.append(("runtime_health_cancelled", "codex_runtime_health_cancelled"))
+    elif provider != PROVIDER_NONE and not bool(health.get("ready")):
+        outcomes.append(("runtime_health_failed", "codex_runtime_health_failed"))
+    if provider == "vscode_extension_adjacent" or "extension_adjacent_fallback" in warnings:
+        outcomes.append(("runtime_fallback_used", "codex_runtime_fallback_used"))
+    return outcomes
+
+def record_runtime_status(config: dict[str, Any], status: dict[str, Any], action: str = "") -> None:
+    workspace = str(workspace_summary(config).get("path") or "")
+    detail = runtime_event_detail(status)
+    if action:
+        record_runtime_event(workspace, action, detail)
+    for outcome, diagnostic in runtime_outcomes(status):
+        record_runtime_event(workspace, outcome, detail)
+        record_diagnostic(config, diagnostic, detail)
 
 def codex_status_payload(*, start: bool = True, force_runtime: bool = False) -> dict[str, Any]:
     _, runtime_summary, gate = selected_runtime_payload(load_config(), force=force_runtime)
@@ -437,12 +489,15 @@ class TalosWebHandler(BaseHTTPRequestHandler):
             status = runtime_status(load_config(), force=True)
             action = str(result.get("action") or "updated")
             log_event(f"{now()} codex runtime pin {action}")
+            record_runtime_status(result["config"], status, f"pin_{action}")
+            record_diagnostic(result["config"], "codex_runtime_pin_changed", runtime_event_detail(status))
             self.send_json({"ok": True, "action": action, "runtime": status})
             return
         if self.path == "/api/codex_runtime_health":
             config = load_config()
             status = runtime_status(config, force=True)
             log_event(f"{now()} codex runtime health: {status.get('health', {}).get('status', 'unknown')}")
+            record_runtime_status(config, status, "health_checked")
             self.send_json({"ok": True, "runtime": status})
             return
         if self.path == "/api/diagnostics_event":

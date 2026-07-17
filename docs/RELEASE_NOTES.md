@@ -1,5 +1,33 @@
 # Talos Release Notes
 
+## 0.5.0 Beta
+
+Talos 0.5.0 Beta adds the Codex Runtime Manager so Talos can discover, explain, pin, and health-check the local Codex runtime it uses.
+
+### Highlights
+
+- Adds runtime discovery for standalone `codex` on `PATH`, user-selected runtime paths, and VS Code extension-adjacent fallback runtimes.
+- Adds explicit runtime metadata: provider, display path, version, short hash, pin state, health, auth readiness, app-server readiness, warnings, and limitations.
+- Adds Settings and Server UI for runtime readiness, pin/clear actions, health refresh, and safe runtime/account metadata display.
+- Routes Codex bridge startup and reconnect through the selected runtime boundary instead of blindly assuming `codex` is available.
+- Blocks Codex user turns when the selected runtime is missing, changed, or unhealthy while keeping Arduino review, verify, diagnostics, and support workflows available.
+- Adds redacted runtime evidence to support bundles and runtime lifecycle events to run history for easier debugging.
+
+### Known Limitations
+
+- Arduino remains the only supported target in this release; MATLAB and other app integrations are intentionally deferred.
+- Codex authentication remains owned by the user's Codex runtime. Talos does not provide a separate Codex login, store OpenAI credentials, or infer subscription plan.
+- Runtime auth/app-server readiness depends on what the selected runtime exposes locally.
+- Talos may use a VS Code extension-adjacent runtime only as a fallback provider, not as the intended long-term product dependency.
+- Hosted telemetry is still not included. Diagnostics remain local and opt-in.
+- The Beta installer may be unsigned until code signing is configured; Windows may show SmartScreen or unknown-publisher warnings.
+
+### Upgrade Notes
+
+- Existing 0.4.0 app data under `%LOCALAPPDATA%\T-Engine\Talos` is reused.
+- If a pinned Codex runtime changes after update, Talos warns instead of silently sending Codex turns.
+- Open Settings > Codex Runtime to refresh health, pin a known-good runtime, clear a stale pin, or select a runtime path.
+
 ## 0.4.0 Pre-Alpha
 
 Talos 0.4.0 Pre-Alpha focuses on product readiness for broader Arduino/Codex testing.
