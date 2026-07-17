@@ -1,6 +1,6 @@
 # Talos Distribution Copy
 
-Version: 0.4.0 Pre-Alpha
+Version: 0.5.0 Beta
 
 Use this copy when describing Talos to testers or in release materials.
 
@@ -20,19 +20,19 @@ Talos is a local Codex control layer for Arduino IDE. It detects the active Ardu
 
 - Talos is not an embedded AI model.
 - Not a replacement for Arduino IDE.
-- Not a hardware upload or serial-monitor guarantee in 0.4.0.
+- Not a hardware upload or serial-monitor guarantee in 0.5.0.
 - Not a hidden telemetry client.
 - Talos does not silently upload sketch source, Codex chat content, account identifiers, or raw local paths.
 
 ## Trust And Privacy Copy
 
-Talos runs a local server bound to `127.0.0.1` and stores runtime data under the user's Talos app-data folder. Diagnostics are disabled by default in 0.4.0. If enabled, diagnostics stay local and can be previewed as a redacted export before the user shares them.
+Talos runs a local server bound to `127.0.0.1` and stores runtime data under the user's Talos app-data folder. Diagnostics are disabled by default in 0.5.0. If enabled, diagnostics stay local and can be previewed as a redacted export before the user shares them.
 
 Codex reasoning happens through the user's authenticated Codex environment. Talos does not include a separate AI model and does not bypass Codex authentication.
 
 ## Signing Copy
 
-Talos 0.4.0 Pre-Alpha may be unsigned while T-Engine prepares a code-signing certificate. Unsigned builds must include explicit `signing_status.json` evidence, and Windows may show SmartScreen or unknown-publisher warnings on first launch.
+Talos 0.5.0 Beta may be unsigned while T-Engine prepares a code-signing certificate. Unsigned builds must include explicit `signing_status.json` evidence, and Windows may show SmartScreen or unknown-publisher warnings on first launch.
 
 ## Tester-Facing Limitation Copy
 

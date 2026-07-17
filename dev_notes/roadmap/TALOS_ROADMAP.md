@@ -211,7 +211,7 @@ Expected pipeline:
 
 ### 0.5.0 Beta - Codex Runtime Manager
 
-Status: active.
+Status: complete.
 
 Purpose:
 
@@ -236,7 +236,7 @@ Expected pipeline:
 
 ### 0.5.5 Beta - Architecture Slimming
 
-Status: planned.
+Status: next.
 
 Purpose:
 

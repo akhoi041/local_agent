@@ -67,13 +67,14 @@ from talos.run_history import (
     record_patch,
     record_patch_transition,
     record_release_evidence,
+    record_runtime_event,
     record_verify,
     run_history,
     support_bundle,
 )
 from talos.diagnostics import diagnostics_export, diagnostics_settings, record_diagnostic, sanitize_payload
 from talos.performance import performance_guardrails
-from talos.server import codex_status_payload, runtime_gate, state_payload
+from talos.server import codex_status_payload, runtime_event_detail, runtime_gate, runtime_outcomes, state_payload
 
 class TalosArduinoTests(unittest.TestCase):
     def test_codex_prompt_contains_selected_arduino_context(self) -> None:
@@ -1259,6 +1260,7 @@ class TalosArduinoTests(unittest.TestCase):
 
     def test_stage_040_distribution_copy_and_unsigned_release_gate_are_current(self) -> None:
         root = Path(__file__).parents[1]
+        identity = json.loads((root / "config" / "app_identity.json").read_text(encoding="utf-8"))
         policy = json.loads((root / "config" / "signing_policy.json").read_text(encoding="utf-8"))
         signing_doc = (root / "docs" / "CODE_SIGNING.md").read_text(encoding="utf-8")
         privacy_doc = (root / "docs" / "PRIVACY.md").read_text(encoding="utf-8")
@@ -1268,7 +1270,7 @@ class TalosArduinoTests(unittest.TestCase):
 
         self.assertEqual(policy["status"], "documented_unsigned_prealpha_beta")
         self.assertEqual(policy["unsigned_release_label"], "UNSIGNED PRE-ALPHA/BETA")
-        self.assertIn("0.4.0", signing_doc)
+        self.assertIn(identity["version"], signing_doc)
         self.assertIn("unsigned Pre-Alpha/Beta", signing_doc)
         self.assertIn("Windows SmartScreen", signing_doc)
         self.assertIn("disabled by default", privacy_doc)
@@ -1586,6 +1588,56 @@ class TalosArduinoTests(unittest.TestCase):
             self.assertEqual(len(verifies), 1)
             self.assertEqual(verifies[0]["main_sketch"], "Main.ino")
 
+    def test_stage_050_runtime_events_are_filterable(self) -> None:
+        with TemporaryDirectory() as tmp:
+            history_path = Path(tmp) / "run_history.json"
+            with patch("talos.run_history.RUN_HISTORY_PATH", history_path):
+                record_runtime_event(
+                    r"C:\SketchA",
+                    "runtime_changed",
+                    {
+                        "provider": "user_selected_path",
+                        "display_path": r"...\codex.exe",
+                        "hash_short": "abcdef123456",
+                    },
+                )
+                record_codex_turn(r"C:\SketchA", "Review", "completed", {"active_file": "Motor.cpp"})
+
+                runtime_events = filtered_run_history(workspace=r"C:\SketchA", kind="runtime")
+
+            self.assertEqual(len(runtime_events), 1)
+            self.assertEqual(runtime_events[0]["type"], "runtime")
+            self.assertEqual(runtime_events[0]["status"], "runtime_changed")
+            self.assertEqual(runtime_events[0]["detail"]["display_path"], r"...\codex.exe")
+
+    def test_stage_050_runtime_event_detail_is_redacted_and_classifies_recovery_events(self) -> None:
+        status = {
+            "active": {
+                "provider": "vscode_extension_adjacent",
+                "display_path": r"...\codex.exe",
+                "version": "codex 0.5.0",
+                "hash_short": "abc123def456",
+                "pinned": True,
+                "changed": True,
+                "warnings": ["extension_adjacent_fallback"],
+            },
+            "candidates": [{"provider": "vscode_extension_adjacent"}],
+            "health": {"status": "timeout", "ready": False, "warnings": ["runtime_timeout"]},
+            "warnings": ["runtime_changed"],
+        }
+
+        detail = runtime_event_detail(status)
+        outcomes = runtime_outcomes(status)
+        dumped = json.dumps(detail)
+
+        self.assertEqual(detail["display_path"], r"...\codex.exe")
+        self.assertNotIn(r"C:\Users", dumped)
+        self.assertNotIn("path", detail)
+        self.assertEqual(detail["candidate_count"], 1)
+        self.assertIn(("runtime_changed", "codex_runtime_changed"), outcomes)
+        self.assertIn(("runtime_health_failed", "codex_runtime_health_failed"), outcomes)
+        self.assertIn(("runtime_fallback_used", "codex_runtime_fallback_used"), outcomes)
+
     def test_support_bundle_redacts_shareable_paths(self) -> None:
         bundle = support_bundle(
             app={"display_name": "Talos", "version": "0.3.0"},
@@ -1611,6 +1663,7 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertFalse(bundle["support_scope"]["includes_source_code"])
         self.assertFalse(bundle["support_scope"]["includes_codex_chat"])
         self.assertIn("verify", bundle["included_history_filters"])
+        self.assertIn("runtime", bundle["included_history_filters"])
 
     def test_diagnostics_are_consent_based_redacted_and_exportable(self) -> None:
         config = {"diagnostics": {"enabled": False}}
@@ -2255,12 +2308,13 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertEqual(ide_scan.call_count, 1)
         self.assertEqual(tool_scan.call_count, 1)
         self.assertEqual(window_scan.call_count, 1)
+        identity = json.loads((Path(__file__).parents[1] / "config" / "app_identity.json").read_text(encoding="utf-8"))
         self.assertEqual(payload["app"]["publisher"], "T-Engine")
-        self.assertEqual(payload["app"]["version"], "0.4.0")
-        self.assertEqual(payload["app"]["channel"], "Pre-Alpha")
+        self.assertEqual(payload["app"]["version"], identity["version"])
+        self.assertEqual(payload["app"]["channel"], identity["channel"])
         self.assertEqual(payload["build"]["schema_version"], 1)
-        self.assertEqual(payload["build"]["version"], "0.4.0")
-        self.assertEqual(payload["build"]["channel"], "Pre-Alpha")
+        self.assertEqual(payload["build"]["version"], identity["version"])
+        self.assertEqual(payload["build"]["channel"], identity["channel"])
         self.assertIn(payload["build"]["mode"], {"source", "packaged"})
         self.assertIn("python", payload["build"])
         self.assertTrue(payload["arduino_ide"]["running"])

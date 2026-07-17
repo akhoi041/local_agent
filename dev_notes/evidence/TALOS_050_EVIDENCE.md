@@ -1,7 +1,7 @@
 # Talos 0.5.0 Evidence
 
 Date: 2026-07-16
-Status: in progress
+Status: complete
 
 ## Evidence Policy
 
@@ -116,3 +116,73 @@ python -B -m unittest tests.test_desktop_app
 Ran 111 tests
 OK
 ```
+
+Known boundary: Stage 5 routes Codex through runtime readiness, but long-term runtime recovery evidence and manual support instructions belong to Stage 6.
+
+## Stage 6 - Runtime Evidence And Recovery
+
+Result: complete.
+
+- Support bundles include redacted Codex runtime evidence: provider, display path, short hash, health, pin state, candidate count, warnings, and fallback state.
+- Run history now records runtime lifecycle events separately from verify/Codex/patch events.
+- Runtime events are filterable with `kind=runtime` / `kind=codex_runtime`.
+- Runtime health, pin, changed, fallback, missing, cancelled, and failed states are recorded as supportable diagnostics without replaying user prompts.
+- Troubleshooting now includes manual recovery paths for missing runtime, fallback runtime, pinned/changed runtime, failed health checks, and startup with no runtime.
+- App startup remains expected to be usable without a runtime: Server, Arduino, Logs, Settings, file review, profile display, and sandbox verify are not blocked by missing Codex runtime.
+
+Validation:
+
+```text
+python -B -m unittest tests.test_desktop_app
+Ran 113 tests
+OK
+```
+
+Known boundary: Stage 6 makes runtime failures recoverable and supportable. Stage 7 remains responsible for the final 0.5.0 regression and release gate.
+
+## Stage 7 - Regression And Release Gate
+
+Result: complete.
+
+- Full automated checks passed:
+  - native DLL build passed
+  - native export check passed
+  - native detection benchmark passed
+  - unit tests passed 113/113
+  - restart/pending-review/external-change recovery smoke passed
+- Runtime-manager source smoke passed:
+  - provider: `standalone_path`
+  - health: `ready`
+  - version: `codex-cli 0.144.5`
+  - candidate count: `1`
+- App lifecycle smoke passed and wrote:
+  - `releases/Talos-0.5.0-beta/app_lifecycle_smoke.json`
+- No full 0.5.0 executable/installer artifacts were built during this source release gate. Packaged/installed smoke is therefore recorded as not applicable for this gate, while app-data lifecycle behavior was validated.
+- 0.4.0 behavior remains covered by the same gate: Arduino detection, context package, staged review, verify, save/rollback, diagnostics, support bundle, runtime evidence, and release recovery all remain in the automated test suite.
+- Release-facing metadata now identifies the current release as `0.5.0 Beta`.
+- Release notes and roadmap status were updated for the 0.5.0 closure.
+- Release branch/tag target: `release/0.5.0-beta` and `v0.5.0-beta` from this validated release-gate commit.
+
+Validation:
+
+```text
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\check.ps1
+Native DLL build/export: OK
+Native benchmark: OK
+Unit tests: Ran 113 tests, OK
+Release recovery smoke: OK
+```
+
+```text
+runtime smoke ok: standalone_path ready blocked=False
+runtime version: codex-cli 0.144.5
+runtime candidate count: 1
+```
+
+```text
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\smoke_app_lifecycle.ps1 -AllowDirty
+lifecycle core ok
+App lifecycle smoke test passed: releases\Talos-0.5.0-beta\app_lifecycle_smoke.json
+```
+
+Known boundary: 0.5.0 closes the runtime-manager boundary. 0.5.5 should begin from this stable boundary and focus on architecture slimming, docs taxonomy, and Python/native responsibility cleanup.

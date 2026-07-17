@@ -2,10 +2,10 @@
   "app_name": "Talos",
   "display_name": "Talos",
   "publisher": "T-Engine",
-  "version": "0.4.0",
-  "channel": "Pre-Alpha",
+  "version": "0.5.0",
+  "channel": "Beta",
   "support": "",
-  "app_id": "T-Engine.Talos.PreAlpha",
+  "app_id": "T-Engine.Talos.Beta",
   "icon_source": "talos_icon.png",
   "icon_ico": "assets/icons/talos.ico",
   "icon_png_dir": "assets/icons"

@@ -141,6 +141,22 @@ def record_codex_turn(
     }
     return _store_event(event)
 
+def record_runtime_event(
+    workspace: str,
+    outcome: str,
+    detail: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    event = {
+        "id": f"runtime-{uuid.uuid4().hex}",
+        "type": "runtime",
+        "time": now(),
+        "source": "codex_runtime",
+        "workspace": str(workspace or ""),
+        "status": str(outcome or "unknown"),
+        "detail": detail or {},
+    }
+    return _store_event(event)
+
 def record_patch_verification(workspace: str, result: dict[str, Any]) -> dict[str, Any] | None:
     with RUN_HISTORY_LOCK:
         events = _load_events()
@@ -251,6 +267,8 @@ def _event_matches_kind(event: dict[str, Any], kind: str) -> bool:
         return event_type == "verify"
     if target in {"codex", "codex_turn"}:
         return event_type == "codex_turn"
+    if target in {"runtime", "codex_runtime"}:
+        return event_type == "runtime"
     if target in {"saved", "conflict", "rollback"}:
         return event_type == "patch" and any(
             str(entry.get("action") or "").lower() in {
@@ -333,7 +351,7 @@ def support_bundle(
             "includes_source_code": False,
             "includes_codex_chat": False,
         },
-        "included_history_filters": ["verify", "codex", "saved", "conflict", "rollback", "release"],
+        "included_history_filters": ["verify", "codex", "runtime", "saved", "conflict", "rollback", "release"],
         "app": app,
         "build": build,
         "workspace": workspace_summary,
