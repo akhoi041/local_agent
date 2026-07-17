@@ -41,6 +41,13 @@ from talos.arduino import (
 from talos.codex_bridge import CODEX_BRIDGE
 from talos.arduino_events import ArduinoEventWatcher
 from talos.diagnostics import diagnostics_export, diagnostics_settings, record_diagnostic
+from talos.codex_runtime import (
+    PROVIDER_NONE,
+    runtime_state_summary,
+    runtime_status,
+    support_bundle_runtime_evidence,
+    update_runtime_pin,
+)
 from talos.performance import performance_guardrails
 from talos.checkpoints import (
     create_before_save_checkpoint,
@@ -110,6 +117,91 @@ def stop_arduino_event_watcher() -> None:
         ARDUINO_EVENT_WATCHER.stop()
     ARDUINO_EVENT_WATCHER = None
 
+def runtime_gate(runtime_summary: dict[str, Any]) -> dict[str, Any]:
+    health = runtime_summary.get("health") if isinstance(runtime_summary.get("health"), dict) else {}
+    provider = str(runtime_summary.get("provider") or PROVIDER_NONE)
+    health_status = str(health.get("status") or "unknown")
+    warnings = runtime_summary.get("warnings") if isinstance(runtime_summary.get("warnings"), list) else []
+    base = {
+        "ready": False,
+        "blocked": True,
+        "retryable": True,
+        "reconnect_allowed": False,
+        "manual_replay_required": True,
+        "warnings": list(warnings),
+    }
+    if provider == PROVIDER_NONE:
+        return {
+            **base,
+            "code": "runtime_missing",
+            "title": "Codex runtime missing",
+            "detail": "Select or pin a Codex runtime in Settings before sending a Codex turn.",
+        }
+    if runtime_summary.get("changed"):
+        return {
+            **base,
+            "code": "runtime_changed",
+            "title": "Codex runtime changed",
+            "detail": "The pinned Codex runtime changed. Review and pin the runtime again before sending.",
+        }
+    if not bool(health.get("ready")):
+        return {
+            **base,
+            "code": f"runtime_{health_status}",
+            "title": "Codex runtime not ready",
+            "detail": f"Runtime health is {health_status}. Refresh health or select another runtime before sending.",
+        }
+    readiness_warnings = list(warnings)
+    if not bool(health.get("auth_ready")):
+        readiness_warnings.append("auth_readiness_unverified")
+    if not bool(health.get("app_server_ready")):
+        readiness_warnings.append("app_server_readiness_unverified")
+    return {
+        "ready": True,
+        "blocked": False,
+        "retryable": False,
+        "reconnect_allowed": True,
+        "manual_replay_required": True,
+        "code": "runtime_ready",
+        "title": "Codex runtime ready",
+        "detail": "Runtime executable is selected. Auth and app-server readiness are verified when the runtime exposes them.",
+        "warnings": readiness_warnings,
+    }
+
+def selected_runtime_payload(config: dict[str, Any] | None = None, *, force: bool = False) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    config = config if config is not None else load_config()
+    full_status = runtime_status(config, force=force)
+    summary = runtime_state_summary(full_status)
+    gate = runtime_gate(summary)
+    active = full_status.get("active") if isinstance(full_status.get("active"), dict) else {}
+    CODEX_BRIDGE.set_runtime_path(str(active.get("path") or ""))
+    return full_status, summary, gate
+
+def codex_status_payload(*, start: bool = True, force_runtime: bool = False) -> dict[str, Any]:
+    _, runtime_summary, gate = selected_runtime_payload(load_config(), force=force_runtime)
+    status = CODEX_BRIDGE.status(start=start and not gate["blocked"])
+    status["codex_runtime"] = runtime_summary
+    status["runtime_gate"] = gate
+    if gate["blocked"]:
+        connection = status.get("connection") if isinstance(status.get("connection"), dict) else {}
+        status["ok"] = False
+        status["runtime_blocked"] = True
+        status["error"] = gate["detail"]
+        status["connection"] = {
+            **connection,
+            "state": "runtime_blocked",
+            "runtime_code": gate["code"],
+            "can_retry_now": bool(gate.get("retryable")),
+        }
+        task_state = status.get("task_state") if isinstance(status.get("task_state"), dict) else {}
+        status["task_state"] = {
+            **task_state,
+            "state": "runtime_blocked",
+            "detail": gate["detail"],
+            "replay_guard": "manual_send_required",
+        }
+    return status
+
 def state_payload() -> dict[str, Any]:
     config = load_config()
     app_identity = load_app_identity()
@@ -134,6 +226,7 @@ def state_payload() -> dict[str, Any]:
     arduino_profile = environment_profile(config, str(arduino_summary.get("path") or ""))
     arduino_profile_readiness = profile_readiness(config)
     arduino_map = workspace_map(config, latest_verify_for_workspace(str(arduino_summary.get("path") or "")))
+    codex_runtime_status = runtime_status(config)
     return {
         "name": app_identity["display_name"],
         "role": "Codex local control layer",
@@ -160,6 +253,7 @@ def state_payload() -> dict[str, Any]:
         ),
         "arduino_projects": arduino_projects,
         "arduino_events": arduino_event_status(),
+        "codex_runtime": runtime_state_summary(codex_runtime_status),
         "tools": [
             "GET /api/state",
             "GET /api/arduino_context",
@@ -177,11 +271,14 @@ def state_payload() -> dict[str, Any]:
             "POST /api/arduino_profile",
             "POST /api/release_evidence",
             "GET /api/codex_status",
+            "GET /api/codex_runtime",
             "GET /api/run_history",
             "GET /api/support_bundle",
             "GET /api/diagnostics_export",
             "GET /api/performance_guardrails",
             "POST /api/codex_reconnect",
+            "POST /api/codex_runtime_pin",
+            "POST /api/codex_runtime_health",
             "POST /api/codex_context_package",
             "POST /api/codex_message",
             "POST /api/codex_restore_reviews",
@@ -256,7 +353,12 @@ class TalosWebHandler(BaseHTTPRequestHandler):
             self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
             return
         if parsed.path == "/api/codex_status":
-            self.send_json(CODEX_BRIDGE.status())
+            self.send_json(codex_status_payload())
+            return
+        if parsed.path == "/api/codex_runtime":
+            config = load_config()
+            force = query.get("force", ["0"])[0] in {"1", "true", "True", "yes"}
+            self.send_json({"ok": True, "runtime": runtime_status(config, force=force)})
             return
         if parsed.path == "/api/run_history":
             self.send_json({
@@ -287,6 +389,7 @@ class TalosWebHandler(BaseHTTPRequestHandler):
                 redact=redacted,
             )
             bundle["performance"] = performance_guardrails()
+            bundle["codex_runtime"] = support_bundle_runtime_evidence(runtime_status(config))
             self.send_json({"ok": True, "bundle": bundle})
             return
         if parsed.path == "/api/diagnostics_export":
@@ -319,6 +422,28 @@ class TalosWebHandler(BaseHTTPRequestHandler):
             save_config(config)
             log_event(f"{now()} saved settings")
             self.send_json({"ok": True, "config": load_config()})
+            return
+        if self.path == "/api/codex_runtime_pin":
+            config = load_config()
+            result = update_runtime_pin(
+                config,
+                path_text=str(payload.get("path") or ""),
+                clear=bool(payload.get("clear")),
+            )
+            if not result.get("ok"):
+                self.send_json(result, HTTPStatus.BAD_REQUEST)
+                return
+            save_config(result["config"])
+            status = runtime_status(load_config(), force=True)
+            action = str(result.get("action") or "updated")
+            log_event(f"{now()} codex runtime pin {action}")
+            self.send_json({"ok": True, "action": action, "runtime": status})
+            return
+        if self.path == "/api/codex_runtime_health":
+            config = load_config()
+            status = runtime_status(config, force=True)
+            log_event(f"{now()} codex runtime health: {status.get('health', {}).get('status', 'unknown')}")
+            self.send_json({"ok": True, "runtime": status})
             return
         if self.path == "/api/diagnostics_event":
             config = load_config()
@@ -477,7 +602,29 @@ class TalosWebHandler(BaseHTTPRequestHandler):
             return
         if self.path == "/api/codex_message":
             config = load_config()
+            _, runtime_summary, gate = selected_runtime_payload(config)
             workspace = workspace_summary(config)
+            if gate["blocked"]:
+                result = {
+                    "ok": False,
+                    "error": gate["detail"],
+                    "runtime_blocked": True,
+                    "runtime_gate": gate,
+                    "codex_runtime": runtime_summary,
+                    "status": codex_status_payload(start=False),
+                }
+                record_codex_turn(
+                    str(workspace.get("path") or ""),
+                    str(payload.get("message", "")),
+                    "runtime_blocked",
+                    {
+                        "runtime_code": gate["code"],
+                        "runtime_detail": gate["detail"],
+                        "context_replay_guard": "manual_send_required",
+                    },
+                )
+                self.send_json(result, HTTPStatus.BAD_REQUEST)
+                return
             workspace["map"] = workspace_map(
                 config,
                 latest_verify_for_workspace(str(workspace.get("path") or "")),
@@ -534,7 +681,30 @@ class TalosWebHandler(BaseHTTPRequestHandler):
             self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
             return
         if self.path == "/api/codex_reconnect":
-            workspace = workspace_summary(load_config())
+            config = load_config()
+            _, runtime_summary, gate = selected_runtime_payload(config, force=True)
+            workspace = workspace_summary(config)
+            if gate["blocked"]:
+                result = {
+                    "ok": False,
+                    "error": gate["detail"],
+                    "status": "runtime_blocked",
+                    "runtime_blocked": True,
+                    "runtime_gate": gate,
+                    "codex_runtime": runtime_summary,
+                }
+                record_codex_turn(
+                    str(workspace.get("path") or ""),
+                    "",
+                    "runtime_reconnect_blocked",
+                    {
+                        "runtime_code": gate["code"],
+                        "runtime_detail": gate["detail"],
+                        "replay_guard": "manual_send_required",
+                    },
+                )
+                self.send_json(result, HTTPStatus.BAD_REQUEST)
+                return
             result = CODEX_BRIDGE.reconnect()
             if result.get("ok"):
                 record_codex_turn(

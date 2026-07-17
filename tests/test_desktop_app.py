@@ -7,6 +7,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from talos import arduino as arduino_module
+from talos import codex_runtime
 from talos import checkpoints as checkpoint_store
 from talos import core, native_bridge
 from talos import run_history as run_history_store
@@ -72,7 +73,7 @@ from talos.run_history import (
 )
 from talos.diagnostics import diagnostics_export, diagnostics_settings, record_diagnostic, sanitize_payload
 from talos.performance import performance_guardrails
-from talos.server import state_payload
+from talos.server import codex_status_payload, runtime_gate, state_payload
 
 class TalosArduinoTests(unittest.TestCase):
     def test_codex_prompt_contains_selected_arduino_context(self) -> None:
@@ -942,6 +943,8 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn('class="rail-icon nav-glyph"', html)
         self.assertIn('class="arduino-logo"', html)
         self.assertIn('<rect x="2" y="2" width="20" height="20" rx="5"', html)
+        self.assertIn('class="settings-gear"', html)
+        self.assertNotIn("M12 3v3M12 18v3", html)
         self.assertIn("fill: currentColor;", styles)
         self.assertNotIn("#008184", styles)
         self.assertIn("viewBox=\"0 0 24 24\"", html)
@@ -1409,6 +1412,18 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertEqual(default_config["arduino_workspace_path"], "")
         self.assertEqual(default_config["arduino_fqbn"], "")
         self.assertEqual(default_config["arduino_profiles"], {})
+        self.assertEqual(
+            default_config["codex_runtime"],
+            {
+                "selected_path": "",
+                "pinned_path": "",
+                "pinned_hash": "",
+                "pinned_version": "",
+                "fallback_policy": "extension_adjacent",
+                "extension_adjacent_path": "",
+                "health_timeout_sec": 2.0,
+            },
+        )
         self.assertEqual(default_config["diagnostics"], {"enabled": False, "allow_remote_upload": False})
 
     def test_codex_thread_summary_prefers_name_and_supports_unix_time(self) -> None:
@@ -1616,15 +1631,291 @@ class TalosArduinoTests(unittest.TestCase):
 
         enabled_config = {"diagnostics": {"enabled": True}}
         self.assertTrue(diagnostics_settings(enabled_config)["enabled"])
-        export = diagnostics_export(
-            enabled_config,
-            {"display_name": "Talos", "version": "0.4.0", "channel": "Pre-Alpha"},
-            {"mode": "source", "version": "0.4.0", "channel": "Pre-Alpha", "python": "3.11"},
-        )
+        runtime_probe = {
+            "active": {"provider": "none", "display_path": "", "hash_short": "", "warnings": ["missing_runtime"]},
+            "health": {"status": "missing", "ready": False, "duration_ms": 0},
+            "candidates": [],
+            "warnings": ["missing_runtime"],
+        }
+        with patch("talos.diagnostics.runtime_status", return_value=runtime_probe):
+            export = diagnostics_export(
+                enabled_config,
+                {"display_name": "Talos", "version": "0.4.0", "channel": "Pre-Alpha"},
+                {"mode": "source", "version": "0.4.0", "channel": "Pre-Alpha", "python": "3.11"},
+            )
         self.assertFalse(export["consent"]["remote_upload"])
         self.assertTrue(export["consent"]["user_preview_required"])
         self.assertFalse(export["data_policy"]["contains_source_code"])
         self.assertFalse(export["data_policy"]["contains_codex_chat"])
+        self.assertEqual(export["codex_runtime"]["provider"], "none")
+
+    def test_stage_050_runtime_discovery_order_and_defaults(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            path_runtime = root / "codex.exe"
+            user_runtime = root / "user-codex.exe"
+            extension_runtime = root / "extension-codex.exe"
+            for runtime in (path_runtime, user_runtime, extension_runtime):
+                runtime.write_text("runtime", encoding="utf-8")
+
+            config = {
+                "codex_runtime": {
+                    "selected_path": str(user_runtime),
+                    "extension_adjacent_path": str(extension_runtime),
+                    "fallback_policy": "extension_adjacent",
+                }
+            }
+            candidates = codex_runtime.discover_runtime_candidates(
+                config,
+                which_func=lambda name: str(path_runtime) if name == "codex" else None,
+            )
+
+            self.assertEqual(
+                [candidate["provider"] for candidate in candidates],
+                [
+                    codex_runtime.PROVIDER_STANDALONE_PATH,
+                    codex_runtime.PROVIDER_USER_SELECTED_PATH,
+                    codex_runtime.PROVIDER_EXTENSION_ADJACENT,
+                ],
+            )
+            migrated = codex_runtime.with_runtime_defaults({"theme": "dark"})
+            self.assertEqual(migrated["codex_runtime"]["fallback_policy"], "extension_adjacent")
+            self.assertEqual(migrated["codex_runtime"]["pinned_hash"], "")
+
+    def test_stage_050_runtime_pinning_missing_and_changed_are_reported(self) -> None:
+        with TemporaryDirectory() as tmp:
+            runtime = Path(tmp) / "codex.exe"
+            runtime.write_text("runtime-a", encoding="utf-8")
+            config = {
+                "codex_runtime": {
+                    "selected_path": str(runtime),
+                    "pinned_path": str(runtime),
+                    "pinned_hash": "not-the-current-hash",
+                    "fallback_policy": "none",
+                }
+            }
+
+            status = codex_runtime.runtime_status(
+                config,
+                force=True,
+                which_func=lambda name: None,
+                runner=lambda path, timeout: {"returncode": 0, "stdout": "codex 0.5.0\n", "stderr": ""},
+            )
+            self.assertTrue(status["active"]["pinned"])
+            self.assertTrue(status["active"]["changed"])
+            self.assertIn("runtime_changed", status["warnings"])
+
+            missing = codex_runtime.runtime_status(
+                {"codex_runtime": {"pinned_path": str(runtime / "missing.exe"), "fallback_policy": "none"}},
+                force=True,
+                which_func=lambda name: None,
+            )
+            self.assertEqual(missing["active"]["provider"], codex_runtime.PROVIDER_NONE)
+            self.assertIn("missing_runtime", missing["warnings"])
+
+    def test_stage_050_runtime_health_cache_and_timeout(self) -> None:
+        with TemporaryDirectory() as tmp:
+            runtime = Path(tmp) / "codex.exe"
+            runtime.write_text("runtime", encoding="utf-8")
+            config = {"codex_runtime": {"selected_path": str(runtime), "fallback_policy": "none"}}
+            calls: list[str] = []
+
+            def runner(path: str, timeout: float) -> dict[str, object]:
+                calls.append(path)
+                return {"returncode": 0, "stdout": "codex 0.5.0\n", "stderr": ""}
+
+            first = codex_runtime.runtime_status(config, force=True, which_func=lambda name: None, runner=runner)
+            second = codex_runtime.runtime_status(config, force=False, which_func=lambda name: None, runner=runner)
+
+            self.assertTrue(first["health"]["ready"])
+            self.assertTrue(second["health"]["ready"])
+            self.assertEqual(len(calls), 1)
+
+            timeout_status = codex_runtime.runtime_status(
+                config,
+                force=True,
+                which_func=lambda name: None,
+                runner=lambda path, timeout: (_ for _ in ()).throw(TimeoutError()),
+            )
+            self.assertEqual(timeout_status["health"]["status"], "timeout")
+
+            cancelled = codex_runtime.runtime_status(
+                config,
+                force=True,
+                which_func=lambda name: None,
+                runner=runner,
+                cancel_check=lambda: True,
+            )
+            self.assertEqual(cancelled["health"]["status"], "cancelled")
+
+    def test_stage_050_runtime_support_evidence_redacts_paths_and_tokens(self) -> None:
+        with TemporaryDirectory() as tmp:
+            runtime = Path(tmp) / "codex.exe"
+            runtime.write_text("runtime", encoding="utf-8")
+            status = codex_runtime.runtime_status(
+                {"codex_runtime": {"selected_path": str(runtime), "fallback_policy": "none"}},
+                force=True,
+                which_func=lambda name: None,
+                runner=lambda path, timeout: {"returncode": 0, "stdout": "codex 0.5.0\n", "stderr": ""},
+            )
+            evidence = codex_runtime.support_bundle_runtime_evidence(status)
+            dumped = json.dumps(evidence)
+
+            self.assertEqual(evidence["provider"], codex_runtime.PROVIDER_USER_SELECTED_PATH)
+            self.assertNotIn(str(Path(tmp)), dumped)
+            self.assertNotIn("pinned_path", dumped)
+            self.assertNotIn('"path":', dumped)
+            self.assertNotIn(status["active"]["hash"], dumped)
+            self.assertIn("hash_short", dumped)
+
+    def test_stage_050_runtime_status_summary_is_compact(self) -> None:
+        with TemporaryDirectory() as tmp:
+            runtime = Path(tmp) / "codex.exe"
+            runtime.write_text("runtime", encoding="utf-8")
+            status = codex_runtime.runtime_status(
+                {"codex_runtime": {"selected_path": str(runtime), "fallback_policy": "none"}},
+                force=True,
+                which_func=lambda name: None,
+                runner=lambda path, timeout: {"returncode": 0, "stdout": "codex 0.5.0\n", "stderr": ""},
+            )
+
+            summary = codex_runtime.runtime_state_summary(status)
+            dumped = json.dumps(summary)
+
+            self.assertEqual(summary["provider"], codex_runtime.PROVIDER_USER_SELECTED_PATH)
+            self.assertEqual(summary["candidate_count"], 1)
+            self.assertTrue(summary["health"]["ready"])
+            self.assertNotIn(str(Path(tmp)), dumped)
+            self.assertNotIn('"path":', dumped)
+            self.assertNotIn(status["active"]["hash"], dumped)
+
+    def test_stage_050_runtime_pin_update_and_clear(self) -> None:
+        with TemporaryDirectory() as tmp:
+            runtime = Path(tmp) / "codex.exe"
+            runtime.write_text("runtime", encoding="utf-8")
+            status = codex_runtime.runtime_status(
+                {"codex_runtime": {"selected_path": str(runtime), "fallback_policy": "none"}},
+                force=True,
+                which_func=lambda name: None,
+                runner=lambda path, timeout: {"returncode": 0, "stdout": "codex 0.5.0\n", "stderr": ""},
+            )
+
+            pinned = codex_runtime.update_runtime_pin({}, path_text=str(runtime), status=status)
+            self.assertTrue(pinned["ok"])
+            runtime_config = pinned["config"]["codex_runtime"]
+            self.assertEqual(runtime_config["pinned_path"], str(runtime))
+            self.assertEqual(runtime_config["pinned_hash"], status["active"]["hash"])
+            self.assertEqual(runtime_config["pinned_version"], "codex 0.5.0")
+
+            cleared = codex_runtime.update_runtime_pin(pinned["config"], clear=True)
+            self.assertTrue(cleared["ok"])
+            self.assertEqual(cleared["config"]["codex_runtime"]["pinned_path"], "")
+            self.assertEqual(cleared["config"]["codex_runtime"]["pinned_hash"], "")
+
+    def test_stage_050_runtime_pin_rejects_unknown_candidate(self) -> None:
+        status = {"active": {}, "candidates": [], "health": {}}
+        result = codex_runtime.update_runtime_pin({}, path_text="C:\\missing\\codex.exe", status=status)
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"]["code"], "runtime_pin_unknown_candidate")
+
+    def test_stage_050_runtime_settings_and_server_ui_surface(self) -> None:
+        root = Path(__file__).parents[1]
+        html = (root / "ui" / "web_frontend" / "index.html").read_text(encoding="utf-8")
+        script = (root / "ui" / "web_frontend" / "app.js").read_text(encoding="utf-8")
+        styles = (root / "ui" / "web_frontend" / "styles.css").read_text(encoding="utf-8")
+
+        self.assertIn("Codex Runtime", html)
+        self.assertIn('id="runtimeDetails"', html)
+        self.assertIn('id="runtimeWarnings"', html)
+        self.assertIn('id="runtimeRefreshBtn"', html)
+        self.assertIn('id="runtimePinBtn"', html)
+        self.assertIn('id="runtimeClearPinBtn"', html)
+        self.assertIn('id="runtimeSelectPathBtn"', html)
+        self.assertIn("renderRuntimeSettings(payload.codex_runtime || {})", script)
+        self.assertIn('["Codex runtime", runtime.provider === "none" ? "Missing" : runtimeStatusText(runtime)]', script)
+        self.assertIn("vscode_extension_adjacent", script)
+        self.assertIn("extension-adjacent fallback", script)
+        self.assertIn("/api/codex_runtime_health", script)
+        self.assertIn("/api/codex_runtime_pin", script)
+        self.assertIn(".runtime-warning", styles)
+        self.assertIn("grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));", styles)
+
+    def test_stage_050_runtime_gate_blocks_missing_or_changed_runtime(self) -> None:
+        missing = runtime_gate({
+            "provider": "none",
+            "health": {"status": "missing", "ready": False},
+            "warnings": ["missing_runtime"],
+        })
+        changed = runtime_gate({
+            "provider": "standalone_path",
+            "changed": True,
+            "health": {"status": "ok", "ready": True},
+        })
+        ready = runtime_gate({
+            "provider": "standalone_path",
+            "health": {"status": "ok", "ready": True, "auth_ready": False, "app_server_ready": False},
+        })
+
+        self.assertTrue(missing["blocked"])
+        self.assertEqual(missing["code"], "runtime_missing")
+        self.assertIn("Settings", missing["detail"])
+        self.assertTrue(changed["blocked"])
+        self.assertEqual(changed["code"], "runtime_changed")
+        self.assertFalse(ready["blocked"])
+        self.assertTrue(ready["ready"])
+        self.assertIn("auth_readiness_unverified", ready["warnings"])
+
+    def test_stage_050_codex_status_uses_runtime_gate_without_starting_bridge(self) -> None:
+        runtime_probe = {
+            "active": {"provider": "none", "display_path": "", "warnings": ["missing_runtime"], "limitations": []},
+            "candidates": [],
+            "health": {"status": "missing", "ready": False},
+            "warnings": ["missing_runtime"],
+        }
+
+        with (
+            patch("talos.server.load_config", return_value={}),
+            patch("talos.server.runtime_status", return_value=runtime_probe),
+            patch("talos.server.CODEX_BRIDGE.set_runtime_path") as set_runtime_path,
+            patch("talos.server.CODEX_BRIDGE.status", return_value={
+                "ok": False,
+                "available": False,
+                "connected": False,
+                "connection": {"state": "idle"},
+                "task_state": {"state": "new_conversation", "detail": "Ready."},
+            }) as bridge_status,
+        ):
+            payload = codex_status_payload()
+
+        set_runtime_path.assert_called_once_with("")
+        bridge_status.assert_called_once_with(start=False)
+        self.assertFalse(payload["ok"])
+        self.assertTrue(payload["runtime_blocked"])
+        self.assertEqual(payload["runtime_gate"]["code"], "runtime_missing")
+        self.assertEqual(payload["connection"]["state"], "runtime_blocked")
+        self.assertEqual(payload["task_state"]["replay_guard"], "manual_send_required")
+
+    def test_stage_050_frontend_blocks_codex_send_on_runtime_gate(self) -> None:
+        root = Path(__file__).parents[1]
+        script = (root / "ui" / "web_frontend" / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn("const gate = payload.runtime_gate || {};", script)
+        self.assertIn("gate.blocked", script)
+        self.assertIn("const runtimeBlocked = Boolean(payload.runtime_gate?.blocked);", script)
+        self.assertIn('$("#sendCodexBtn").disabled = runtimeBlocked || !payload.ok || state.codexBusy;', script)
+        self.assertIn('$("#codexInput").disabled = runtimeBlocked || !payload.ok;', script)
+
+    def test_stage_050_runtime_health_refresh_does_not_replay_prompt(self) -> None:
+        root = Path(__file__).parents[1]
+        source = (root / "talos" / "server.py").read_text(encoding="utf-8")
+        start = source.index('if self.path == "/api/codex_runtime_health":')
+        end = source.index('if self.path == "/api/diagnostics_event":', start)
+        block = source[start:end]
+
+        self.assertIn("runtime_status(config, force=True)", block)
+        self.assertNotIn("send_message", block)
+        self.assertNotIn("reconnect", block)
 
     def test_codex_status_starts_runtime_without_blocking_for_handshake(self) -> None:
         bridge = CodexBridge(persist_reviews=False)
@@ -1944,6 +2235,12 @@ class TalosArduinoTests(unittest.TestCase):
 
     def test_state_payload_reuses_one_detection_snapshot(self) -> None:
         config = {"theme": "light", "arduino_workspace_path": "", "arduino_fqbn": ""}
+        runtime_probe = {
+            "active": {"provider": "none", "display_path": "", "warnings": ["missing_runtime"], "limitations": []},
+            "candidates": [],
+            "health": {"status": "missing", "ready": False, "duration_ms": 0},
+            "warnings": ["missing_runtime"],
+        }
         with (
             patch("talos.server.load_config", return_value=config),
             patch("talos.server.list_arduino_ide_processes", return_value=[]) as ide_scan,
@@ -1951,6 +2248,7 @@ class TalosArduinoTests(unittest.TestCase):
             patch("talos.server.list_window_rows", return_value=[{"pid": 0, "title": "test | Arduino IDE 2.3.4"}]) as window_scan,
             patch("talos.server.list_arduino_open_workspaces", return_value=[]),
             patch("talos.server.list_arduino_workspace_boards", return_value={}),
+            patch("talos.server.runtime_status", return_value=runtime_probe),
         ):
             payload = state_payload()
 
@@ -1967,7 +2265,12 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("python", payload["build"])
         self.assertTrue(payload["arduino_ide"]["running"])
         self.assertIn("arduino_profile_readiness", payload)
+        self.assertEqual(payload["codex_runtime"]["provider"], "none")
+        self.assertEqual(payload["codex_runtime"]["health"]["status"], "missing")
         self.assertIn("POST /api/release_evidence", payload["tools"])
+        self.assertIn("GET /api/codex_runtime", payload["tools"])
+        self.assertIn("POST /api/codex_runtime_pin", payload["tools"])
+        self.assertIn("POST /api/codex_runtime_health", payload["tools"])
         self.assertIn("GET /api/support_bundle", payload["tools"])
         self.assertIn("GET /api/performance_guardrails", payload["tools"])
 
@@ -2345,6 +2648,8 @@ class TalosArduinoTests(unittest.TestCase):
             self.assertEqual(migrated["schema_version"], core.CONFIG_SCHEMA_VERSION)
             self.assertEqual(migrated["theme"], "dark")
             self.assertIn("c:\\sketches\\blink", migrated["arduino_profiles"])
+            self.assertEqual(migrated["codex_runtime"]["fallback_policy"], "extension_adjacent")
+            self.assertEqual(migrated["codex_runtime"]["selected_path"], "")
             self.assertTrue(list((config_dir / "backups").glob("config.migration.*.json")))
 
             checkpoint_path = config_dir / "checkpoints.json"

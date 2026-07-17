@@ -256,7 +256,10 @@
         </button>
         <button class="nav" data-view="settings" title="Settings">
           <span class="rail-icon nav-glyph" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8a4 4 0 0 0 0-8zM12 3v3M12 18v3M4.8 4.8l2.1 2.1M17.1 17.1l2.1 2.1M3 12h3M18 12h3M4.8 19.2l2.1-2.1M17.1 6.9l2.1-2.1" /></svg>
+            <svg viewBox="0 0 24 24" class="settings-gear">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3a1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.2a1.7 1.7 0 0 0-1-1.5a1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8a1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.2a1.7 1.7 0 0 0 1.5-1a1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h.1a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.2a1.7 1.7 0 0 0 1 1.5h.1a1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v.1a1.7 1.7 0 0 0 1.5 1h.2a2 2 0 1 1 0 4H21a1.7 1.7 0 0 0-1.6 1z" />
+            </svg>
           </span><span class="nav-label sr-only">Settings</span>
         </button>
       </aside>
@@ -628,6 +631,21 @@
               <div><span>Version</span><b>Loading...</b></div>
               <div><span>Mode</span><b>Loading...</b></div>
               <div><span>App data</span><b>Loading...</b></div>
+            </div>
+          </details>
+          <details class="holo-panel settings-panel settings-section" open>
+            <summary><span>Codex Runtime</span><small>Provider, pinning, and health</small></summary>
+            <div id="runtimeDetails" class="release-details runtime-details">
+              <div><span>Provider</span><b>Loading...</b></div>
+              <div><span>Health</span><b>Loading...</b></div>
+            </div>
+            <div id="runtimeWarnings" class="runtime-warning-list" aria-live="polite"></div>
+            <div class="action-row settings-actions runtime-actions">
+              <p id="runtimeStatus">Runtime status has not loaded yet.</p>
+              <button id="runtimeRefreshBtn" class="button ghost" type="button">Refresh Health</button>
+              <button id="runtimePinBtn" class="button ghost" type="button">Pin Runtime</button>
+              <button id="runtimeClearPinBtn" class="button ghost" type="button">Clear Pin</button>
+              <button id="runtimeSelectPathBtn" class="button ghost" type="button">Select Path</button>
             </div>
           </details>
           <details class="holo-panel settings-panel appearance-panel settings-section" open>

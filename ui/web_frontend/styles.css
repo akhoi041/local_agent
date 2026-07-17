@@ -903,7 +903,7 @@ h1 {
 
 .stats {
   display: grid;
-  grid-template-columns: repeat(4, minmax(140px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 12px;
 }
 
@@ -931,6 +931,34 @@ input,
 select,
 table {
   font-family: var(--mono);
+}
+
+.runtime-details b {
+  overflow-wrap: anywhere;
+}
+
+.runtime-warning-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.runtime-warning,
+.runtime-note {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--muted);
+  color: var(--muted-text);
+}
+
+.runtime-warning {
+  border-left: 3px solid var(--warning);
+  color: var(--text);
+}
+
+.runtime-actions {
+  flex-wrap: wrap;
 }
 
 .holo-panel {

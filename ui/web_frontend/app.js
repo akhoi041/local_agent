@@ -60,6 +60,7 @@ const state = {
   runHistorySketchOnly: true,
   appBuild: {},
   diagnostics: { enabled: false, allow_remote_upload: false },
+  codexRuntime: {},
   editorFindQuery: "",
   editorFindMatches: [],
   editorFindIndex: -1,
@@ -575,6 +576,103 @@ function renderDiagnosticsSettings(config = {}) {
   $("#diagnosticsStatus").textContent = enabled
     ? `Diagnostics enabled locally. Remote upload is disabled.${storage}`
     : "Diagnostics are disabled until you opt in and save.";
+}
+
+function runtimeStatusText(runtime = {}) {
+  const health = runtime.health || {};
+  if (health.ready) return "Ready";
+  if (health.status) return String(health.status).replace(/_/g, " ");
+  return runtime.provider && runtime.provider !== "none" ? "Unchecked" : "Missing";
+}
+
+function normalizeRuntimeStatus(runtime = {}) {
+  const active = runtime.active && typeof runtime.active === "object" ? runtime.active : {};
+  const health = runtime.health && typeof runtime.health === "object" ? runtime.health : {};
+  const candidates = Array.isArray(runtime.candidates) ? runtime.candidates : [];
+  return {
+    provider: runtime.provider || active.provider || "none",
+    display_path: runtime.display_path || active.display_path || "",
+    source: runtime.source || active.source || "",
+    version: runtime.version || active.version || health.version || "",
+    hash_short: runtime.hash_short || active.hash_short || "",
+    pinned: Boolean(runtime.pinned ?? active.pinned),
+    changed: Boolean(runtime.changed ?? active.changed),
+    candidate_count: Number(runtime.candidate_count ?? candidates.length ?? 0),
+    health,
+    warnings: Array.isArray(runtime.warnings) ? runtime.warnings : [],
+    limitations: Array.isArray(runtime.limitations) ? runtime.limitations : (Array.isArray(active.limitations) ? active.limitations : []),
+    account: runtime.account && typeof runtime.account === "object" ? runtime.account : (active.account && typeof active.account === "object" ? active.account : {}),
+  };
+}
+
+function renderRuntimeSettings(runtime = {}) {
+  const normalized = normalizeRuntimeStatus(runtime);
+  state.codexRuntime = normalized;
+  const details = $("#runtimeDetails");
+  if (!details) return;
+  const health = normalized.health || {};
+  const safeAccount = normalized.account || {};
+  const accountLabel = safeAccount.display || safeAccount.email_hint || safeAccount.plan || "Not exposed by runtime";
+  details.innerHTML = `
+    <div><span>Provider</span><b>${escapeHtml(normalized.provider || "none")}</b></div>
+    <div><span>Path</span><b>${escapeHtml(normalized.display_path || "No runtime selected")}</b></div>
+    <div><span>Version</span><b>${escapeHtml(normalized.version || "Unknown")}</b></div>
+    <div><span>Hash</span><b>${escapeHtml(normalized.hash_short || "Not available")}</b></div>
+    <div><span>Health</span><b>${escapeHtml(runtimeStatusText(normalized))}</b></div>
+    <div><span>Auth</span><b>${escapeHtml(health.auth_ready ? "Runtime reports auth ready" : "Not reported by runtime")}</b></div>
+    <div><span>App server</span><b>${escapeHtml(health.app_server_ready ? "Ready" : "Not reported")}</b></div>
+    <div><span>Pin</span><b>${escapeHtml(normalized.pinned ? (normalized.changed ? "Pinned, changed on disk" : "Pinned") : "Not pinned")}</b></div>
+    <div><span>Candidates</span><b>${escapeHtml(String(normalized.candidate_count))}</b></div>
+    <div><span>Account</span><b>${escapeHtml(accountLabel)}</b></div>
+  `;
+  const notes = [
+    ...(normalized.provider === "vscode_extension_adjacent" ? ["Using VS Code extension-adjacent fallback. Talos can display and bridge through it, but runtime ownership belongs to the installed extension."] : []),
+    ...normalized.warnings,
+    ...normalized.limitations,
+  ].filter(Boolean);
+  $("#runtimeWarnings").innerHTML = notes.length
+    ? notes.map((item) => `<div class="runtime-warning">${escapeHtml(item)}</div>`).join("")
+    : '<div class="runtime-note">No runtime warnings. Talos stores no Codex credentials.</div>';
+  $("#runtimeStatus").textContent = `Codex runtime: ${runtimeStatusText(normalized)}. Safe metadata only; credentials stay outside Talos.`;
+}
+
+async function refreshRuntimeHealth() {
+  $("#runtimeStatus").textContent = "Checking Codex runtime health...";
+  const result = await api("/api/codex_runtime_health", { method: "POST", body: "{}" });
+  renderRuntimeSettings(result.runtime || {});
+  await refresh();
+}
+
+async function pinCodexRuntime(path = "") {
+  $("#runtimeStatus").textContent = path ? "Pinning selected runtime path..." : "Pinning active runtime...";
+  const result = await api("/api/codex_runtime_pin", {
+    method: "POST",
+    body: JSON.stringify(path ? { path } : {}),
+  });
+  renderRuntimeSettings(result.runtime || {});
+  await refresh();
+}
+
+async function clearCodexRuntimePin() {
+  $("#runtimeStatus").textContent = "Clearing runtime pin...";
+  const result = await api("/api/codex_runtime_pin", {
+    method: "POST",
+    body: JSON.stringify({ clear: true }),
+  });
+  renderRuntimeSettings(result.runtime || {});
+  await refresh();
+}
+
+async function selectCodexRuntimePath() {
+  const current = state.codexRuntime?.display_path || "";
+  const path = window.prompt("Codex runtime executable path", current);
+  if (path === null) return;
+  const trimmed = path.trim();
+  if (!trimmed) {
+    $("#runtimeStatus").textContent = "Runtime path was not changed.";
+    return;
+  }
+  await pinCodexRuntime(trimmed);
 }
 
 function versionLabel(app = {}) {
@@ -2303,11 +2401,13 @@ async function rejectCodexPatch() {
 function renderStats(payload) {
   const arduino = payload.arduino || {};
   const projects = payload.arduino_projects || [];
+  const runtime = normalizeRuntimeStatus(payload.codex_runtime || {});
   const rows = [
     ["Role", payload.role || "Tool server"],
     ["Native C", payload.native_available ? "Loaded" : "Fallback"],
     ["Open sketches", String(projects.length)],
     ["Arduino", arduino.valid ? "Ready" : "Not ready"],
+    ["Codex runtime", runtime.provider === "none" ? "Missing" : runtimeStatusText(runtime)],
   ];
   $("#stats").innerHTML = rows
     .map(([label, value]) => `<div class="stat"><span>${escapeHtml(label)}</span><b>${escapeHtml(value)}</b></div>`)
@@ -2330,17 +2430,26 @@ function renderDashboard(payload) {
   const arduino = payload.arduino || {};
   const projects = payload.arduino_projects || [];
   const codex = payload.codex || {};
+  const runtime = normalizeRuntimeStatus(payload.codex_runtime || {});
   const diagnostics = payload.config?.diagnostics || {};
   const workspaceReady = Boolean(arduino.valid);
   const codexReady = codex.ok !== false;
+  const runtimeReady = Boolean(runtime.health?.ready || (runtime.provider && runtime.provider !== "none"));
   const nativeReady = Boolean(payload.native_available);
   const profile = payload.arduino_profile_readiness || {};
   const profileReady = profile.ready !== false;
-  const readyCount = [workspaceReady, codexReady, nativeReady, profileReady].filter(Boolean).length;
-  $("#serverSummary").textContent = `${readyCount}/4 core surfaces ready. Arduino sketches detected: ${projects.length}.`;
+  const runtimeDetail = runtime.provider === "vscode_extension_adjacent"
+    ? "Using VS Code extension-adjacent fallback; runtime ownership stays outside Talos."
+    : (runtimeReady ? `${runtime.provider} runtime selected.` : "Select or pin a Codex runtime before asking for code changes.");
+  const bridgeDetail = codexReady
+    ? `Ready to receive workspace context. ${runtimeDetail}`
+    : "Reconnect Codex before asking for code changes.";
+  const readyCount = [workspaceReady, codexReady, runtimeReady, nativeReady, profileReady].filter(Boolean).length;
+  $("#serverSummary").textContent = `${readyCount}/5 core surfaces ready. Arduino sketches detected: ${projects.length}.`;
   $("#readinessList").innerHTML = [
     readinessItem("Arduino workspace", workspaceReady, workspaceReady ? arduino.path || "Workspace selected" : "Select a valid Arduino sketch folder."),
-    readinessItem("Codex bridge", codexReady, codexReady ? "Ready to receive workspace context." : "Reconnect Codex before asking for code changes."),
+    readinessItem("Codex bridge", codexReady, bridgeDetail),
+    readinessItem("Codex runtime", runtimeReady, runtimeDetail),
     readinessItem("Native C helper", nativeReady, nativeReady ? "Loaded for faster local detection." : "Python fallback is active."),
     readinessItem("Profile and diagnostics", profileReady, diagnostics.enabled ? "Profile ready. Local diagnostics enabled." : "Profile ready. Diagnostics remain local and opt-in."),
   ].join("");
@@ -2658,6 +2767,8 @@ async function copyCodexContextPackage() {
 }
 
 function codexAccountLabel(payload = {}) {
+  const gate = payload.runtime_gate || {};
+  if (gate.blocked) return gate.title || "Codex runtime blocked";
   const account = payload.account || {};
   const connection = payload.connection || {};
   if (!payload.available) return "Codex runtime not found";
@@ -2672,6 +2783,8 @@ function codexAccountLabel(payload = {}) {
 }
 
 function codexConnectionStatus(payload = {}) {
+  const gate = payload.runtime_gate || {};
+  if (gate.blocked) return gate.detail || "Codex runtime is not ready.";
   const connection = payload.connection || {};
   if (payload.error) {
     const retryIn = Number(connection.next_retry_in || 0);
@@ -2687,6 +2800,14 @@ function codexConnectionStatus(payload = {}) {
 }
 
 function codexTaskViewModel(payload = {}) {
+  const gate = payload.runtime_gate || {};
+  if (gate.blocked) {
+    return {
+      kind: "blocked",
+      title: gate.title || "Codex runtime blocked",
+      detail: gate.detail || "Select or refresh the Codex runtime before sending. No user turn was replayed.",
+    };
+  }
   const task = payload.task_state || {};
   const connection = payload.connection || {};
   const stateName = String(task.state || "");
@@ -2805,15 +2926,16 @@ function renderCodex(payload = {}) {
   state.codexBusy = Boolean(payload.busy);
   previewPendingCodexPatch(payload.pending_patch || {});
   const connection = payload.connection || {};
+  const runtimeBlocked = Boolean(payload.runtime_gate?.blocked);
   $("#codexAccount").textContent = codexAccountLabel(payload);
-  $("#sendCodexBtn").disabled = !payload.ok || state.codexBusy;
+  $("#sendCodexBtn").disabled = runtimeBlocked || !payload.ok || state.codexBusy;
   $("#sendCodexBtn").hidden = state.codexBusy;
   $("#cancelCodexBtn").hidden = !state.codexBusy;
   $("#cancelCodexBtn").disabled = !state.codexBusy;
-  $("#codexInput").disabled = !payload.ok;
+  $("#codexInput").disabled = runtimeBlocked || !payload.ok;
   $("#newCodexThreadBtn").disabled = state.codexBusy;
   $("#reconnectCodexBtn").hidden = payload.connected && !payload.error;
-  $("#reconnectCodexBtn").disabled = state.codexBusy || payload.initializing || connection.state === "connecting";
+  $("#reconnectCodexBtn").disabled = runtimeBlocked || state.codexBusy || payload.initializing || connection.state === "connecting";
   $("#codexStatus").textContent = codexConnectionStatus(payload);
   renderStatusBar();
   const messages = payload.messages || [];
@@ -3120,6 +3242,7 @@ function render(payload) {
   state.lastPayload = payload;
   hydrateAppearance(payload.config || {});
   renderDiagnosticsSettings(payload.config || {});
+  renderRuntimeSettings(payload.codex_runtime || {});
   hydrateAppIdentity(payload.app || {}, payload.build || {});
   const projects = payload.arduino_projects || [];
   const arduino = payload.arduino || {};
@@ -3512,6 +3635,18 @@ function bindEvents() {
     $("#editorStatus").textContent = `Could not copy support bundle: ${error.message}`;
   }));
   $("#saveSettingsBtn").addEventListener("click", saveSettings);
+  $("#runtimeRefreshBtn")?.addEventListener("click", () => refreshRuntimeHealth().catch((error) => {
+    $("#runtimeStatus").textContent = `Runtime health check failed: ${error.message}`;
+  }));
+  $("#runtimePinBtn")?.addEventListener("click", () => pinCodexRuntime().catch((error) => {
+    $("#runtimeStatus").textContent = `Runtime pin failed: ${error.message}`;
+  }));
+  $("#runtimeClearPinBtn")?.addEventListener("click", () => clearCodexRuntimePin().catch((error) => {
+    $("#runtimeStatus").textContent = `Runtime clear failed: ${error.message}`;
+  }));
+  $("#runtimeSelectPathBtn")?.addEventListener("click", () => selectCodexRuntimePath().catch((error) => {
+    $("#runtimeStatus").textContent = `Runtime path update failed: ${error.message}`;
+  }));
   $("#copyFilesBtn").addEventListener("click", () => copyText(fileListText(), "#arduinoMeta"));
   $("#copyIssuesBtn").addEventListener("click", () => copyText(state.lastIssueText));
   $("#copyVerifyBtn").addEventListener("click", () => copyText(state.lastVerifyText));

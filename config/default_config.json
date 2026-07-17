@@ -4,6 +4,15 @@
   "arduino_workspace_path": "",
   "arduino_fqbn": "",
   "arduino_profiles": {},
+  "codex_runtime": {
+    "selected_path": "",
+    "pinned_path": "",
+    "pinned_hash": "",
+    "pinned_version": "",
+    "fallback_policy": "extension_adjacent",
+    "extension_adjacent_path": "",
+    "health_timeout_sec": 2.0
+  },
   "diagnostics": {
     "enabled": false,
     "allow_remote_upload": false
