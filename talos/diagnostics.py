@@ -5,6 +5,7 @@ import platform
 import uuid
 from typing import Any
 
+from talos.codex_runtime import runtime_status, support_bundle_runtime_evidence
 from talos.core import APP_DATA_ROOT, now, read_json_file, write_json_file
 
 DIAGNOSTICS_PATH = APP_DATA_ROOT / "diagnostics.json"
@@ -38,6 +39,12 @@ ALLOWED_EVENTS = {
     "codex_disconnected",
     "codex_turn_completed",
     "codex_turn_failed",
+    "codex_runtime_missing",
+    "codex_runtime_changed",
+    "codex_runtime_health_failed",
+    "codex_runtime_health_cancelled",
+    "codex_runtime_pin_changed",
+    "codex_runtime_fallback_used",
     "support_bundle_copied",
     "installed_app_smoke",
     "installer_smoke",
@@ -161,6 +168,7 @@ def diagnostics_export(config: dict[str, Any], app: dict[str, Any], build: dict[
             "platform": platform.platform(),
             "python": build.get("python", ""),
         },
+        "codex_runtime": support_bundle_runtime_evidence(runtime_status(config)),
         "events": state["events"],
         "event_count": len(state["events"]),
     }

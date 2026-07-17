@@ -43,6 +43,16 @@ CONFIG_SCHEMA_VERSION = 1
 WEBVIEW_MIN_WIDTH = 520
 WEBVIEW_MIN_HEIGHT = 420
 
+CODEX_RUNTIME_DEFAULTS: dict[str, Any] = {
+    "selected_path": "",
+    "pinned_path": "",
+    "pinned_hash": "",
+    "pinned_version": "",
+    "fallback_policy": "extension_adjacent",
+    "extension_adjacent_path": "",
+    "health_timeout_sec": 2.0,
+}
+
 DEFAULT_APP_IDENTITY: dict[str, str] = {
     "app_name": "Talos",
     "display_name": "Talos",
@@ -62,6 +72,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "arduino_workspace_path": "",
     "arduino_fqbn": "",
     "arduino_profiles": {},
+    "codex_runtime": CODEX_RUNTIME_DEFAULTS.copy(),
     "diagnostics": {
         "enabled": False,
         "allow_remote_upload": False,
@@ -159,6 +170,23 @@ def _normalize_config(data: Any) -> dict[str, Any]:
         "enabled": bool(diagnostics.get("enabled")),
         "allow_remote_upload": False,
     }
+    runtime = config.get("codex_runtime") if isinstance(config.get("codex_runtime"), dict) else {}
+    timeout = runtime.get("health_timeout_sec", CODEX_RUNTIME_DEFAULTS["health_timeout_sec"])
+    try:
+        timeout_value = float(timeout)
+    except (TypeError, ValueError):
+        timeout_value = float(CODEX_RUNTIME_DEFAULTS["health_timeout_sec"])
+    config["codex_runtime"] = {
+        "selected_path": str(runtime.get("selected_path") or "").strip(),
+        "pinned_path": str(runtime.get("pinned_path") or "").strip(),
+        "pinned_hash": str(runtime.get("pinned_hash") or "").strip().lower(),
+        "pinned_version": str(runtime.get("pinned_version") or "").strip(),
+        "fallback_policy": str(runtime.get("fallback_policy") or CODEX_RUNTIME_DEFAULTS["fallback_policy"]).strip(),
+        "extension_adjacent_path": str(runtime.get("extension_adjacent_path") or "").strip(),
+        "health_timeout_sec": max(0.2, min(10.0, timeout_value)),
+    }
+    if config["codex_runtime"]["fallback_policy"] not in {"extension_adjacent", "none"}:
+        config["codex_runtime"]["fallback_policy"] = CODEX_RUNTIME_DEFAULTS["fallback_policy"]
     return config
 
 def load_config() -> dict[str, Any]:

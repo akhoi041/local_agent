@@ -455,10 +455,22 @@ class CodexBridge:
         self._retry_count = 0
         self._next_retry_at = 0.0
         self._last_disconnect = ""
+        self._runtime_path = ""
         self._task_state = "new_conversation"
         self._task_detail = "Ready for a new thread."
         self._last_turn_status = ""
         self._last_turn_at = ""
+
+    def set_runtime_path(self, path: str) -> None:
+        with self._lock:
+            self._runtime_path = str(path or "").strip()
+
+    def _runtime_executable(self) -> str:
+        with self._lock:
+            runtime_path = self._runtime_path
+        if runtime_path and Path(runtime_path).exists():
+            return runtime_path
+        return find_codex_executable()
 
     def status(self, start: bool = True) -> dict[str, Any]:
         if start:
@@ -472,7 +484,7 @@ class CodexBridge:
             retry_in = max(0.0, self._next_retry_at - time.monotonic())
             return {
                 "ok": process_running and self._initialized.is_set() and bool(self._account) and not self._error,
-                "available": bool(find_codex_executable()),
+                "available": bool(self._runtime_executable()),
                 "connected": process_running,
                 "initializing": self._starting,
                 "connection": {
@@ -613,7 +625,7 @@ class CodexBridge:
         with self._lock:
             if self._process is not None and self._process.poll() is None:
                 return
-            executable = find_codex_executable()
+            executable = self._runtime_executable()
             if not executable:
                 raise RuntimeError("Codex CLI was not found. Install or enable the OpenAI Codex extension.")
             self._error = ""

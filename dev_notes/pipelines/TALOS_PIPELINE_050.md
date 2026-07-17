@@ -10,7 +10,9 @@ Purpose: add a Codex Runtime Manager so Talos can use a verified local Codex run
 
 ```text
 Previous completed pipeline: dev_notes/pipelines/TALOS_PIPELINE_040.md
+Previous release evidence: dev_notes/evidence/TALOS_040_RELEASE_EVIDENCE.md
 Current active pipeline: dev_notes/pipelines/TALOS_PIPELINE_050.md
+Current release evidence: dev_notes/evidence/TALOS_050_EVIDENCE.md
 Next planned pipeline: dev_notes/pipelines/TALOS_PIPELINE_055.md
 Target version: 0.5.0 Beta
 Starting branch: develop/0.5.0
@@ -42,6 +44,7 @@ Talos 0.5.0 Beta is ready only when these are true:
 
 - Keep `dev_notes/pipelines/TALOS_PIPELINE_040.md` as the completed 0.4.0 release record.
 - Track all 0.5.0 runtime-manager work in this file.
+- Keep evidence version-level only: 0.5.0 release proof lives in `dev_notes/evidence/TALOS_050_EVIDENCE.md`, not in per-stage evidence files.
 - Every completed 0.5.0 task must update this file.
 - Use the pipeline status checker with this file:
 
@@ -66,11 +69,20 @@ Exit condition: 0.4.0 is closed on GitHub, 0.5.0 has its own branch and active p
 
 Purpose: define what Talos is allowed to know and do with Codex runtimes.
 
-- [ ] Document supported runtime providers: standalone `codex` on `PATH`, user-selected executable path, and existing VS Code extension-adjacent fallback if available.
-- [ ] Define runtime metadata fields: provider, path, version, hash, last health check, app-server readiness, auth readiness, and limitation notes.
-- [ ] Define safe account metadata rules: display only runtime-provided non-secret identity/plan fields, never infer or store credentials.
-- [ ] Define unsupported states and user-facing copy for missing runtime, changed runtime, not signed/unknown, not authenticated, and incompatible runtime.
-- [ ] Add a baseline note with current local runtime behavior and any blocked cases.
+- [x] Document supported runtime providers: standalone `codex` on `PATH`, user-selected executable path, and existing VS Code extension-adjacent fallback if available.
+- [x] Define runtime metadata fields: provider, path, version, hash, last health check, app-server readiness, auth readiness, and limitation notes.
+- [x] Define safe account metadata rules: display only runtime-provided non-secret identity/plan fields, never infer or store credentials.
+- [x] Define unsupported states and user-facing copy for missing runtime, changed runtime, not signed/unknown, not authenticated, and incompatible runtime.
+- [x] Add a baseline note with current local runtime behavior and any blocked cases.
+
+Stage 1 implementation notes:
+
+- Recorded Stage 1 release proof in `dev_notes/evidence/TALOS_050_EVIDENCE.md`; detailed runtime contract notes remain in this pipeline.
+- Runtime provider order is now defined as standalone `codex` on `PATH`, user-selected executable path, VS Code extension-adjacent fallback, then no-runtime state.
+- Canonical runtime metadata fields now cover provider, path/display path, version, hash, health, app-server readiness, auth readiness, optional safe account/plan labels, warnings, and limitations.
+- Account rules are explicit: Talos may display only runtime-provided non-secret metadata and must not store credentials, infer plan status, or provide a fake Talos-side Codex login.
+- Unsupported states and recovery copy are defined for missing runtime, changed runtime, unknown signature, unauthenticated runtime, incompatible runtime, timeout, and fallback use.
+- Stage 2 backend proof is consolidated in `dev_notes/evidence/TALOS_050_EVIDENCE.md`.
 
 Exit condition: runtime behavior is specified before code changes, including what Talos must not collect or guess.
 
@@ -78,12 +90,21 @@ Exit condition: runtime behavior is specified before code changes, including wha
 
 Purpose: make runtime selection deterministic and auditable.
 
-- [ ] Add a runtime manager module that discovers runtime candidates without launching disruptive consoles.
-- [ ] Add config fields for selected runtime path, pinned runtime hash/version where available, and fallback policy.
-- [ ] Add migration defaults so existing users keep working without losing Codex state.
-- [ ] Add runtime health checks with timeout, cancellation, and cached status.
-- [ ] Add support-bundle/runtime evidence that redacts secrets and raw tokens.
-- [ ] Add tests for discovery order, pinning, missing runtime, changed runtime, and redaction.
+- [x] Add a runtime manager module that discovers runtime candidates without launching disruptive consoles.
+- [x] Add config fields for selected runtime path, pinned runtime hash/version where available, and fallback policy.
+- [x] Add migration defaults so existing users keep working without losing Codex state.
+- [x] Add runtime health checks with timeout, cancellation, and cached status.
+- [x] Add support-bundle/runtime evidence that redacts secrets and raw tokens.
+- [x] Add tests for discovery order, pinning, missing runtime, changed runtime, and redaction.
+
+Stage 2 implementation notes:
+
+- Added `talos/codex_runtime.py` with deterministic provider discovery, runtime choice, pin mismatch detection, hidden `codex --version` health checks, pre-launch cancellation, timeout handling, and cached status.
+- Added `codex_runtime` defaults to packaged config and config migration so existing users keep Arduino/Codex state while gaining runtime-manager settings.
+- Added redacted runtime evidence to diagnostics/support bundle output; raw paths, full hashes, credentials, account identifiers, and tokens are not included.
+- Added tests for discovery order, migration defaults, pinning, missing runtime, changed runtime, health cache, cancellation, timeout, and redaction.
+- Validation: `python -B -m unittest tests.test_desktop_app` passed 103/103.
+- Updated `dev_notes/evidence/TALOS_050_EVIDENCE.md` as the single 0.5.0 evidence record.
 
 Exit condition: Talos can choose a runtime predictably and explain that choice to the user.
 
@@ -91,11 +112,20 @@ Exit condition: Talos can choose a runtime predictably and explain that choice t
 
 Purpose: expose runtime state through thin APIs instead of UI guessing.
 
-- [ ] Add `GET /api/codex_runtime` for candidates, active runtime, health, pin state, and warnings.
-- [ ] Add `POST /api/codex_runtime_pin` to pin or clear a runtime explicitly.
-- [ ] Add `POST /api/codex_runtime_health` to rerun health checks on demand.
-- [ ] Include runtime status in `/api/state` without bloating normal refresh payloads.
-- [ ] Ensure API errors are structured and safe for logs/support bundles.
+- [x] Add `GET /api/codex_runtime` for candidates, active runtime, health, pin state, and warnings.
+- [x] Add `POST /api/codex_runtime_pin` to pin or clear a runtime explicitly.
+- [x] Add `POST /api/codex_runtime_health` to rerun health checks on demand.
+- [x] Include runtime status in `/api/state` without bloating normal refresh payloads.
+- [x] Ensure API errors are structured and safe for logs/support bundles.
+
+Stage 3 implementation notes:
+
+- Added a canonical runtime status surface: `GET /api/codex_runtime` returns the full local runtime payload for Settings/Server UI and support workflows.
+- Added explicit runtime actions: `POST /api/codex_runtime_pin` pins or clears a discovered runtime, and `POST /api/codex_runtime_health` reruns health checks on demand.
+- Added `runtime_state_summary()` so `/api/state` carries only compact provider, display path, version/hash short, pin state, health summary, warning, limitation, and candidate count fields.
+- Added structured runtime pin errors with stable codes such as `runtime_pin_missing_target` and `runtime_pin_unknown_candidate`.
+- Added runtime API tests for compact summaries, pin/clear behavior, unknown candidate errors, and `/api/state` tool exposure.
+- Validation: `python -B -m unittest tests.test_desktop_app` passed 106/106.
 
 Exit condition: frontend, support bundle, and tests consume one canonical runtime status surface.
 
@@ -103,11 +133,18 @@ Exit condition: frontend, support bundle, and tests consume one canonical runtim
 
 Purpose: make runtime ownership visible without turning Talos into a login provider.
 
-- [ ] Add a Codex Runtime section in Settings showing active provider, path, version/hash, health, auth readiness, and warnings.
-- [ ] Add actions for refresh health, pin runtime, clear pin, and select runtime path.
-- [ ] Add a Server overview card summarizing runtime readiness.
-- [ ] Show clear copy when Talos is using a VS Code extension-adjacent fallback.
-- [ ] Keep account/plan display limited to safe metadata the runtime itself exposes.
+- [x] Add a Codex Runtime section in Settings showing active provider, path, version/hash, health, auth readiness, and warnings.
+- [x] Add actions for refresh health, pin runtime, clear pin, and select runtime path.
+- [x] Add a Server overview card summarizing runtime readiness.
+- [x] Show clear copy when Talos is using a VS Code extension-adjacent fallback.
+- [x] Keep account/plan display limited to safe metadata the runtime itself exposes.
+
+Stage 4 implementation notes:
+
+- Settings now has a Codex Runtime panel backed by `/api/codex_runtime_health` and `/api/codex_runtime_pin`.
+- Server overview now includes Codex runtime readiness as a first-class card, separate from the Codex bridge conversation state.
+- Runtime warnings and fallback notes are visible in the app, including the VS Code extension-adjacent fallback boundary.
+- Account/plan display remains limited to runtime-exposed non-secret labels; Talos still does not collect or infer credentials.
 
 Exit condition: a tester can understand whether Codex is ready and how Talos selected the runtime.
 
@@ -115,11 +152,20 @@ Exit condition: a tester can understand whether Codex is ready and how Talos sel
 
 Purpose: route Codex work through the selected runtime boundary.
 
-- [ ] Update Codex bridge startup/reconnect logic to use the selected runtime status.
-- [ ] Prevent user turns from being sent when runtime health/auth readiness is blocked.
-- [ ] Add retry and reconnect copy that distinguishes runtime failure from Codex conversation failure.
-- [ ] Keep existing Arduino context package behavior unchanged.
-- [ ] Verify that a runtime refresh does not replay an old user prompt.
+- [x] Update Codex bridge startup/reconnect logic to use the selected runtime status.
+- [x] Prevent user turns from being sent when runtime health/auth readiness is blocked.
+- [x] Add retry and reconnect copy that distinguishes runtime failure from Codex conversation failure.
+- [x] Keep existing Arduino context package behavior unchanged.
+- [x] Verify that a runtime refresh does not replay an old user prompt.
+
+Stage 5 implementation notes:
+
+- Added a server-side runtime gate that blocks Codex user turns and reconnect attempts when the selected runtime is missing, changed, or unhealthy.
+- Routed Codex bridge startup through the selected runtime executable path instead of relying only on `codex` from `PATH`.
+- Added runtime-gate metadata to `/api/codex_status` so the Codex panel can distinguish runtime readiness failures from conversation/auth/app-server failures.
+- Updated the Codex panel to disable prompt input and send/reconnect controls when runtime readiness is blocked.
+- Kept `/api/codex_context_package` unchanged so Arduino context packaging remains available and testable even when runtime setup is incomplete.
+- Verified runtime health refresh only reruns the runtime probe and does not call Codex message/reconnect paths.
 
 Exit condition: Codex messaging is safer and clearer, while the Arduino workflow remains unchanged.
 
