@@ -55,10 +55,13 @@ These files intentionally live outside `docs/` because they are planning notes f
 | `../dev_notes/pipelines/TALOS_PIPELINE_020.md` | Completed 0.2.0 Beta pipeline. |
 | `../dev_notes/pipelines/TALOS_PIPELINE_030.md` | Completed 0.3.0 Beta pipeline. |
 | `../dev_notes/pipelines/TALOS_PIPELINE_040.md` | Completed 0.4.0 Beta product-readiness pipeline. |
-| `../dev_notes/pipelines/TALOS_PIPELINE_050.md` | Active 0.5.0 Beta Codex Runtime Manager pipeline. |
-| `../dev_notes/pipelines/TALOS_PIPELINE_055.md` | Planned 0.5.5 Beta architecture-slimming pipeline. |
+| `../dev_notes/pipelines/TALOS_PIPELINE_050.md` | Completed 0.5.0 Beta Codex Runtime Manager pipeline. |
+| `../dev_notes/pipelines/TALOS_PIPELINE_055.md` | Active 0.5.5 Beta architecture-slimming pipeline. |
 | `../dev_notes/evidence/TALOS_020_STAGE1_VALIDATION.md` | 0.2.0 Stage 1 validation evidence. |
 | `../dev_notes/evidence/TALOS_030_BASELINE.md` | 0.3.0 starting baseline and carry-over guarantees. |
+| `../dev_notes/evidence/TALOS_040_RELEASE_EVIDENCE.md` | 0.4.0 release evidence. |
+| `../dev_notes/evidence/TALOS_050_EVIDENCE.md` | 0.5.0 version-level evidence. |
+| `../dev_notes/evidence/TALOS_055_EVIDENCE.md` | 0.5.5 version-level evidence. |
 
 ## Cleanup Direction
 
@@ -68,4 +71,4 @@ The 0.5.5 Architecture Slimming release should convert this index into an enforc
 - Keep version pipelines and roadmap under `dev_notes/`.
 - Move old planning notes to `dev_notes/archive/` only when no runtime, release, or installer path references them.
 - Move stage evidence to `dev_notes/evidence/` unless it is meant for packaged users/testers.
-- Add a docs-link check so packaged releases cannot ship broken documentation links.
+- Run `scripts/check_docs_links.ps1` before release so packaged, in-app, and developer-note references do not drift.

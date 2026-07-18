@@ -1,0 +1,155 @@
+:root {
+  color-scheme: light;
+  --app-min-width: 640px;
+  --app-min-height: 460px;
+  --statusbar-height: 24px;
+  --rail-collapsed-width: 58px;
+  --explorer-pane-width: clamp(248px, 16vw, 304px);
+  --codex-pane-width: clamp(320px, 25vw, 460px);
+  --pane-splitter-width: 4px;
+  --verify-pane-height: clamp(180px, 28vh, 360px);
+  --mono: ui-monospace, SFMono-Regular, SFMono, Consolas, "Liberation Mono", Menlo, monospace;
+  --editor-font-size: 14px;
+  --editor-line-height: 1.55;
+  --bg: #ffffff;
+  --canvas-subtle: #f6f8fa;
+  --canvas-inset: #f6f8fa;
+  --panel: #ffffff;
+  --panel-strong: #f6f8fa;
+  --titlebar-bg: #f3f6f9;
+  --activity-bg: #f6f8fa;
+  --sidebar-bg: #f6f8fa;
+  --sidebar-section-bg: #ffffff;
+  --toolbar-bg: #f6f8fa;
+  --terminal-bg: #f6f8fa;
+  --assistant-bg: #ffffff;
+  --assistant-head-bg: #f6f8fa;
+  --editor-bg: #ffffff;
+  --gutter-bg: #f6f8fa;
+  --field: #ffffff;
+  --line: #d0d7de;
+  --line-soft: #d8dee4;
+  --text: #24292f;
+  --muted: #57606a;
+  --accent: #0969da;
+  --accent-hover: #0550ae;
+  --accent-subtle: #ddf4ff;
+  --active-item-bg: #eaf5ff;
+  --selection-bg: rgba(9, 105, 218, 0.28);
+  --selection-text: #0b1f3a;
+  --find-bg: rgba(187, 128, 9, 0.34);
+  --find-current-bg: rgba(9, 105, 218, 0.42);
+  --find-line-bg: rgba(9, 105, 218, 0.08);
+  --cursor-line-bg: rgba(175, 184, 193, 0.16);
+  --green: #1a7f37;
+  --green-hover: #116329;
+  --warning: #9a6700;
+  --danger: #cf222e;
+  --disabled: #8c959f;
+  --shadow: rgba(27, 31, 36, 0.08);
+  --scrollbar-track: var(--canvas-inset);
+  --scrollbar-thumb: #afb8c1;
+  --scrollbar-thumb-hover: #8c959f;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+}
+
+:root[data-editor-density="compact"] {
+  --editor-line-height: 1.38;
+}
+
+:root[data-editor-density="spacious"] {
+  --editor-line-height: 1.75;
+}
+
+:root[data-contrast="high"] {
+  --line: #8c959f;
+  --line-soft: #afb8c1;
+  --accent-subtle: #dbeafe;
+  --shadow: rgba(27, 31, 36, 0.14);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0d1117;
+  --canvas-subtle: #161b22;
+  --canvas-inset: #010409;
+  --panel: #0d1117;
+  --panel-strong: #1f242d;
+  --titlebar-bg: #181818;
+  --activity-bg: #181818;
+  --sidebar-bg: #181f27;
+  --sidebar-section-bg: #161b22;
+  --toolbar-bg: #1e1e1e;
+  --terminal-bg: #010409;
+  --assistant-bg: #111820;
+  --assistant-head-bg: #161b22;
+  --editor-bg: #0d1117;
+  --gutter-bg: #161b22;
+  --field: #0d1117;
+  --line: #30363d;
+  --line-soft: #21262d;
+  --text: #e6edf3;
+  --muted: #8b949e;
+  --accent: #2f81f7;
+  --accent-hover: #58a6ff;
+  --accent-subtle: rgba(56, 139, 253, 0.16);
+  --active-item-bg: rgba(56, 139, 253, 0.22);
+  --selection-bg: #264f78;
+  --selection-text: #ffffff;
+  --find-bg: rgba(187, 128, 9, 0.44);
+  --find-current-bg: rgba(56, 139, 253, 0.48);
+  --find-line-bg: rgba(56, 139, 253, 0.12);
+  --cursor-line-bg: rgba(110, 118, 129, 0.16);
+  --green: #238636;
+  --green-hover: #2ea043;
+  --warning: #d29922;
+  --danger: #f85149;
+  --disabled: #6e7681;
+  --shadow: rgba(1, 4, 9, 0.48);
+  --scrollbar-track: #0d1117;
+  --scrollbar-thumb: #30363d;
+  --scrollbar-thumb-hover: #484f58;
+}
+
+:root[data-theme="neutral"] {
+  color-scheme: light;
+  --bg: #f3f4f6;
+  --canvas-subtle: #e5e7eb;
+  --canvas-inset: #eef0f2;
+  --panel: #f9fafb;
+  --panel-strong: #eef0f2;
+  --titlebar-bg: #e7eaee;
+  --activity-bg: #e5e7eb;
+  --sidebar-bg: #eceff3;
+  --sidebar-section-bg: #f7f8fa;
+  --toolbar-bg: #eceff3;
+  --terminal-bg: #f4f6f8;
+  --assistant-bg: #f7f8fa;
+  --assistant-head-bg: #eceff3;
+  --editor-bg: #fbfcfd;
+  --gutter-bg: #eef0f2;
+  --field: #ffffff;
+  --line: #c7ccd1;
+  --line-soft: #d7dce1;
+  --text: #1f2328;
+  --muted: #656d76;
+  --accent: #57606a;
+  --accent-hover: #424a53;
+  --accent-subtle: #eaeef2;
+  --active-item-bg: #dde5ee;
+  --selection-bg: rgba(87, 96, 106, 0.28);
+  --selection-text: #111827;
+  --find-bg: rgba(154, 103, 0, 0.28);
+  --find-current-bg: rgba(87, 96, 106, 0.34);
+  --find-line-bg: rgba(87, 96, 106, 0.1);
+  --cursor-line-bg: rgba(87, 96, 106, 0.13);
+  --green: #1f883d;
+  --green-hover: #1a7f37;
+  --warning: #9a6700;
+  --danger: #cf222e;
+  --disabled: #8c959f;
+  --shadow: rgba(27, 31, 36, 0.06);
+  --scrollbar-track: #eef0f2;
+  --scrollbar-thumb: #b7bec6;
+  --scrollbar-thumb-hover: #8c959f;
+}

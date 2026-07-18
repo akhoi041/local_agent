@@ -74,7 +74,8 @@ from talos.run_history import (
 )
 from talos.diagnostics import diagnostics_export, diagnostics_settings, record_diagnostic, sanitize_payload
 from talos.performance import performance_guardrails
-from talos.server import codex_status_payload, runtime_event_detail, runtime_gate, runtime_outcomes, state_payload
+from talos.runtime_service import codex_status_payload, runtime_event_detail, runtime_gate, runtime_outcomes
+from talos.state_service import state_payload
 
 class TalosArduinoTests(unittest.TestCase):
     def test_codex_prompt_contains_selected_arduino_context(self) -> None:
@@ -1054,7 +1055,10 @@ class TalosArduinoTests(unittest.TestCase):
         install_script = (root / "scripts" / "install_app.ps1").read_text(encoding="utf-8")
 
         self.assertIn("_set_windows_app_id(app_identity)", desktop_shell)
-        self.assertIn("webview.start(debug=\"--debug-webview\" in sys.argv, icon=icon_path)", desktop_shell)
+        self.assertIn('webview_data_dir = APP_DATA_ROOT / "webview"', desktop_shell)
+        self.assertIn("webview_data_dir.mkdir(parents=True, exist_ok=True)", desktop_shell)
+        self.assertIn("private_mode=False", desktop_shell)
+        self.assertIn("storage_path=str(webview_data_dir)", desktop_shell)
         self.assertIn("--icon", build_script)
         self.assertIn("assets\\icons;assets\\icons", build_script)
         self.assertIn("config\\app_identity.json;config", build_script)
@@ -1141,7 +1145,7 @@ class TalosArduinoTests(unittest.TestCase):
         codex_source = (root / "talos" / "codex_bridge.py").read_text(encoding="utf-8")
         history_source = (root / "talos" / "run_history.py").read_text(encoding="utf-8")
         checkpoint_source = (root / "talos" / "checkpoints.py").read_text(encoding="utf-8")
-        server_source = (root / "talos" / "server.py").read_text(encoding="utf-8")
+        state_service_source = (root / "talos" / "state_service.py").read_text(encoding="utf-8")
         cleaner = (root / "scripts" / "clean_runtime.ps1").read_text(encoding="utf-8")
         gitignore = (root / ".gitignore").read_text(encoding="utf-8")
 
@@ -1156,7 +1160,7 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("REVIEW_STATE_PATH = APP_DATA_ROOT / \"codex_reviews.json\"", codex_source)
         self.assertIn("RUN_HISTORY_PATH = APP_DATA_ROOT / \"run_history.json\"", history_source)
         self.assertIn("CHECKPOINT_PATH = APP_DATA_ROOT / \"checkpoints.json\"", checkpoint_source)
-        self.assertIn("\"app_data\": str(APP_DATA_ROOT)", server_source)
+        self.assertIn("\"app_data\": str(APP_DATA_ROOT)", state_service_source)
 
         self.assertIn("T-Engine\\Talos", cleaner)
         self.assertIn("insideAppData", cleaner)
@@ -1928,10 +1932,10 @@ class TalosArduinoTests(unittest.TestCase):
         }
 
         with (
-            patch("talos.server.load_config", return_value={}),
-            patch("talos.server.runtime_status", return_value=runtime_probe),
-            patch("talos.server.CODEX_BRIDGE.set_runtime_path") as set_runtime_path,
-            patch("talos.server.CODEX_BRIDGE.status", return_value={
+            patch("talos.runtime_service.load_config", return_value={}),
+            patch("talos.runtime_service.runtime_status", return_value=runtime_probe),
+            patch("talos.runtime_service.CODEX_BRIDGE.set_runtime_path") as set_runtime_path,
+            patch("talos.runtime_service.CODEX_BRIDGE.status", return_value={
                 "ok": False,
                 "available": False,
                 "connected": False,
@@ -2295,13 +2299,13 @@ class TalosArduinoTests(unittest.TestCase):
             "warnings": ["missing_runtime"],
         }
         with (
-            patch("talos.server.load_config", return_value=config),
-            patch("talos.server.list_arduino_ide_processes", return_value=[]) as ide_scan,
-            patch("talos.server.list_arduino_tool_processes", return_value=[]) as tool_scan,
-            patch("talos.server.list_window_rows", return_value=[{"pid": 0, "title": "test | Arduino IDE 2.3.4"}]) as window_scan,
-            patch("talos.server.list_arduino_open_workspaces", return_value=[]),
-            patch("talos.server.list_arduino_workspace_boards", return_value={}),
-            patch("talos.server.runtime_status", return_value=runtime_probe),
+            patch("talos.state_service.load_config", return_value=config),
+            patch("talos.state_service.list_arduino_ide_processes", return_value=[]) as ide_scan,
+            patch("talos.state_service.list_arduino_tool_processes", return_value=[]) as tool_scan,
+            patch("talos.state_service.list_window_rows", return_value=[{"pid": 0, "title": "test | Arduino IDE 2.3.4"}]) as window_scan,
+            patch("talos.state_service.list_arduino_open_workspaces", return_value=[]),
+            patch("talos.state_service.list_arduino_workspace_boards", return_value={}),
+            patch("talos.state_service.runtime_status", return_value=runtime_probe),
         ):
             payload = state_payload()
 
@@ -2327,6 +2331,21 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("POST /api/codex_runtime_health", payload["tools"])
         self.assertIn("GET /api/support_bundle", payload["tools"])
         self.assertIn("GET /api/performance_guardrails", payload["tools"])
+
+    def test_stage_055_server_uses_service_boundaries(self) -> None:
+        from talos import event_bus, runtime_service, server, state_service
+
+        self.assertIs(server.state_payload, state_service.state_payload)
+        self.assertIs(server.codex_status_payload, runtime_service.codex_status_payload)
+        self.assertIs(server.runtime_gate, runtime_service.runtime_gate)
+        self.assertIs(server.runtime_outcomes, runtime_service.runtime_outcomes)
+        self.assertIs(server.log_event, event_bus.log_event)
+        self.assertIs(server.arduino_event_status, event_bus.arduino_event_status)
+
+        server_source = (Path(__file__).parents[1] / "talos" / "server.py").read_text(encoding="utf-8")
+        self.assertNotIn("def state_payload(", server_source)
+        self.assertNotIn("def runtime_gate(", server_source)
+        self.assertNotIn("def log_event(", server_source)
 
     def test_performance_guardrails_document_runtime_and_process_policy(self) -> None:
         guardrails = performance_guardrails()
@@ -3023,6 +3042,34 @@ class TalosArduinoTests(unittest.TestCase):
                 self.assertEqual(len(latest["history"]), 5)
                 self.assertLessEqual(len(stored), 8)
                 self.assertEqual(latest["checkpoint"]["saved_sha256"], stored[-1]["saved_sha256"])
+
+    def test_stage_055_frontend_static_module_split_contract(self) -> None:
+        root = Path(__file__).parents[1]
+        html = (root / "ui" / "web_frontend" / "index.html").read_text(encoding="utf-8")
+        script = (root / "ui" / "web_frontend" / "app.js").read_text(encoding="utf-8")
+        state_module = (root / "ui" / "web_frontend" / "js" / "state.js").read_text(encoding="utf-8")
+        config_module = (root / "ui" / "web_frontend" / "js" / "config.js").read_text(encoding="utf-8")
+        dom_module = (root / "ui" / "web_frontend" / "js" / "dom.js").read_text(encoding="utf-8")
+        module_readme = (root / "ui" / "web_frontend" / "js" / "README.md").read_text(encoding="utf-8")
+        styles = (root / "ui" / "web_frontend" / "styles.css").read_text(encoding="utf-8")
+        tokens = (root / "ui" / "web_frontend" / "styles" / "tokens.css").read_text(encoding="utf-8")
+
+        self.assertIn('<script type="module" src="/app.js"></script>', html)
+        self.assertIn('import { state } from "./js/state.js";', script)
+        self.assertIn('from "./js/config.js";', script)
+        self.assertIn('import { $, $$, api } from "./js/dom.js";', script)
+        self.assertNotIn("const state = {", script)
+        self.assertNotIn("async function api(", script)
+        self.assertIn("export const state", state_module)
+        self.assertIn("export const COMMAND_PALETTE_ITEMS", config_module)
+        self.assertNotIn("document.querySelector", config_module)
+        self.assertIn("export async function api", dom_module)
+        self.assertIn('@import url("/styles/tokens.css");', styles)
+        self.assertIn(':root[data-theme="dark"]', tokens)
+        self.assertIn("--editor-font-size", tokens)
+        self.assertIn("--scrollbar-thumb", tokens)
+        self.assertIn("Feature Owners To Split Next", module_readme)
+        self.assertIn("no-build", module_readme)
 
 if __name__ == "__main__":
     unittest.main()

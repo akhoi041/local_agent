@@ -5,7 +5,6 @@ import json
 import mimetypes
 import os
 import sys
-import threading
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -13,16 +12,13 @@ from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
 from talos.core import (
-    APP_DATA_ROOT,
     ROOT,
     load_build_metadata,
     load_app_identity,
     load_config,
-    now,
     save_config,
 )
 from talos.arduino import (
-    arduino_ide_status,
     cancel_arduino_compile,
     clear_arduino_compile_cache_result,
     codex_context_package,
@@ -39,15 +35,13 @@ from talos.arduino import (
     write_workspace_file,
 )
 from talos.codex_bridge import CODEX_BRIDGE
-from talos.arduino_events import ArduinoEventWatcher
 from talos.diagnostics import diagnostics_export, diagnostics_settings, record_diagnostic
 from talos.codex_runtime import (
-    PROVIDER_NONE,
-    runtime_state_summary,
     runtime_status,
     support_bundle_runtime_evidence,
     update_runtime_pin,
 )
+from talos.event_bus import EVENTS, arduino_event_status, log_event, start_arduino_event_watcher, stop_arduino_event_watcher
 from talos.performance import performance_guardrails
 from talos.checkpoints import (
     create_before_save_checkpoint,
@@ -57,15 +51,11 @@ from talos.checkpoints import (
     rollback_last_checkpoint,
 )
 from talos.native_bridge import (
-    list_arduino_ide_processes,
-    list_arduino_open_workspaces,
-    list_arduino_tool_processes,
-    list_arduino_workspace_boards,
-    list_window_rows,
     native_available,
 )
 from talos.run_history import (
     filtered_run_history,
+    latest_verify_for_workspace,
     record_codex_turn,
     record_patch_transition,
     record_patch_verification,
@@ -73,286 +63,21 @@ from talos.run_history import (
     record_rollback,
     record_runtime_event,
     record_verify,
-    latest_verify_for_workspace,
     run_history,
     support_bundle,
 )
+from talos.runtime_service import (
+    codex_status_payload,
+    record_runtime_status,
+    runtime_event_detail,
+    runtime_gate,
+    runtime_outcomes,
+    selected_runtime_payload,
+)
+from talos.state_service import state_payload
 
 ASSET_ROOT = Path(getattr(sys, "_MEIPASS", ROOT))
 FRONTEND = ASSET_ROOT / "web_frontend" if getattr(sys, "frozen", False) else ROOT / "ui" / "web_frontend"
-EVENTS: list[str] = []
-EVENT_LOCK = threading.Lock()
-ARDUINO_SIGNAL_LOCK = threading.Lock()
-ARDUINO_SIGNAL_REVISION = 0
-ARDUINO_SIGNAL_TIME = ""
-ARDUINO_EVENT_WATCHER: ArduinoEventWatcher | None = None
-
-def log_event(message: str) -> None:
-    with EVENT_LOCK:
-        EVENTS.append(message)
-        del EVENTS[:-200]
-
-def notify_arduino_event(reason: str = "window") -> None:
-    global ARDUINO_SIGNAL_REVISION, ARDUINO_SIGNAL_TIME
-    with ARDUINO_SIGNAL_LOCK:
-        ARDUINO_SIGNAL_REVISION += 1
-        ARDUINO_SIGNAL_TIME = now()
-
-def arduino_event_status() -> dict[str, Any]:
-    with ARDUINO_SIGNAL_LOCK:
-        return {
-            "revision": ARDUINO_SIGNAL_REVISION,
-            "time": ARDUINO_SIGNAL_TIME,
-            "event_assisted": bool(ARDUINO_EVENT_WATCHER and ARDUINO_EVENT_WATCHER.available),
-        }
-
-def start_arduino_event_watcher() -> None:
-    global ARDUINO_EVENT_WATCHER
-    if ARDUINO_EVENT_WATCHER is None:
-        ARDUINO_EVENT_WATCHER = ArduinoEventWatcher(notify_arduino_event)
-        ARDUINO_EVENT_WATCHER.start()
-
-def stop_arduino_event_watcher() -> None:
-    global ARDUINO_EVENT_WATCHER
-    if ARDUINO_EVENT_WATCHER is not None:
-        ARDUINO_EVENT_WATCHER.stop()
-    ARDUINO_EVENT_WATCHER = None
-
-def runtime_gate(runtime_summary: dict[str, Any]) -> dict[str, Any]:
-    health = runtime_summary.get("health") if isinstance(runtime_summary.get("health"), dict) else {}
-    provider = str(runtime_summary.get("provider") or PROVIDER_NONE)
-    health_status = str(health.get("status") or "unknown")
-    warnings = runtime_summary.get("warnings") if isinstance(runtime_summary.get("warnings"), list) else []
-    base = {
-        "ready": False,
-        "blocked": True,
-        "retryable": True,
-        "reconnect_allowed": False,
-        "manual_replay_required": True,
-        "warnings": list(warnings),
-    }
-    if provider == PROVIDER_NONE:
-        return {
-            **base,
-            "code": "runtime_missing",
-            "title": "Codex runtime missing",
-            "detail": "Select or pin a Codex runtime in Settings before sending a Codex turn.",
-        }
-    if runtime_summary.get("changed"):
-        return {
-            **base,
-            "code": "runtime_changed",
-            "title": "Codex runtime changed",
-            "detail": "The pinned Codex runtime changed. Review and pin the runtime again before sending.",
-        }
-    if not bool(health.get("ready")):
-        return {
-            **base,
-            "code": f"runtime_{health_status}",
-            "title": "Codex runtime not ready",
-            "detail": f"Runtime health is {health_status}. Refresh health or select another runtime before sending.",
-        }
-    readiness_warnings = list(warnings)
-    if not bool(health.get("auth_ready")):
-        readiness_warnings.append("auth_readiness_unverified")
-    if not bool(health.get("app_server_ready")):
-        readiness_warnings.append("app_server_readiness_unverified")
-    return {
-        "ready": True,
-        "blocked": False,
-        "retryable": False,
-        "reconnect_allowed": True,
-        "manual_replay_required": True,
-        "code": "runtime_ready",
-        "title": "Codex runtime ready",
-        "detail": "Runtime executable is selected. Auth and app-server readiness are verified when the runtime exposes them.",
-        "warnings": readiness_warnings,
-    }
-
-def selected_runtime_payload(config: dict[str, Any] | None = None, *, force: bool = False) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
-    config = config if config is not None else load_config()
-    full_status = runtime_status(config, force=force)
-    summary = runtime_state_summary(full_status)
-    gate = runtime_gate(summary)
-    active = full_status.get("active") if isinstance(full_status.get("active"), dict) else {}
-    CODEX_BRIDGE.set_runtime_path(str(active.get("path") or ""))
-    return full_status, summary, gate
-
-def runtime_event_detail(status: dict[str, Any]) -> dict[str, Any]:
-    active = status.get("active") if isinstance(status.get("active"), dict) else {}
-    health = status.get("health") if isinstance(status.get("health"), dict) else {}
-    candidates = status.get("candidates") if isinstance(status.get("candidates"), list) else []
-    warning_sources = [
-        active.get("warnings") if isinstance(active.get("warnings"), list) else [],
-        status.get("warnings") if isinstance(status.get("warnings"), list) else [],
-        health.get("warnings") if isinstance(health.get("warnings"), list) else [],
-    ]
-    warnings = sorted({str(item) for source in warning_sources for item in source if str(item).strip()})
-    return {
-        "provider": str(active.get("provider") or PROVIDER_NONE),
-        "display_path": str(active.get("display_path") or ""),
-        "version": str(active.get("version") or health.get("version") or ""),
-        "hash_short": str(active.get("hash_short") or ""),
-        "pinned": bool(active.get("pinned")),
-        "changed": bool(active.get("changed")),
-        "candidate_count": len(candidates),
-        "health_status": str(health.get("status") or "unknown"),
-        "ready": bool(health.get("ready")),
-        "warnings": warnings[:12],
-    }
-
-def runtime_outcomes(status: dict[str, Any]) -> list[tuple[str, str]]:
-    active = status.get("active") if isinstance(status.get("active"), dict) else {}
-    health = status.get("health") if isinstance(status.get("health"), dict) else {}
-    provider = str(active.get("provider") or PROVIDER_NONE)
-    health_status = str(health.get("status") or "unknown")
-    warnings = set(runtime_event_detail(status)["warnings"])
-    outcomes: list[tuple[str, str]] = []
-    if provider == PROVIDER_NONE or health_status == "missing":
-        outcomes.append(("runtime_missing", "codex_runtime_missing"))
-    if bool(active.get("changed")):
-        outcomes.append(("runtime_changed", "codex_runtime_changed"))
-    if health_status == "cancelled":
-        outcomes.append(("runtime_health_cancelled", "codex_runtime_health_cancelled"))
-    elif provider != PROVIDER_NONE and not bool(health.get("ready")):
-        outcomes.append(("runtime_health_failed", "codex_runtime_health_failed"))
-    if provider == "vscode_extension_adjacent" or "extension_adjacent_fallback" in warnings:
-        outcomes.append(("runtime_fallback_used", "codex_runtime_fallback_used"))
-    return outcomes
-
-def record_runtime_status(config: dict[str, Any], status: dict[str, Any], action: str = "") -> None:
-    workspace = str(workspace_summary(config).get("path") or "")
-    detail = runtime_event_detail(status)
-    if action:
-        record_runtime_event(workspace, action, detail)
-    for outcome, diagnostic in runtime_outcomes(status):
-        record_runtime_event(workspace, outcome, detail)
-        record_diagnostic(config, diagnostic, detail)
-
-def codex_status_payload(*, start: bool = True, force_runtime: bool = False) -> dict[str, Any]:
-    _, runtime_summary, gate = selected_runtime_payload(load_config(), force=force_runtime)
-    status = CODEX_BRIDGE.status(start=start and not gate["blocked"])
-    status["codex_runtime"] = runtime_summary
-    status["runtime_gate"] = gate
-    if gate["blocked"]:
-        connection = status.get("connection") if isinstance(status.get("connection"), dict) else {}
-        status["ok"] = False
-        status["runtime_blocked"] = True
-        status["error"] = gate["detail"]
-        status["connection"] = {
-            **connection,
-            "state": "runtime_blocked",
-            "runtime_code": gate["code"],
-            "can_retry_now": bool(gate.get("retryable")),
-        }
-        task_state = status.get("task_state") if isinstance(status.get("task_state"), dict) else {}
-        status["task_state"] = {
-            **task_state,
-            "state": "runtime_blocked",
-            "detail": gate["detail"],
-            "replay_guard": "manual_send_required",
-        }
-    return status
-
-def state_payload() -> dict[str, Any]:
-    config = load_config()
-    app_identity = load_app_identity()
-    build_metadata = load_build_metadata(app_identity)
-    ide_processes = list_arduino_ide_processes()
-    tool_processes = list_arduino_tool_processes()
-    window_rows = list_window_rows()
-    window_titles = [
-        str(row.get("title") or "")
-        for row in window_rows
-        if str(row.get("title") or "").strip()
-    ]
-    arduino_projects = discover_arduino_projects(
-        config,
-        ide_processes=ide_processes,
-        tool_processes=tool_processes,
-        window_rows=window_rows,
-        open_workspaces=list_arduino_open_workspaces(),
-        workspace_boards=list_arduino_workspace_boards(),
-    )
-    arduino_summary = workspace_summary(config)
-    arduino_profile = environment_profile(config, str(arduino_summary.get("path") or ""))
-    arduino_profile_readiness = profile_readiness(config)
-    arduino_map = workspace_map(config, latest_verify_for_workspace(str(arduino_summary.get("path") or "")))
-    codex_runtime_status = runtime_status(config)
-    return {
-        "name": app_identity["display_name"],
-        "role": "Codex local control layer",
-        "root": str(ROOT),
-        "app_data": str(APP_DATA_ROOT),
-        "app": app_identity,
-        "build": build_metadata,
-        "native_available": native_available(),
-        "config": {
-            "theme": config.get("theme", "light"),
-            "arduino_workspace_path": config.get("arduino_workspace_path", ""),
-            "arduino_fqbn": config.get("arduino_fqbn", ""),
-            "arduino_profiles": config.get("arduino_profiles", {}),
-            "diagnostics": diagnostics_settings(config),
-        },
-        "arduino": arduino_summary,
-        "arduino_profile": arduino_profile,
-        "arduino_profile_readiness": arduino_profile_readiness,
-        "arduino_workspace_map": arduino_map,
-        "arduino_ide": arduino_ide_status(
-            processes=ide_processes,
-            tool_processes=tool_processes,
-            titles=window_titles,
-        ),
-        "arduino_projects": arduino_projects,
-        "arduino_events": arduino_event_status(),
-        "codex_runtime": runtime_state_summary(codex_runtime_status),
-        "tools": [
-            "GET /api/state",
-            "GET /api/arduino_context",
-            "GET /api/arduino_events?since=...",
-            "GET /api/arduino_profile",
-            "GET /api/arduino_projects",
-            "GET /api/arduino_file?path=...",
-            "GET /api/arduino_checkpoint?path=...",
-            "POST /api/arduino_file",
-            "POST /api/arduino_rollback",
-            "POST /api/arduino_delete",
-            "POST /api/arduino_verify",
-            "POST /api/arduino_verify_cancel",
-            "POST /api/arduino_verify_cache_clear",
-            "POST /api/arduino_profile",
-            "POST /api/release_evidence",
-            "GET /api/codex_status",
-            "GET /api/codex_runtime",
-            "GET /api/run_history",
-            "GET /api/support_bundle",
-            "GET /api/diagnostics_export",
-            "GET /api/performance_guardrails",
-            "POST /api/codex_reconnect",
-            "POST /api/codex_runtime_pin",
-            "POST /api/codex_runtime_health",
-            "POST /api/codex_context_package",
-            "POST /api/codex_message",
-            "POST /api/codex_restore_reviews",
-            "POST /api/codex_discard_reviews",
-            "POST /api/codex_review_patch",
-            "POST /api/codex_apply_patch",
-            "POST /api/codex_apply_hunk",
-            "POST /api/codex_reject_hunk",
-            "POST /api/codex_apply_all",
-            "POST /api/codex_reject_all",
-            "POST /api/codex_verify_patch",
-            "POST /api/codex_save_patch",
-            "POST /api/codex_reject_patch",
-            "POST /api/codex_apply_conflict",
-            "POST /api/codex_keep_external",
-            "POST /api/codex_merge_draft",
-            "POST /api/codex_cancel",
-            "POST /api/codex_thread",
-            "POST /api/codex_conversation",
-        ],
-        "events": list(EVENTS),
-    }
 
 class TalosWebHandler(BaseHTTPRequestHandler):
     server_version = "TalosWeb/1.0"

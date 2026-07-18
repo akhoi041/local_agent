@@ -741,6 +741,17 @@
         <div id="commandPaletteList" class="command-palette-list" role="listbox" aria-label="Available commands"></div>
       </section>
     </div>
+    <div id="appDialogOverlay" class="app-dialog-overlay" hidden>
+      <section class="app-dialog" role="dialog" aria-modal="true" aria-labelledby="appDialogTitle" aria-describedby="appDialogMessage">
+        <h2 id="appDialogTitle">Talos</h2>
+        <p id="appDialogMessage"></p>
+        <input id="appDialogInput" class="app-dialog-input" type="text" autocomplete="off" spellcheck="false" hidden />
+        <div class="app-dialog-actions">
+          <button id="appDialogCancelBtn" class="button ghost" type="button">Cancel</button>
+          <button id="appDialogOkBtn" class="button primary" type="button">OK</button>
+        </div>
+      </section>
+    </div>
     <footer class="status-bar" aria-label="Talos status">
       <button id="statusWorkspace" class="status-item" type="button">Workspace: none</button>
       <button id="statusFile" class="status-item" type="button">File: none</button>
@@ -748,6 +759,6 @@
       <button id="statusVerify" class="status-item" type="button">Verify: idle</button>
       <button id="statusCodex" class="status-item" type="button">Codex: ready</button>
     </footer>
-    <script src="/app.js"></script>
+    <script type="module" src="/app.js"></script>
   </body>
 </html>

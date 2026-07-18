@@ -55,9 +55,10 @@ These are direction bands, not strict release promises. A pipeline file becomes 
 | 0.11.x - 0.12.x | KiCad target block: first implement `.kicad_pro` context and design diagnostics, then harden ERC/DRC, preview, write safety, UX, and evidence. |
 | 0.13.x - 0.14.x | SolidWorks target block: first validate official API/metadata access, then harden staged design proposals, rollback, safety confirmation, and support evidence. |
 | 0.15.x | Cross-target hardening Beta: unify target UX, support evidence, safety gates, rollback, diagnostics, and runtime behavior across all implemented targets. |
-| 0.16.x+ | Alpha-candidate stabilization: full smoke matrix, installer/update readiness, recovery, policy completeness, and investor/user demo polish. |
+| 0.16.x+ | Alpha-candidate stabilization: runtime independence gate, full smoke matrix, installer/update readiness, recovery, policy completeness, and investor/user demo polish. |
 | 1.0.0 Alpha | First official multi-target Alpha. Arduino remains the reference target, with other planned targets implemented as real product workflows before this gate. |
-| 1.1.x+ | Native-quality shell, deeper runtime independence, hosted opt-in product analytics if policy/server work is ready, and post-1.0 architecture upgrades. |
+| 1.1.x | Native-quality shell and desktop-window integration after the first official multi-target Alpha. |
+| 1.2.x+ | Hosted opt-in product analytics if policy/server work is ready, advanced runtime-provider updates, and post-1.0 architecture upgrades. |
 
 ## Versioned Pipeline Files
 
@@ -80,7 +81,7 @@ These are direction bands, not strict release promises. A pipeline file becomes 
 | 0.13.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_0130.md` | Planned SolidWorks API/metadata foundation release. |
 | 0.14.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_0140.md` | Planned SolidWorks safety hardening and staged-design review release. |
 | 0.15.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_0150.md` | Planned cross-target hardening release. |
-| 0.16.0 Alpha Candidate | `dev_notes/pipelines/TALOS_PIPELINE_0160.md` | Planned full multi-target Alpha-candidate stabilization. |
+| 0.16.0 Alpha Candidate | `dev_notes/pipelines/TALOS_PIPELINE_0160.md` | Planned full multi-target Alpha-candidate stabilization, including Codex runtime independence as a release gate. |
 | 1.0.0 Alpha | `dev_notes/pipelines/TALOS_PIPELINE_100.md` | Planned first official multi-target Alpha. |
 | 1.1.0 Alpha | `dev_notes/pipelines/TALOS_PIPELINE_110.md` | Planned native-quality desktop shell/chrome upgrade after the first official multi-target Alpha. |
 
@@ -470,12 +471,17 @@ Purpose:
 - Freeze major feature work before `1.0.0 Alpha`.
 - Run full smoke/regression matrices across implemented target products.
 - Stabilize installer/update/signing posture, documentation, support evidence, onboarding, known limitations, and investor/demo materials.
+- Complete Codex runtime independence as a pre-Alpha gate: Talos must prefer an official standalone Codex runtime, CLI, or supported runtime-manager path that can authenticate outside VS Code.
+- Treat the VS Code extension-adjacent Codex runtime only as an explicit legacy fallback if licensing and support rules allow it, not as the normal product dependency.
+- Display runtime source, version, update channel, auth readiness, and account/plan metadata only when the runtime exposes those fields safely.
 - Decide whether another `0.x` release is needed or whether Talos is ready for `1.0.0 Alpha`.
 
 Non-goals:
 
 - No broad new connector work.
 - No risky UI shell rewrite unless already validated in a prior version.
+- No copying, bundling, or redistributing VS Code extension binaries without clear license and support guarantees.
+- No storing OpenAI credentials, session tokens, or inferred plan data.
 
 Expected pipeline:
 
@@ -489,7 +495,7 @@ Purpose:
 
 - Ship the first official Talos Alpha only after the planned target products are complete enough to demonstrate the real product direction.
 - Keep Arduino IDE as the reference target, but require MATLAB, STM32CubeIDE, KiCad, and SolidWorks lines to have real workflows or explicit go/no-go decisions before release.
-- Require Codex runtime selection, sign-in readiness, and app-server health checks to be visible and recoverable.
+- Require Codex runtime selection, sign-in readiness, runtime independence, and app-server health checks to be visible and recoverable.
 - Run full automated checks, manual target smoke matrices, signed or explicitly unsigned release artifacts, installer smoke, installed-app smoke, and final distribution checklist.
 
 Expected pipeline:
