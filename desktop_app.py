@@ -7,7 +7,7 @@ from http.server import ThreadingHTTPServer
 from tkinter import messagebox
 from typing import Any
 
-from talos.core import ROOT, WEBVIEW_MIN_HEIGHT, WEBVIEW_MIN_WIDTH, load_app_identity
+from talos.core import APP_DATA_ROOT, ROOT, WEBVIEW_MIN_HEIGHT, WEBVIEW_MIN_WIDTH, load_app_identity
 
 def _existing_icon_path(identity: dict[str, str]) -> str | None:
     icon_path = ROOT / identity.get("icon_ico", "")
@@ -53,6 +53,8 @@ def run_desktop_shell() -> None:
     app_identity = load_app_identity()
     app_name = app_identity["display_name"]
     icon_path = _existing_icon_path(app_identity)
+    webview_data_dir = APP_DATA_ROOT / "webview"
+    webview_data_dir.mkdir(parents=True, exist_ok=True)
     _set_windows_app_id(app_identity)
     host = "127.0.0.1"
     port = find_port(host, 8787)
@@ -154,7 +156,12 @@ def run_desktop_shell() -> None:
     )
     window_ref["window"] = window
     window.events.closed += on_closed
-    webview.start(debug="--debug-webview" in sys.argv, icon=icon_path)
+    webview.start(
+        debug="--debug-webview" in sys.argv,
+        icon=icon_path,
+        private_mode=False,
+        storage_path=str(webview_data_dir),
+    )
 
 if __name__ == "__main__":
     try:

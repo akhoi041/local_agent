@@ -48,5 +48,12 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host ""
+Write-Host "== Documentation link check =="
+& (Join-Path $root "scripts\check_docs_links.ps1")
+if ($LASTEXITCODE -ne 0) {
+  throw "Documentation link check failed with exit code $LASTEXITCODE"
+}
+
+Write-Host ""
 Write-Host "== Pipeline status =="
 & (Join-Path $root "scripts\pipeline_status.ps1")

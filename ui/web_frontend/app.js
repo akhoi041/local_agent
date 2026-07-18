@@ -1,156 +1,31 @@
-const state = {
-  arduinoDirty: false,
-  arduinoVerifyRunning: false,
-  arduinoEventRevision: 0,
-  arduinoEventPolling: false,
-  refreshPromise: null,
-  arduinoFqbnFull: "",
-  arduinoBoardName: "",
-  themeHydrated: false,
-  lastVerifyText: "Sandbox compile has not been run.",
-  lastIssueText: "",
-  lastRefreshAt: 0,
-  workspaceMutationVersion: 0,
-  workspaceMutationRunning: false,
-  workspaceSelectionRunning: false,
-  selectedWorkspacePath: "",
-  workspaceMap: {},
-  environmentProfile: {},
-  profileReadiness: {},
-  lastVerifyResult: null,
-  lastVerifySignature: "",
-  lastVerifyOk: false,
-  lastVerifyContext: null,
-  activeFileByWorkspace: {},
-  activeFilePath: "",
-  editorOriginalContent: "",
-  editorFileMtimeNs: 0,
-  editorDirty: false,
-  editorWriteGuard: null,
-  localEditMode: false,
-  editorLoading: false,
-  editorSaving: false,
-  editorDiskChecking: false,
-  lastCheckpoint: null,
-  codexBusy: false,
-  codexMessagesSignature: "",
-  codexRefreshPromise: null,
-  codexRefreshTimer: null,
-  codexPatchRevision: 0,
-  codexPatchEventRevision: null,
-  codexChangedFiles: new Set(),
-  conflictedFilePaths: new Set(),
-  codexPreviewRevision: 0,
-  codexPreviewPath: "",
-  codexPreviewStreaming: false,
-  codexPreviewTimer: null,
-  codexPreviewCommitted: false,
-  codexPreviewBaseContent: "",
-  codexPreviewContent: "",
-  codexReviewPatch: null,
-  codexPatches: [],
-  codexApplyingPatchId: "",
-  codexPatchVerifyRunning: false,
-  codexConversationSignature: "",
-  codexHistoryExpanded: false,
-  codexConversations: [],
-  codexTasksVisible: true,
-  runHistorySignature: "",
-  runHistoryFilter: "all",
-  runHistorySketchOnly: true,
-  appBuild: {},
-  diagnostics: { enabled: false, allow_remote_upload: false },
-  codexRuntime: {},
-  editorFindQuery: "",
-  editorFindMatches: [],
-  editorFindIndex: -1,
-  commandPaletteQuery: "",
-  commandPaletteIndex: 0,
-};
-
-const THEMES = ["light", "dark", "neutral"];
-const THEME_KEY = "talos-theme";
-const SYSTEM_THEME_KEY = "talos-system-theme";
-const HIGH_CONTRAST_KEY = "talos-high-contrast";
-const EDITOR_FONT_SIZE_KEY = "talos-editor-font-size";
-const EDITOR_DENSITY_KEY = "talos-editor-density";
-const CODEX_PANEL_KEY = "talos-codex-panel-open";
-const EXPLORER_PANEL_KEY = "talos-explorer-panel-open";
-const EXPLORER_WIDTH_KEY = "talos-explorer-pane-width";
-const CODEX_WIDTH_KEY = "talos-codex-pane-width";
-const VERIFY_HEIGHT_KEY = "talos-verify-pane-height";
-const FAST_REFRESH_MS = 1000;
-const IDLE_REFRESH_MS = 5000;
-const REFRESH_TICK_MS = 250;
-const CODEX_BUSY_REFRESH_MS = 400;
-const CODEX_IDLE_REFRESH_MS = 3000;
-const CODEX_HIDDEN_REFRESH_MS = 8000;
-const ACTIVE_FILE_POLL_MS = 700;
-const ARDUINO_EVENT_POLL_MS = 300;
-const TALOS_WRITE_DEBOUNCE_MS = 1500;
-const WINDOW_MIN_WIDTH = 640;
-const WINDOW_MIN_HEIGHT = 460;
-const APP_MENU_COMMANDS = {
-  refresh: "#refreshWorkspaceBtn",
-  "save-file": "#saveFileBtn",
-  "save-verify": "#saveAndVerifyBtn",
-  rollback: "#rollbackFileBtn",
-  verify: "#verifyArduinoBtn",
-  "cancel-verify": "#cancelArduinoVerifyBtn",
-  "clear-cache": "#clearVerifyCacheBtn",
-  "record-evidence": "#recordEvidenceBtn",
-  "toggle-codex": "#toggleCodexBtn",
-  "new-codex": "#newCodexThreadBtn",
-  "copy-context": "#copyCodexContextBtn",
-  "reconnect-codex": "#reconnectCodexBtn",
-  "support-bundle": "#copySupportBundleBtn",
-};
-const COMMAND_PALETTE_ITEMS = [
-  { label: "Refresh Workspace", command: "refresh", shortcut: "F5", group: "File" },
-  { label: "Save File", command: "save-file", shortcut: "Ctrl+S", group: "File" },
-  { label: "Save + Verify", command: "save-verify", shortcut: "Ctrl+Shift+S", group: "File" },
-  { label: "Undo Saved File", command: "rollback", shortcut: "Ctrl+Z", group: "Edit" },
-  { label: "Find In File", command: "find", shortcut: "Ctrl+F", group: "Edit" },
-  { label: "Copy Current Line", command: "copy-line", shortcut: "Ctrl+C", group: "Edit" },
-  { label: "Cut Current Line", command: "cut-line", shortcut: "Ctrl+X", group: "Edit" },
-  { label: "Toggle Line Comment", command: "comment-line", shortcut: "Ctrl+/", group: "Edit" },
-  { label: "Select Current Line", command: "select-line", shortcut: "Ctrl+L", group: "Selection" },
-  { label: "Duplicate Line Up", command: "duplicate-line-up", shortcut: "Shift+Alt+Up", group: "Selection" },
-  { label: "Duplicate Line Down", command: "duplicate-line-down", shortcut: "Shift+Alt+Down", group: "Selection" },
-  { label: "Move Line Up", command: "move-line-up", shortcut: "Alt+Up", group: "Selection" },
-  { label: "Move Line Down", command: "move-line-down", shortcut: "Alt+Down", group: "Selection" },
-  { label: "Go To Server Overview", command: "server-view", group: "Go" },
-  { label: "Go To Arduino Workspace", command: "workspace-view", group: "Go" },
-  { label: "Go To Logs", command: "logs-view", group: "Go" },
-  { label: "Go To Settings", command: "settings-view", group: "Go" },
-  { label: "Toggle Explorer", command: "toggle-explorer", shortcut: "Ctrl+B", group: "View" },
-  { label: "Toggle Codex Column", command: "toggle-codex", shortcut: "Ctrl+Alt+C", group: "View" },
-  { label: "Show Verify Output", command: "verify-output", group: "View" },
-  { label: "Show Run History", command: "run-history", group: "View" },
-  { label: "Reset Pane Layout", command: "reset-layout", group: "View" },
-  { label: "Verify Sandbox", command: "verify", shortcut: "Ctrl+Enter", group: "Run" },
-  { label: "Cancel Verify", command: "cancel-verify", shortcut: "Esc", group: "Run" },
-  { label: "Clear Verify Cache", command: "clear-cache", group: "Run" },
-  { label: "Record Release Evidence", command: "record-evidence", group: "Run" },
-  { label: "New Codex Thread", command: "new-codex", group: "Codex" },
-  { label: "Copy Codex Context Package", command: "copy-context", group: "Codex" },
-  { label: "Reconnect Codex", command: "reconnect-codex", group: "Codex" },
-  { label: "Copy Support Bundle", command: "support-bundle", group: "Help" },
-];
-
-const $ = (selector) => document.querySelector(selector);
-const $$ = (selector) => [...document.querySelectorAll(selector)];
-
-async function api(path, options = {}) {
-  const response = await fetch(path, {
-    headers: { "Content-Type": "application/json" },
-    ...options,
-  });
-  const text = await response.text();
-  const payload = text ? JSON.parse(text) : {};
-  if (!response.ok) throw new Error(payload.error || text || response.statusText);
-  return payload;
-}
+import { state } from "./js/state.js";
+import {
+  ACTIVE_FILE_POLL_MS,
+  APP_MENU_COMMANDS,
+  ARDUINO_EVENT_POLL_MS,
+  CODEX_BUSY_REFRESH_MS,
+  CODEX_HIDDEN_REFRESH_MS,
+  CODEX_IDLE_REFRESH_MS,
+  CODEX_PANEL_KEY,
+  CODEX_WIDTH_KEY,
+  COMMAND_PALETTE_ITEMS,
+  EDITOR_DENSITY_KEY,
+  EDITOR_FONT_SIZE_KEY,
+  EXPLORER_PANEL_KEY,
+  EXPLORER_WIDTH_KEY,
+  FAST_REFRESH_MS,
+  HIGH_CONTRAST_KEY,
+  IDLE_REFRESH_MS,
+  REFRESH_TICK_MS,
+  SYSTEM_THEME_KEY,
+  TALOS_WRITE_DEBOUNCE_MS,
+  THEME_KEY,
+  THEMES,
+  VERIFY_HEIGHT_KEY,
+  WINDOW_MIN_HEIGHT,
+  WINDOW_MIN_WIDTH,
+} from "./js/config.js";
+import { $, $$, api } from "./js/dom.js";
 
 function setView(viewId) {
   $$(".view").forEach((view) => view.classList.toggle("active", view.id === viewId));
@@ -314,6 +189,87 @@ function hideCommandPalette() {
   if (overlay) overlay.hidden = true;
   state.commandPaletteIndex = 0;
   $("#sourceEditor")?.focus({ preventScroll: true });
+}
+
+function appDialogOpen() {
+  const overlay = $("#appDialogOverlay");
+  return Boolean(overlay && !overlay.hidden);
+}
+
+function showAppDialog(options = {}) {
+  const {
+    title = "Talos",
+    message = "",
+    mode = "confirm",
+    value = "",
+    okText = "OK",
+    cancelText = "Cancel",
+  } = options;
+  const overlay = $("#appDialogOverlay");
+  const titleEl = $("#appDialogTitle");
+  const messageEl = $("#appDialogMessage");
+  const inputEl = $("#appDialogInput");
+  const okBtn = $("#appDialogOkBtn");
+  const cancelBtn = $("#appDialogCancelBtn");
+  if (!overlay || !titleEl || !messageEl || !inputEl || !okBtn || !cancelBtn) {
+    return Promise.resolve(mode === "prompt" ? null : false);
+  }
+  hideCommandPalette();
+  hideWindowMenu();
+  const previousFocus = document.activeElement;
+  titleEl.textContent = title;
+  messageEl.textContent = message;
+  inputEl.hidden = mode !== "prompt";
+  inputEl.value = value || "";
+  okBtn.textContent = okText;
+  cancelBtn.textContent = cancelText;
+  overlay.hidden = false;
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (result) => {
+      if (done) return;
+      done = true;
+      overlay.hidden = true;
+      okBtn.removeEventListener("click", onOk);
+      cancelBtn.removeEventListener("click", onCancel);
+      overlay.removeEventListener("mousedown", onOverlayMouseDown);
+      document.removeEventListener("keydown", onKeyDown, true);
+      if (previousFocus && typeof previousFocus.focus === "function") {
+        previousFocus.focus({ preventScroll: true });
+      }
+      resolve(result);
+    };
+    const onOk = () => finish(mode === "prompt" ? inputEl.value : true);
+    const onCancel = () => finish(mode === "prompt" ? null : false);
+    const onOverlayMouseDown = (event) => {
+      if (event.target === overlay) onCancel();
+    };
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onCancel();
+      } else if (event.key === "Enter" && (mode !== "prompt" || document.activeElement === inputEl)) {
+        event.preventDefault();
+        onOk();
+      }
+    };
+    okBtn.addEventListener("click", onOk);
+    cancelBtn.addEventListener("click", onCancel);
+    overlay.addEventListener("mousedown", onOverlayMouseDown);
+    document.addEventListener("keydown", onKeyDown, true);
+    window.requestAnimationFrame(() => {
+      (mode === "prompt" ? inputEl : okBtn).focus({ preventScroll: true });
+      if (mode === "prompt") inputEl.select();
+    });
+  });
+}
+
+function askConfirm(options = {}) {
+  return showAppDialog({ ...options, mode: "confirm" });
+}
+
+function askText(options = {}) {
+  return showAppDialog({ ...options, mode: "prompt" });
 }
 
 function moveCommandPaletteSelection(delta) {
@@ -665,7 +621,12 @@ async function clearCodexRuntimePin() {
 
 async function selectCodexRuntimePath() {
   const current = state.codexRuntime?.display_path || "";
-  const path = window.prompt("Codex runtime executable path", current);
+  const path = await askText({
+    title: "Select Codex Runtime",
+    message: "Codex runtime executable path",
+    value: current,
+    okText: "Pin Runtime",
+  });
   if (path === null) return;
   const trimmed = path.trim();
   if (!trimmed) {
@@ -1260,13 +1221,19 @@ function resetEditor(message = "No file selected.") {
   renderStatusBar();
 }
 
-function canDiscardEditorChanges() {
-  return !state.editorDirty || window.confirm("Discard unsaved changes in the current source file?");
+async function canDiscardEditorChanges() {
+  if (!state.editorDirty) return true;
+  return askConfirm({
+    title: "Discard Unsaved Changes?",
+    message: "The current source file has unsaved Talos edits. Discard them and continue?",
+    okText: "Discard",
+    cancelText: "Keep Editing",
+  });
 }
 
 async function openWorkspaceFile(path) {
   if (!path || path === state.activeFilePath || state.editorLoading) return;
-  if (!canDiscardEditorChanges()) return;
+  if (!(await canDiscardEditorChanges())) return;
   state.editorLoading = true;
   $("#editorStatus").textContent = `Loading ${path}...`;
   try {
@@ -1296,9 +1263,12 @@ async function saveWorkspaceFile(options = {}) {
     return false;
   }
   if (!options.skipVerifyWarning && shouldWarnUnverifiedCodexSave()) {
-    const confirmed = window.confirm(
-      "This Codex-applied editor draft has not passed a current Verify Sandbox run. Save to Arduino IDE anyway?",
-    );
+    const confirmed = await askConfirm({
+      title: "Save Unverified Codex Draft?",
+      message: "This Codex-applied editor draft has not passed a current Verify Sandbox run. Save to Arduino IDE anyway?",
+      okText: "Save Anyway",
+      cancelText: "Review First",
+    });
     if (!confirmed) {
       $("#editorStatus").textContent = "Save paused. Run Save + Verify or Verify Sandbox before saving the Codex draft.";
       return false;
@@ -1351,7 +1321,13 @@ async function saveAndVerifyWorkspace() {
 
 async function rollbackWorkspaceFile() {
   if (!state.activeFilePath || !state.lastCheckpoint || state.editorSaving) return;
-  if (!window.confirm(`Restore ${state.activeFilePath} to the state before Talos's last save?`)) return;
+  const confirmed = await askConfirm({
+    title: "Restore Checkpoint?",
+    message: `Restore ${state.activeFilePath} to the state before Talos's last save?`,
+    okText: "Restore",
+    cancelText: "Cancel",
+  });
+  if (!confirmed) return;
   state.editorSaving = true;
   setEditorDirty(state.editorDirty);
   try {
@@ -3218,7 +3194,7 @@ function renderArduinoProjects(projects = []) {
   $$(".select-project").forEach((button) => {
     button.addEventListener("click", async () => {
       if (state.workspaceSelectionRunning) return;
-      if (!canDiscardEditorChanges()) return;
+      if (!(await canDiscardEditorChanges())) return;
       const project = projects[Number(button.dataset.index)];
       if (!project?.path) return;
       state.workspaceSelectionRunning = true;
@@ -3841,6 +3817,7 @@ function bindEvents() {
     showWindowMenu(event.clientX, event.clientY);
   });
   document.addEventListener("keydown", (event) => {
+    if (appDialogOpen()) return;
     if (commandPaletteOpen()) {
       if (event.key === "Escape") {
         event.preventDefault();
