@@ -40,6 +40,27 @@ The first official `1.0.0 Alpha` should come only after the planned target block
 - **Connector-specific safety:** code connectors use patch/verify; design connectors should use native APIs, file formats, previews, and design-rule checks instead of blind UI automation whenever possible.
 - **Consent-based product data:** the founder/owner may receive product analytics, reliability diagnostics, and compatibility data only under clear user consent and policy. Raw source code, CAD files, chat content, serial output, and sensitive local paths are excluded unless the user explicitly previews and submits them.
 
+## Long-Term Architecture Direction
+
+Talos should start the professional architecture migration before adding new target apps. The goal is not a big-bang rewrite; the goal is to make each layer replaceable while the working Arduino path remains usable.
+
+Target architecture:
+
+- **Desktop shell:** a native-quality app host with proper window behavior, app identity, packaging, and theme-aware chrome. Tauri/Rust is the first long-term candidate because it can keep the current web UI while reducing runtime weight; Electron is a fallback only if Tauri blocks required desktop behavior.
+- **Web workbench:** static, modular HTML/CSS/JS remains the product UI until a proven shell migration requires a different frontend build path.
+- **Local API/IPC contract:** all UI/runtime/target communication should go through stable local endpoints or IPC contracts, not direct cross-module shortcuts.
+- **Native helper layer:** measurable hot paths such as process/window detection, hashing, scan summaries, diff helpers, and cache-key generation move to C/Rust/C++ only when benchmarks show user-facing value.
+- **Python compatibility bridge:** Python stays as the debug launcher, orchestration fallback, and migration safety net, but it should not remain the permanent owner of performance-sensitive app logic.
+- **Runtime manager:** Codex/Claude-compatible runtimes are providers behind a manager; VS Code extension-adjacent paths are legacy providers, not the product foundation.
+- **Target adapters:** Arduino, MATLAB, STM32CubeIDE, KiCad, SolidWorks, and later targets must implement the same adapter contract: detect, map workspace, package context, stage/review, verify/simulate/build where possible, write safely, rollback, and produce support evidence.
+
+Migration rules:
+
+- Do not replace a working Python path until the new layer has parity tests and a fallback.
+- Do not add a second target until the Arduino reference target proves the adapter contract under the new boundaries.
+- Do not introduce a bundled frontend build stack unless it is required by the chosen shell and packaging path.
+- Before `1.0.0 Alpha`, runtime independence and shell/runtime boundaries must be proven enough that Talos is not merely a VS Code extension companion.
+
 ## Approximate Capability Bands
 
 These are direction bands, not strict release promises. A pipeline file becomes authoritative only when it is created for a specific version.
@@ -48,16 +69,17 @@ These are direction bands, not strict release promises. A pipeline file becomes 
 | --- | --- |
 | 0.1.x - 0.3.x | Arduino proof-of-concept, packaging, Codex workflow maturity, sandbox verify, staged apply/save. |
 | 0.4.x | Product-readiness Beta: UI/UX, docs, diagnostics, consent groundwork, broader tester readiness. |
-| 0.5.x | Runtime and architecture Beta: Codex Runtime Manager, runtime discovery, pinning, health checks, sign-in readiness, VS Code extension fallback treated as one provider rather than the product dependency, then architecture slimming before new target work. |
-| 0.6.x | Arduino reference-target Beta: make Arduino the standard implementation pattern for every later target. |
-| 0.7.x - 0.8.x | MATLAB target block: first implement live MATLAB/project workflow, then harden run/check, staged edits, UX, recovery, and support evidence. |
-| 0.9.x - 0.10.x | STM32CubeIDE target block: first implement workspace/project detection and build-log flow, then harden generated-code safety, review, UX, and recovery. |
-| 0.11.x - 0.12.x | KiCad target block: first implement `.kicad_pro` context and design diagnostics, then harden ERC/DRC, preview, write safety, UX, and evidence. |
-| 0.13.x - 0.14.x | SolidWorks target block: first validate official API/metadata access, then harden staged design proposals, rollback, safety confirmation, and support evidence. |
-| 0.15.x | Cross-target hardening Beta: unify target UX, support evidence, safety gates, rollback, diagnostics, and runtime behavior across all implemented targets. |
-| 0.16.x+ | Alpha-candidate stabilization: runtime independence gate, full smoke matrix, installer/update readiness, recovery, policy completeness, and investor/user demo polish. |
+| 0.5.x | Runtime and architecture Beta: Codex Runtime Manager, runtime discovery, pinning, health checks, sign-in readiness, VS Code extension fallback treated as one provider rather than the product dependency, documentation slimming, Python boundary cleanup, and long-term shell/native/API boundary planning. |
+| 0.6.x | Architecture foundation Beta: freeze the target-adapter contract, local API/IPC boundary, native-helper boundary, Python fallback boundary, and shell migration decision before adding non-Arduino targets. |
+| 0.7.x | Arduino reference-target Beta: refit Arduino onto the finalized adapter contract and prove that the new architecture can support a real target without breaking the existing workflow. |
+| 0.8.x - 0.9.x | MATLAB target block: first implement live MATLAB/project workflow on the shared adapter contract, then harden run/check, staged edits, UX, recovery, and support evidence. |
+| 0.10.x - 0.11.x | STM32CubeIDE target block: first implement workspace/project detection and build-log flow on the shared adapter contract, then harden generated-code safety, review, UX, and recovery. |
+| 0.12.x - 0.13.x | KiCad target block: first implement `.kicad_pro` context and design diagnostics on the shared adapter contract, then harden ERC/DRC, preview, write safety, UX, and evidence. |
+| 0.14.x - 0.15.x | SolidWorks target block: first validate official API/metadata access on the shared adapter contract, then harden staged design proposals, rollback, safety confirmation, and support evidence. |
+| 0.16.x | Cross-target hardening Beta: unify target UX, support evidence, safety gates, rollback, diagnostics, and runtime behavior across all implemented targets. |
+| 0.17.x+ | Alpha-candidate stabilization: runtime independence gate, full smoke matrix, installer/update readiness, recovery, policy completeness, investor/user demo polish, and final confirmation that the long-term architecture chosen in 0.6.x did not create release blockers. |
 | 1.0.0 Alpha | First official multi-target Alpha. Arduino remains the reference target, with other planned targets implemented as real product workflows before this gate. |
-| 1.1.x | Native-quality shell and desktop-window integration after the first official multi-target Alpha. |
+| 1.1.x | Post-Alpha native-shell polish if the pre-1.0 migration already proves the shell/runtime boundary; not the first time shell quality is considered. |
 | 1.2.x+ | Hosted opt-in product analytics if policy/server work is ready, advanced runtime-provider updates, and post-1.0 architecture upgrades. |
 
 ## Versioned Pipeline Files
@@ -70,20 +92,21 @@ These are direction bands, not strict release promises. A pipeline file becomes 
 | 0.4.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_040.md` | Completed product-readiness, opt-in feedback, UI/UX polish, and broader tester preparation pipeline. |
 | 0.4.5 Beta | `dev_notes/pipelines/TALOS_PIPELINE_045.md` | Planned policy, consent, privacy wording, and user-trust gate before any hosted telemetry. |
 | 0.5.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_050.md` | Active Codex Runtime Manager release to make Talos depend on a verified Codex runtime, not the VS Code extension UI. |
-| 0.5.5 Beta | `dev_notes/pipelines/TALOS_PIPELINE_055.md` | Planned architecture slimming release for docs taxonomy, Python boundary cleanup, frontend module split, and native-helper planning before new target work. |
-| 0.6.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_060.md` | Planned Arduino reference-target hardening release. |
-| 0.7.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_070.md` | Planned MATLAB foundation release. |
-| 0.8.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_080.md` | Planned MATLAB hardening and daily-use readiness release. |
-| 0.9.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_090.md` | Planned STM32CubeIDE foundation release. |
-| 0.10.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_0100.md` | Planned STM32CubeIDE hardening and generated-code safety release. |
-| 0.11.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_0110.md` | Planned KiCad foundation release. |
-| 0.12.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_0120.md` | Planned KiCad hardening and ERC/DRC readiness release. |
-| 0.13.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_0130.md` | Planned SolidWorks API/metadata foundation release. |
-| 0.14.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_0140.md` | Planned SolidWorks safety hardening and staged-design review release. |
-| 0.15.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_0150.md` | Planned cross-target hardening release. |
-| 0.16.0 Alpha Candidate | `dev_notes/pipelines/TALOS_PIPELINE_0160.md` | Planned full multi-target Alpha-candidate stabilization, including Codex runtime independence as a release gate. |
+| 0.5.5 Beta | `dev_notes/pipelines/TALOS_PIPELINE_055.md` | Planned architecture slimming release for docs taxonomy, Python boundary cleanup, frontend module split, native-helper planning, and long-term app-shell migration boundaries before new target work. |
+| 0.6.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_060.md` | Planned architecture foundation release for adapter contract, local API/IPC, native-helper boundary, Python fallback boundary, and shell migration decision. |
+| 0.7.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_070.md` | Planned Arduino reference-target hardening release on the finalized architecture. |
+| 0.8.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_080.md` | Planned MATLAB foundation release. |
+| 0.9.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_090.md` | Planned MATLAB hardening and daily-use readiness release. |
+| 0.10.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_0100.md` | Planned STM32CubeIDE foundation release. |
+| 0.11.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_0110.md` | Planned STM32CubeIDE hardening and generated-code safety release. |
+| 0.12.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_0120.md` | Planned KiCad foundation release. |
+| 0.13.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_0130.md` | Planned KiCad hardening and ERC/DRC readiness release. |
+| 0.14.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_0140.md` | Planned SolidWorks API/metadata foundation release. |
+| 0.15.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_0150.md` | Planned SolidWorks safety hardening and staged-design review release. |
+| 0.16.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_0160.md` | Planned cross-target hardening release. |
+| 0.17.0 Alpha Candidate | `dev_notes/pipelines/TALOS_PIPELINE_0170.md` | Planned full multi-target Alpha-candidate stabilization and final runtime/shell readiness gate. |
 | 1.0.0 Alpha | `dev_notes/pipelines/TALOS_PIPELINE_100.md` | Planned first official multi-target Alpha. |
-| 1.1.0 Alpha | `dev_notes/pipelines/TALOS_PIPELINE_110.md` | Planned native-quality desktop shell/chrome upgrade after the first official multi-target Alpha. |
+| 1.1.0 Alpha | `dev_notes/pipelines/TALOS_PIPELINE_110.md` | Planned post-Alpha shell polish if the pre-1.0 shell/runtime migration path is already validated. |
 
 Future version pipelines should follow the same naming rule:
 
@@ -104,6 +127,7 @@ Future version pipelines should follow the same naming rule:
 0.14.0 -> dev_notes/pipelines/TALOS_PIPELINE_0140.md
 0.15.0 -> dev_notes/pipelines/TALOS_PIPELINE_0150.md
 0.16.0 -> dev_notes/pipelines/TALOS_PIPELINE_0160.md
+0.17.0 -> dev_notes/pipelines/TALOS_PIPELINE_0170.md
 1.0.0 -> dev_notes/pipelines/TALOS_PIPELINE_100.md
 1.1.0 -> dev_notes/pipelines/TALOS_PIPELINE_110.md
 ```
@@ -242,10 +266,12 @@ Status: next.
 Purpose:
 
 - Reduce Talos from a Python-heavy app toward a thinner bridge plus stronger native/frontend boundaries before adding more target products.
+- Begin the long-term professional app migration by defining replaceable shell, web UI, local API/IPC, native helper, Python fallback, runtime manager, and target-adapter boundaries.
 - Create a documentation taxonomy so release/user docs, version pipelines, evidence, and archived notes are easy to navigate without breaking packaged release paths.
 - Split large frontend files into maintainable modules while preserving the current UI behavior.
 - Split large Python modules into clearer layers: bridge/API orchestration, target adapters, runtime management, checkpoints/history, diagnostics, and support evidence.
 - Move or prepare to move performance-sensitive primitives into the native helper where it is measurably useful, especially scanning, hashing, diff/hunk parsing, process/window detection, and cache-key generation.
+- Evaluate the first shell-migration candidate in writing, with Tauri/Rust as the preferred lightweight direction and Electron only as a fallback if required desktop behavior blocks Tauri.
 - Add lightweight size/performance guardrails so future versions cannot silently grow back into a slow monolith.
 
 Non-goals:
@@ -254,40 +280,66 @@ Non-goals:
 - No risky rewrite of the working Arduino/Codex path.
 - No broad documentation deletion until release packaging and tests are updated to the new taxonomy.
 - No native rewrite unless benchmarks show a clear user-facing benefit.
+- No immediate shell migration unless the spike can preserve source/debug launch, static UI serving, packaging, and Arduino workflow parity.
 
 Expected pipeline:
 
 - `dev_notes/pipelines/TALOS_PIPELINE_055.md`
 
-### 0.6.0 Beta - Arduino Reference Target Hardening
+### 0.6.0 Beta - Architecture Foundation
 
 Status: planned.
 
 Purpose:
 
-- Treat Arduino IDE as the reference target implementation for every later connector.
-- Harden Arduino detection, board/profile mapping, source-file mapping, staged Codex changes, sandbox verify, checkpoint/rollback, support evidence, and UI affordances.
-- Define the target-contract checklist that MATLAB, STM32CubeIDE, KiCad, and SolidWorks must satisfy before they are considered real product targets.
-- Keep runtime-provider behavior from 0.5.0 stable while the target-contract layer is extracted from Arduino-specific assumptions.
+- Freeze the long-term architecture before adding non-Arduino targets.
+- Define and test the target-adapter contract for detect, map workspace, package context, stage/review, verify/simulate/build, safe write, rollback, diagnostics, and evidence.
+- Define the local API/IPC contract so the UI, runtime manager, and target adapters do not depend on Python module shortcuts.
+- Decide the desktop shell migration path early enough that MATLAB, STM32CubeIDE, KiCad, and SolidWorks do not need to be refit later.
+- Keep `desktop_app.py` as the debug/source launcher until a replacement shell proves parity.
+- Identify which current Python responsibilities stay as bridge/fallback and which move to native helper, runtime manager, or target adapters.
 
 Non-goals:
 
-- No hosted telemetry backend.
-- No new target connector in `0.6.0`; this release hardens Arduino as the reference target before the next target-product versions.
+- No new external target app.
+- No risky rewrite of the working Arduino workflow.
+- No shell replacement unless it passes source/debug, packaged-app, Arduino detection, verify, Codex runtime, settings, and recovery parity.
 - No replacement of Codex with a Talos-hosted model.
 
 Expected pipeline:
 
 - `dev_notes/pipelines/TALOS_PIPELINE_060.md`
 
-### 0.7.0 Beta - MATLAB Foundation
+### 0.7.0 Beta - Arduino Reference Target Hardening
+
+Status: planned.
+
+Purpose:
+
+- Treat Arduino IDE as the reference target implementation for every later connector.
+- Refit Arduino onto the finalized target-adapter contract from `0.6.0`.
+- Harden Arduino detection, board/profile mapping, source-file mapping, staged Codex changes, sandbox verify, checkpoint/rollback, support evidence, and UI affordances.
+- Prove that the architecture can support one complete real target without leaking Arduino-specific assumptions into shared code.
+- Keep runtime-provider behavior from `0.5.0` stable while the target-contract layer is extracted from Arduino-specific assumptions.
+
+Non-goals:
+
+- No hosted telemetry backend.
+- No new target connector in `0.7.0`; this release makes Arduino the reference target before the next target-product versions.
+- No replacement of Codex with a Talos-hosted model.
+
+Expected pipeline:
+
+- `dev_notes/pipelines/TALOS_PIPELINE_070.md`
+
+### 0.8.0 Beta - MATLAB Foundation
 
 Status: planned.
 
 Purpose:
 
 - Implement the first real MATLAB target workflow, not a placeholder connector.
-- Detect live MATLAB/project context, selected project folders, `.m` files, and practical project metadata.
+- Detect live MATLAB/project context, selected project folders, `.m` files, and practical project metadata through the shared target-adapter contract.
 - Package MATLAB context for Codex/AI with clear preview and user-scoped access.
 - Support basic staged edits, review, save, rollback, and script/test/run-output capture where MATLAB integration allows.
 - Record initial support evidence and troubleshooting docs specific to MATLAB.
@@ -300,9 +352,9 @@ Non-goals:
 
 Expected pipeline:
 
-- `dev_notes/pipelines/TALOS_PIPELINE_070.md`
+- `dev_notes/pipelines/TALOS_PIPELINE_080.md`
 
-### 0.8.0 Beta - MATLAB Hardening And Daily-Use Readiness
+### 0.9.0 Beta - MATLAB Hardening And Daily-Use Readiness
 
 Status: planned.
 
@@ -319,16 +371,16 @@ Non-goals:
 
 Expected pipeline:
 
-- `dev_notes/pipelines/TALOS_PIPELINE_080.md`
+- `dev_notes/pipelines/TALOS_PIPELINE_090.md`
 
-### 0.9.0 Beta - STM32CubeIDE Foundation
+### 0.10.0 Beta - STM32CubeIDE Foundation
 
 Status: planned.
 
 Purpose:
 
 - Implement STM32CubeIDE as a real firmware target workflow.
-- Detect workspace/project, `.ioc`, `Core/Inc`, `Core/Src`, generated files, user files, and build configuration where practical.
+- Detect workspace/project, `.ioc`, `Core/Inc`, `Core/Src`, generated files, user files, and build configuration where practical through the shared target-adapter contract.
 - Package context for Codex/AI while respecting generated-code boundaries.
 - Support staged edits, review, save, rollback, build invocation or build-log parsing, and troubleshooting evidence.
 
@@ -340,9 +392,9 @@ Non-goals:
 
 Expected pipeline:
 
-- `dev_notes/pipelines/TALOS_PIPELINE_090.md`
+- `dev_notes/pipelines/TALOS_PIPELINE_0100.md`
 
-### 0.10.0 Beta - STM32CubeIDE Hardening And Generated-Code Safety
+### 0.11.0 Beta - STM32CubeIDE Hardening And Generated-Code Safety
 
 Status: planned.
 
@@ -359,16 +411,16 @@ Non-goals:
 
 Expected pipeline:
 
-- `dev_notes/pipelines/TALOS_PIPELINE_0100.md`
+- `dev_notes/pipelines/TALOS_PIPELINE_0110.md`
 
-### 0.11.0 Beta - KiCad Foundation
+### 0.12.0 Beta - KiCad Foundation
 
 Status: planned.
 
 Purpose:
 
 - Implement KiCad as a real electronics-design target workflow.
-- Detect `.kicad_pro` projects and map schematic, PCB, footprint, symbol, netlist/ERC/DRC outputs, and relevant project metadata.
+- Detect `.kicad_pro` projects and map schematic, PCB, footprint, symbol, netlist/ERC/DRC outputs, and relevant project metadata through the shared target-adapter contract.
 - Prefer KiCad files, CLI, Python scripting, and official automation paths over fragile UI scraping.
 - Let AI review designs, explain issues, propose changes, and stage previewable edits or design notes before any write.
 
@@ -380,9 +432,9 @@ Non-goals:
 
 Expected pipeline:
 
-- `dev_notes/pipelines/TALOS_PIPELINE_0110.md`
+- `dev_notes/pipelines/TALOS_PIPELINE_0120.md`
 
-### 0.12.0 Beta - KiCad Hardening And ERC/DRC Readiness
+### 0.13.0 Beta - KiCad Hardening And ERC/DRC Readiness
 
 Status: planned.
 
@@ -399,16 +451,16 @@ Non-goals:
 
 Expected pipeline:
 
-- `dev_notes/pipelines/TALOS_PIPELINE_0120.md`
+- `dev_notes/pipelines/TALOS_PIPELINE_0130.md`
 
-### 0.13.0 Beta - SolidWorks API And Metadata Foundation
+### 0.14.0 Beta - SolidWorks API And Metadata Foundation
 
 Status: planned.
 
 Purpose:
 
 - Implement SolidWorks as a high-safety mechanical-design target workflow.
-- Explore and use official SolidWorks COM/API automation, metadata export, design tables, parameters, sketches/features, parts, assemblies, and drawing metadata where possible.
+- Explore and use official SolidWorks COM/API automation, metadata export, design tables, parameters, sketches/features, parts, assemblies, and drawing metadata where possible through the shared target-adapter contract.
 - Package read-only model context for AI review with clear consent and no blind whole-disk indexing.
 - Stage AI-generated design proposals or macro/API action plans without destructive writes by default.
 
@@ -420,9 +472,9 @@ Non-goals:
 
 Expected pipeline:
 
-- `dev_notes/pipelines/TALOS_PIPELINE_0130.md`
+- `dev_notes/pipelines/TALOS_PIPELINE_0140.md`
 
-### 0.14.0 Beta - SolidWorks Safety Hardening And Staged Design Review
+### 0.15.0 Beta - SolidWorks Safety Hardening And Staged Design Review
 
 Status: planned.
 
@@ -440,9 +492,9 @@ Non-goals:
 
 Expected pipeline:
 
-- `dev_notes/pipelines/TALOS_PIPELINE_0140.md`
+- `dev_notes/pipelines/TALOS_PIPELINE_0150.md`
 
-### 0.15.0 Beta - Cross-Target Hardening
+### 0.16.0 Beta - Cross-Target Hardening
 
 Status: planned.
 
@@ -460,9 +512,9 @@ Non-goals:
 
 Expected pipeline:
 
-- `dev_notes/pipelines/TALOS_PIPELINE_0150.md`
+- `dev_notes/pipelines/TALOS_PIPELINE_0160.md`
 
-### 0.16.0 Alpha Candidate - Multi-Target Stabilization
+### 0.17.0 Alpha Candidate - Multi-Target Stabilization
 
 Status: planned.
 
@@ -474,18 +526,19 @@ Purpose:
 - Complete Codex runtime independence as a pre-Alpha gate: Talos must prefer an official standalone Codex runtime, CLI, or supported runtime-manager path that can authenticate outside VS Code.
 - Treat the VS Code extension-adjacent Codex runtime only as an explicit legacy fallback if licensing and support rules allow it, not as the normal product dependency.
 - Display runtime source, version, update channel, auth readiness, and account/plan metadata only when the runtime exposes those fields safely.
+- Confirm the long-term shell/runtime architecture chosen in `0.6.0` is either already in use or has no blocker to `1.0.0 Alpha` reliability.
 - Decide whether another `0.x` release is needed or whether Talos is ready for `1.0.0 Alpha`.
 
 Non-goals:
 
 - No broad new connector work.
-- No risky UI shell rewrite unless already validated in a prior version.
+- No risky UI shell rewrite; shell architecture work should have been validated before target expansion.
 - No copying, bundling, or redistributing VS Code extension binaries without clear license and support guarantees.
 - No storing OpenAI credentials, session tokens, or inferred plan data.
 
 Expected pipeline:
 
-- `dev_notes/pipelines/TALOS_PIPELINE_0160.md`
+- `dev_notes/pipelines/TALOS_PIPELINE_0170.md`
 
 ### 1.0.0 Alpha - Official Multi-Target Release
 
@@ -502,14 +555,15 @@ Expected pipeline:
 
 - `dev_notes/pipelines/TALOS_PIPELINE_100.md`
 
-### 1.1.0 Alpha - Native-Quality Desktop Shell
+### 1.1.0 Alpha - Post-Alpha Shell Polish
 
 Status: planned.
 
 Purpose:
 
-- Upgrade Talos from a pywebview-style custom chrome toward a VS Code-class desktop shell while preserving the established target workflows.
-- Keep the existing Python/Talos backend and web frontend as the product core, but evaluate or migrate the outer desktop shell to a framework with stronger native window integration, such as Electron, Tauri, WinUI/WebView2, or a small native Windows host.
+- Continue the shell work started before 1.0 after the first official Alpha has proven the target workflows.
+- Polish or complete the migration from a pywebview-style custom chrome toward a VS Code-class desktop shell while preserving the established target workflows.
+- Keep the existing Talos backend contracts and web frontend behavior stable, but allow the outer shell to move to the validated long-term host if the pre-1.0 migration chose one.
 - Provide a theme-aware custom title bar with menu bar, command center, window controls, drag-to-restore, resize hit-testing, and Windows Snap Layout behavior that feels native rather than simulated.
 - Preserve `desktop_app.py` or an equivalent lightweight debug launcher so development remains fast even if the commercial shell changes.
 
