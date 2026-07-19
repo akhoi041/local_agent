@@ -1,5 +1,16 @@
 # Talos Release Notes
 
+## 0.6.0 Beta (In Development)
+
+Talos 0.6.0 Beta is the architecture foundation release. It freezes the contracts Talos needs before adding non-Arduino targets, so later MATLAB, STM32CubeIDE, KiCad, and SolidWorks work can extend the platform instead of forcing another app-wide rewrite.
+
+### Planned Scope
+
+- Define the shared target-adapter contract for detection, workspace mapping, context packaging, staged review, verify/build/simulate, safe writes, rollback, diagnostics, and release evidence.
+- Define the local API/IPC boundary between UI, runtime manager, target adapters, native helper, and Python fallback code.
+- Decide the long-term desktop shell path while keeping `desktop_app.py` as the source/debug launcher until a replacement proves parity.
+- Validate that the current Arduino workflow remains stable while architecture boundaries are formalized.
+
 ## 0.5.5 Beta
 
 Talos 0.5.5 Beta is an architecture-slimming release. It keeps the working Arduino/Codex workflow intact while making the codebase easier to migrate away from Python-heavy app logic over time.
