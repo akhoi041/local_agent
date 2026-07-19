@@ -1,6 +1,6 @@
 # Talos Code Signing
 
-Talos 0.5.5 Beta may be distributed unsigned while the publisher certificate is being prepared, but that state must be explicit in the release folder. Public commercial releases should be signed before distribution.
+Talos 0.6.0 Beta may be distributed unsigned while the publisher certificate is being prepared, but that state must be explicit in the release folder. Public commercial releases should be signed before distribution.
 
 ## Policy
 
@@ -55,4 +55,4 @@ The release gate can ship only if the release folder contains either:
 - Valid Authenticode signatures for the executable and installer, or
 - A deliberate unsigned Pre-Alpha/Beta status file created with `-AllowUnsignedBeta`.
 
-For 0.5.5, the current release posture is explicit unsigned Pre-Alpha/Beta unless a T-Engine code-signing certificate is configured before the release gate.
+For 0.6.0, the current release posture is explicit unsigned Beta unless a T-Engine code-signing certificate is configured before the release gate.
