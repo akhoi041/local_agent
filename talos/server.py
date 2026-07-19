@@ -16,6 +16,7 @@ from talos.core import (
     load_build_metadata,
     load_app_identity,
     load_config,
+    now,
     save_config,
 )
 from talos.arduino import (

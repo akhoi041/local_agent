@@ -34,6 +34,13 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host ""
+Write-Host "== Architecture health =="
+python -B scripts\architecture_health.py --iterations 2
+if ($LASTEXITCODE -ne 0) {
+  throw "Architecture health failed with exit code $LASTEXITCODE"
+}
+
+Write-Host ""
 Write-Host "== Run unit tests =="
 python -B -m unittest tests.test_desktop_app
 if ($LASTEXITCODE -ne 0) {

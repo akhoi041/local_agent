@@ -61,7 +61,7 @@ Redact or remove:
 
 ## Release Evidence
 
-Use `Record Evidence` after a successful manual workflow check. For 0.4.0 Pre-Alpha, release evidence should cover:
+Use `Record Evidence` after a successful manual workflow check. For 0.5.5 Beta, release evidence should cover:
 
 - simple `.ino` sketch
 - multi-file `.h/.cpp` sketch
@@ -69,8 +69,23 @@ Use `Record Evidence` after a successful manual workflow check. For 0.4.0 Pre-Al
 - ESP32 board verify
 - conflict recovery
 - reconnect/cancel behavior
+- Codex runtime manager state
+- architecture-health check result
 
 The recorded evidence appears in the History panel under the `Release evidence` filter.
+
+## 0.5.5 Architecture Notes For Support
+
+When debugging a 0.5.5 issue, classify the owner before changing code:
+
+- Arduino adapter: sketch discovery, source files, profile/FQBN, sandbox verify, and safe writes.
+- Codex runtime manager: runtime discovery, pinning, health, app-server readiness, and blocked-send reasons.
+- Local bridge/API: request routing, app state composition, support bundles, diagnostics, and run history.
+- Native helper: Windows process/window discovery and other measured OS hot paths.
+- Frontend workbench: command palette, status bar, editor/review UI, Codex panel, and settings.
+- Packaging: bundled docs, native DLL, icons, installer, and app-data lifecycle.
+
+0.5.5 is not a full rewrite away from Python. It documents and enforces the boundaries needed for the 0.6.x adapter contract and later shell/runtime migration.
 
 ## Related Guides
 

@@ -1,5 +1,31 @@
 # Talos Release Notes
 
+## 0.5.5 Beta
+
+Talos 0.5.5 Beta is an architecture-slimming release. It keeps the working Arduino/Codex workflow intact while making the codebase easier to migrate away from Python-heavy app logic over time.
+
+### Highlights
+
+- Clarifies the documentation taxonomy by separating user/release docs from internal pipelines, roadmap notes, and evidence.
+- Splits server responsibilities behind clearer service boundaries for event state, state composition, Codex runtime readiness, and architecture health checks.
+- Starts the frontend module split without introducing a Node.js build requirement.
+- Adds architecture-health guardrails so Python growth, shell/runtime assumptions, and native-helper boundaries stay visible.
+- Records the long-term direction: keep Python as the compatibility bridge for now, move OS hot paths and future app-shell work behind stable adapter boundaries, and harden Arduino before adding other targets.
+
+### Known Limitations
+
+- Python still owns the source/debug launcher, local HTTP bridge, Arduino/Codex orchestration, and compatibility fallbacks.
+- Codex runtime independence is not complete. Talos can discover and pin a local runtime, but authentication remains owned by that runtime.
+- Arduino remains the only supported target in this release.
+- Hosted telemetry is still not included. Diagnostics remain local and opt-in.
+- Manual Arduino/Codex smoke testing is still required before treating a rebuilt package as release-ready.
+
+### Upgrade Notes
+
+- Existing app data under `%LOCALAPPDATA%\T-Engine\Talos` is reused.
+- No Node.js build step is introduced.
+- Talos does not store OpenAI credentials, Codex session tokens, or inferred subscription plan data.
+
 ## 0.5.0 Beta
 
 Talos 0.5.0 Beta adds the Codex Runtime Manager so Talos can discover, explain, pin, and health-check the local Codex runtime it uses.

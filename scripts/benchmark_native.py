@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import difflib
+import hashlib
 import json
 import statistics
 import sys
@@ -13,6 +15,49 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from talos import native_bridge as nb
+
+WORKSPACE_SAMPLE_ROOTS = (ROOT / "talos", ROOT / "ui" / "web_frontend")
+SAMPLE_SUFFIXES = {".py", ".js", ".css", ".html", ".c", ".h", ".md"}
+NATIVE_THRESHOLD_RESULTS = {"native_window_rows", "native_arduino_process_rows", "detection_refresh"}
+
+
+def sample_workspace_paths() -> list[Path]:
+    paths: list[Path] = []
+    for sample_root in WORKSPACE_SAMPLE_ROOTS:
+        if not sample_root.exists():
+            continue
+        for path in sample_root.rglob("*"):
+            if path.is_file() and path.suffix.lower() in SAMPLE_SUFFIXES:
+                paths.append(path)
+    return sorted(paths)
+
+
+def benchmark_detection_refresh() -> list[object]:
+    return [nb.list_window_rows(), nb.list_arduino_process_rows_native()]
+
+
+def benchmark_workspace_scan() -> list[str]:
+    return [str(path.relative_to(ROOT)) for path in sample_workspace_paths()]
+
+
+def benchmark_cache_key_hashing() -> list[str]:
+    digest = hashlib.sha256()
+    for path in sample_workspace_paths():
+        stat = path.stat()
+        digest.update(str(path.relative_to(ROOT)).encode("utf-8", "replace"))
+        digest.update(str(stat.st_mtime_ns).encode("ascii"))
+        digest.update(str(stat.st_size).encode("ascii"))
+    return [digest.hexdigest()]
+
+
+def benchmark_diff_hunk_parse() -> list[str]:
+    before = [f"line {index}\n" for index in range(240)]
+    after = before.copy()
+    for index in (12, 72, 144, 210):
+        after[index] = f"line {index} changed\n"
+    diff = difflib.unified_diff(before, after, fromfile="before.ino", tofile="after.ino", n=3)
+    return [line for line in diff if line.startswith("@@")]
+
 
 def measure(name: str, loader: Callable[[], Any], iterations: int) -> dict[str, Any]:
     durations: list[float] = []
@@ -60,6 +105,10 @@ def main() -> int:
     results = [
         measure("native_window_rows", nb.list_window_rows, args.iterations),
         measure("native_arduino_process_rows", nb.list_arduino_process_rows_native, args.iterations),
+        measure("detection_refresh", benchmark_detection_refresh, args.iterations),
+        measure("workspace_scan_sample", benchmark_workspace_scan, args.iterations),
+        measure("cache_key_hash_sample", benchmark_cache_key_hashing, args.iterations),
+        measure("diff_hunk_parse_sample", benchmark_diff_hunk_parse, args.iterations),
     ]
     fallback = fallback_status()
     payload = {
@@ -82,7 +131,7 @@ def main() -> int:
     for result in results:
         if not result["ok"]:
             failures.append(f"{result['name']} failed: {result['error']}")
-        elif result["max_ms"] > args.max_native_ms:
+        elif result["name"] in NATIVE_THRESHOLD_RESULTS and result["max_ms"] > args.max_native_ms:
             failures.append(f"{result['name']} exceeded {args.max_native_ms} ms: {result['max_ms']} ms")
     missing_fallbacks = [name for name, available in fallback.items() if not available]
     if missing_fallbacks:

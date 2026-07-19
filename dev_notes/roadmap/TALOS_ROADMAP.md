@@ -94,7 +94,7 @@ These are direction bands, not strict release promises. A pipeline file becomes 
 | 0.4.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_040.md` | Completed product-readiness, opt-in feedback, UI/UX polish, and broader tester preparation pipeline. |
 | 0.4.5 Beta | `dev_notes/pipelines/TALOS_PIPELINE_045.md` | Planned policy, consent, privacy wording, and user-trust gate before any hosted telemetry. |
 | 0.5.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_050.md` | Completed Codex Runtime Manager release to make Talos depend on a verified Codex runtime, not the VS Code extension UI. |
-| 0.5.5 Beta | `dev_notes/pipelines/TALOS_PIPELINE_055.md` | Planned architecture slimming release for docs taxonomy, Python boundary cleanup, frontend module split, native-helper planning, and long-term app-shell migration boundaries before new target work. |
+| 0.5.5 Beta | `dev_notes/pipelines/TALOS_PIPELINE_055.md` | Completed architecture slimming release for docs taxonomy, Python boundary cleanup, frontend module split, native-helper planning, and long-term app-shell migration boundaries before new target work. |
 | 0.6.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_060.md` | Planned architecture foundation release for adapter contract, local API/IPC, native-helper boundary, Python fallback boundary, and shell migration decision. |
 | 0.7.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_070.md` | Planned Arduino reference-target hardening release on the finalized architecture. |
 | 0.8.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_080.md` | Planned MATLAB foundation release. |
@@ -263,7 +263,7 @@ Expected pipeline:
 
 ### 0.5.5 Beta - Architecture Slimming
 
-Status: next.
+Status: complete.
 
 Purpose:
 
