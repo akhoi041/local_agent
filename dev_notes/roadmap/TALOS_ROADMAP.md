@@ -60,6 +60,8 @@ Migration rules:
 - Do not add a second target until the Arduino reference target proves the adapter contract under the new boundaries.
 - Do not introduce a bundled frontend build stack unless it is required by the chosen shell and packaging path.
 - Before `1.0.0 Alpha`, runtime independence and shell/runtime boundaries must be proven enough that Talos is not merely a VS Code extension companion.
+- Treat `0.6.0` as the architecture cutoff: after this release, target connectors must extend the shared adapter contract instead of forcing another app-wide rewrite.
+- Treat `0.7.0` as the Arduino proof release: no MATLAB, STM32CubeIDE, KiCad, or SolidWorks pipeline should start until Arduino has passed on the finalized contract.
 
 ## Approximate Capability Bands
 
@@ -77,7 +79,7 @@ These are direction bands, not strict release promises. A pipeline file becomes 
 | 0.12.x - 0.13.x | KiCad target block: first implement `.kicad_pro` context and design diagnostics on the shared adapter contract, then harden ERC/DRC, preview, write safety, UX, and evidence. |
 | 0.14.x - 0.15.x | SolidWorks target block: first validate official API/metadata access on the shared adapter contract, then harden staged design proposals, rollback, safety confirmation, and support evidence. |
 | 0.16.x | Cross-target hardening Beta: unify target UX, support evidence, safety gates, rollback, diagnostics, and runtime behavior across all implemented targets. |
-| 0.17.x+ | Alpha-candidate stabilization: runtime independence gate, full smoke matrix, installer/update readiness, recovery, policy completeness, investor/user demo polish, and final confirmation that the long-term architecture chosen in 0.6.x did not create release blockers. |
+| 0.17.x+ | Alpha-candidate stabilization: final runtime-independence verification, full smoke matrix, installer/update readiness, recovery, policy completeness, investor/user demo polish, and confirmation that the long-term architecture chosen in 0.6.x did not create release blockers. |
 | 1.0.0 Alpha | First official multi-target Alpha. Arduino remains the reference target, with other planned targets implemented as real product workflows before this gate. |
 | 1.1.x | Post-Alpha native-shell polish if the pre-1.0 migration already proves the shell/runtime boundary; not the first time shell quality is considered. |
 | 1.2.x+ | Hosted opt-in product analytics if policy/server work is ready, advanced runtime-provider updates, and post-1.0 architecture upgrades. |
@@ -91,7 +93,7 @@ These are direction bands, not strict release promises. A pipeline file becomes 
 | 0.3.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_030.md` | Completed Codex-Arduino workflow maturity release. |
 | 0.4.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_040.md` | Completed product-readiness, opt-in feedback, UI/UX polish, and broader tester preparation pipeline. |
 | 0.4.5 Beta | `dev_notes/pipelines/TALOS_PIPELINE_045.md` | Planned policy, consent, privacy wording, and user-trust gate before any hosted telemetry. |
-| 0.5.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_050.md` | Active Codex Runtime Manager release to make Talos depend on a verified Codex runtime, not the VS Code extension UI. |
+| 0.5.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_050.md` | Completed Codex Runtime Manager release to make Talos depend on a verified Codex runtime, not the VS Code extension UI. |
 | 0.5.5 Beta | `dev_notes/pipelines/TALOS_PIPELINE_055.md` | Planned architecture slimming release for docs taxonomy, Python boundary cleanup, frontend module split, native-helper planning, and long-term app-shell migration boundaries before new target work. |
 | 0.6.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_060.md` | Planned architecture foundation release for adapter contract, local API/IPC, native-helper boundary, Python fallback boundary, and shell migration decision. |
 | 0.7.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_070.md` | Planned Arduino reference-target hardening release on the finalized architecture. |
@@ -523,7 +525,7 @@ Purpose:
 - Freeze major feature work before `1.0.0 Alpha`.
 - Run full smoke/regression matrices across implemented target products.
 - Stabilize installer/update/signing posture, documentation, support evidence, onboarding, known limitations, and investor/demo materials.
-- Complete Codex runtime independence as a pre-Alpha gate: Talos must prefer an official standalone Codex runtime, CLI, or supported runtime-manager path that can authenticate outside VS Code.
+- Verify Codex runtime independence as a pre-Alpha gate: the implementation work should already be completed before this stage, and Talos must prefer an official standalone Codex runtime, CLI, or supported runtime-manager path that can authenticate outside VS Code.
 - Treat the VS Code extension-adjacent Codex runtime only as an explicit legacy fallback if licensing and support rules allow it, not as the normal product dependency.
 - Display runtime source, version, update channel, auth readiness, and account/plan metadata only when the runtime exposes those fields safely.
 - Confirm the long-term shell/runtime architecture chosen in `0.6.0` is either already in use or has no blocker to `1.0.0 Alpha` reliability.

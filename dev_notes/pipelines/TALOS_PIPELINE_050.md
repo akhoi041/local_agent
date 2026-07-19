@@ -10,7 +10,7 @@ Purpose: add a Codex Runtime Manager so Talos can use a verified local Codex run
 
 ```text
 Previous completed pipeline: dev_notes/pipelines/TALOS_PIPELINE_040.md
-Previous release evidence: dev_notes/evidence/TALOS_040_RELEASE_EVIDENCE.md
+Previous release evidence: dev_notes/evidence/TALOS_040_EVIDENCE.md
 Current active pipeline: dev_notes/pipelines/TALOS_PIPELINE_050.md
 Current release evidence: dev_notes/evidence/TALOS_050_EVIDENCE.md
 Next planned pipeline: dev_notes/pipelines/TALOS_PIPELINE_055.md

@@ -73,9 +73,9 @@ $requiredPaths = @(
   "dev_notes/pipelines/TALOS_PIPELINE_040.md",
   "dev_notes/pipelines/TALOS_PIPELINE_050.md",
   "dev_notes/pipelines/TALOS_PIPELINE_055.md",
-  "dev_notes/evidence/TALOS_020_STAGE1_VALIDATION.md",
-  "dev_notes/evidence/TALOS_030_BASELINE.md",
-  "dev_notes/evidence/TALOS_040_RELEASE_EVIDENCE.md",
+  "dev_notes/evidence/TALOS_020_EVIDENCE.md",
+  "dev_notes/evidence/TALOS_030_EVIDENCE.md",
+  "dev_notes/evidence/TALOS_040_EVIDENCE.md",
   "dev_notes/evidence/TALOS_050_EVIDENCE.md",
   "dev_notes/evidence/TALOS_055_EVIDENCE.md"
 )
