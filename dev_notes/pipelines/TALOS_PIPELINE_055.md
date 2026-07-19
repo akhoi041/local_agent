@@ -3,14 +3,14 @@
 Purpose: slim the project architecture after the Codex Runtime Manager and before new target apps. This release should make Talos easier to maintain, faster to run, and clearer to document without breaking the working Arduino/Codex path.
 
 ```text
-0.5.5 Beta = documentation taxonomy + Python boundary cleanup + frontend module split + native-helper performance plan.
+0.5.5 Beta = documentation taxonomy + Python boundary cleanup + frontend module split + native-helper performance plan + long-term shell/runtime boundary plan.
 ```
 
 Current release evidence: `dev_notes/evidence/TALOS_055_EVIDENCE.md`
 
 ## Exit Condition
 
-Talos 0.5.5 is complete when the repo has a clear documentation taxonomy, the largest Python/frontend modules have explicit ownership boundaries, performance-sensitive work has native-helper candidates with benchmark evidence, and the existing Arduino/Codex workflow still passes regression and manual smoke checks.
+Talos 0.5.5 is complete when the repo has a clear documentation taxonomy, the largest Python/frontend modules have explicit ownership boundaries, performance-sensitive work has native-helper candidates with benchmark evidence, the long-term shell/runtime migration path is documented without forcing a risky rewrite, and the existing Arduino/Codex workflow still passes regression and manual smoke checks.
 
 ## Stage 0 - Baseline And Safety
 
@@ -75,18 +75,21 @@ Purpose: keep the web frontend maintainable before adding more target UIs.
 
 Exit condition: UI behavior is unchanged, but frontend responsibilities are easier to extend per target.
 
-## Stage 4 - Native Helper Candidate Plan
+## Stage 4 - Long-Term Native Boundary Plan
 
-Purpose: move only measurable hot paths out of Python.
+Purpose: move only measurable hot paths out of Python and define the professional app-shell boundary before new target products.
 
 - [ ] Benchmark detection refresh, workspace scanning, hashing/cache-key generation, diff/hunk parsing, and process/window queries.
 - [ ] Identify which hot paths should move to `native/talos_native.c` or a future Rust/C++ helper.
 - [ ] Define native API boundaries that are stable across Arduino, MATLAB, STM32CubeIDE, KiCad, and SolidWorks.
+- [ ] Define the shell/runtime boundary for a future native-quality host: desktop shell, static web workbench, local API/IPC contract, native helper, Python compatibility bridge, runtime manager, and target adapters.
+- [ ] Record the shell migration decision: Tauri/Rust is the preferred lightweight candidate; Electron is a fallback only if Tauri cannot satisfy required Windows windowing, packaging, or WebView behavior.
+- [ ] Keep `desktop_app.py` as the source/debug launcher until a replacement shell proves parity for startup, app identity, native binaries, static UI serving, and Arduino smoke behavior.
 - [ ] Keep Python fallbacks for every native helper path.
 - [ ] Add build/fallback verification so missing native binaries degrade gracefully.
-- [ ] Produce a native candidate report for 0.5.5; do not migrate a path to native unless the benchmark shows clear user-facing benefit and the fallback remains tested.
+- [ ] Produce a native/shell candidate report for 0.5.5; do not migrate a path to native or a new shell unless the benchmark or behavior evidence shows clear user-facing benefit and the fallback remains tested.
 
-Exit condition: native work is justified by measurements and has safe fallbacks.
+Exit condition: native and shell work is justified by measurements or desktop behavior needs, has safe fallbacks, and does not break the Arduino reference path.
 
 ## Stage 5 - Performance And Size Guardrails
 
@@ -98,6 +101,7 @@ Purpose: stop the app from growing back into a slow monolith.
 - [ ] Record acceptable thresholds and blocked-case handling in release evidence.
 - [ ] Set initial size thresholds from the 0.5.5 baseline: no extracted Python module should grow back into a multi-domain file, and frontend modules should stay grouped by ownership rather than by incidental UI order.
 - [ ] Record baseline timings and compare against them instead of inventing arbitrary performance targets.
+- [ ] Record shell/runtime migration guardrails: no new shell can replace the current launcher until it passes the same source/debug, packaged-app, Arduino detection, verify, Codex runtime, and settings persistence checks.
 
 Exit condition: future versions can detect architecture drift before it hurts users.
 
@@ -110,6 +114,7 @@ Purpose: finish slimming without destabilizing the product.
 - [ ] Verify installed-app packaging still includes required docs and native binaries.
 - [ ] Update README, roadmap, release notes, and support docs with the new architecture boundaries.
 - [ ] Record known limitations and any postponed cleanup.
+- [ ] Record the long-term architecture decision in release evidence so 0.6.0 can harden Arduino against the target-adapter contract instead of continuing Python-specific assumptions.
 - [ ] Prepare release branch/tag instructions, but do not commit, tag, or push unless the user explicitly asks for it.
 
 Exit condition: Talos is cleaner internally, still usable externally, and ready for 0.6.0 Arduino reference-target hardening.
