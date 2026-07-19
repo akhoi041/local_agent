@@ -76,7 +76,7 @@ Purpose: prove that the current app can be built, installed, launched, and unins
 - [x] Confirm `desktop_app.py` still launches the source app for debug.
 - [x] Record packaging/runtime issues found during release-candidate validation.
 
-Stage evidence: `dev_notes/evidence/TALOS_020_STAGE1_VALIDATION.md`.
+Stage evidence: `dev_notes/evidence/TALOS_020_EVIDENCE.md`.
 
 Exit condition: the app can be installed and launched outside the source tree, uninstalled cleanly, and represented by complete release evidence.
 
