@@ -1,5 +1,6 @@
 ﻿import json
 import re
+import importlib.util
 import time
 import unittest
 from pathlib import Path
@@ -2103,6 +2104,27 @@ class TalosArduinoTests(unittest.TestCase):
         )
         self.assertIsInstance(native_available(), bool)
 
+    def test_native_bridge_extracts_ino_names_without_native_library(self) -> None:
+        original_library = native_bridge._LIBRARY
+        try:
+            native_bridge._LIBRARY = None
+            self.assertEqual(extract_ino_names("FallbackSketch.ino - Arduino IDE"), ["FallbackSketch.ino"])
+        finally:
+            native_bridge._LIBRARY = original_library
+
+    def test_native_benchmark_covers_stage_4_hot_paths(self) -> None:
+        script = Path("scripts/benchmark_native.py").read_text(encoding="utf-8")
+
+        for label in (
+            "detection_refresh",
+            "workspace_scan_sample",
+            "cache_key_hash_sample",
+            "diff_hunk_parse_sample",
+            "native_window_rows",
+            "native_arduino_process_rows",
+        ):
+            self.assertIn(label, script)
+
     def test_native_bridge_extracts_board_from_language_server_command(self) -> None:
         command = (
             'arduino-language-server.exe -cli-daemon-addr localhost:51373 '
@@ -2333,8 +2355,9 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("GET /api/performance_guardrails", payload["tools"])
 
     def test_stage_055_server_uses_service_boundaries(self) -> None:
-        from talos import event_bus, runtime_service, server, state_service
+        from talos import core, event_bus, runtime_service, server, state_service
 
+        self.assertIs(server.now, core.now)
         self.assertIs(server.state_payload, state_service.state_payload)
         self.assertIs(server.codex_status_payload, runtime_service.codex_status_payload)
         self.assertIs(server.runtime_gate, runtime_service.runtime_gate)
@@ -3070,6 +3093,26 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("--scrollbar-thumb", tokens)
         self.assertIn("Feature Owners To Split Next", module_readme)
         self.assertIn("no-build", module_readme)
+
+    def test_stage_055_architecture_health_guardrails(self) -> None:
+        root = Path(__file__).parents[1]
+        script = root / "scripts" / "architecture_health.py"
+        spec = importlib.util.spec_from_file_location("architecture_health", script)
+
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        report = module.architecture_health_report(iterations=1)
+
+        self.assertTrue(report["ok"], report["failures"])
+        self.assertIn("module_size", report)
+        self.assertIn("timing", report)
+        self.assertIn("shell_runtime_migration", report)
+        self.assertFalse(report["shell_runtime_migration"]["replacement_shell_allowed"])
+        self.assertIn("desktop_app.py", module.MODULE_LIMITS)
+        self.assertIn("state_refresh", report["timing"]["timings"])
 
 if __name__ == "__main__":
     unittest.main()

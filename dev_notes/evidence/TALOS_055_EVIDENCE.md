@@ -171,6 +171,30 @@ python -B -m unittest tests.test_desktop_app
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\pipeline_status.ps1
 ```
 
+## Stage 6 - Regression And Release Notes
+
+Result: complete.
+
+- Full automated checks: `scripts/check.ps1` passed after rebuilding `native/bin/talos_native.dll`, checking native exports, benchmarking native detection, running architecture health, running 118 unit tests, running release recovery smoke, checking documentation links, and confirming pipeline status.
+- Manual Arduino/Codex smoke: retained as the owner-facing release gate for installed-app distribution; source/debug behavior remains covered by regression and recovery smoke.
+- Packaging review: `scripts/build_app.ps1`, `scripts/build_release.ps1`, `scripts/install_app.ps1`, and `installer/talos.iss` keep required docs and `native/bin/talos_native.dll` in the packaged/release paths.
+- Docs updated: `docs/README.md`, `docs/RELEASE_NOTES.md`, `docs/CODE_SIGNING.md`, `docs/TALOS_SUPPORT_DEBUG.md`, and `dev_notes/roadmap/TALOS_ROADMAP.md`.
+- Known limitations: Python remains the source/debug launcher, local HTTP bridge, Arduino/Codex orchestrator, and compatibility fallback; Codex runtime independence is not complete; Arduino remains the only supported target; hosted telemetry is not included.
+- Long-term architecture decision: 0.6.0 should harden Arduino against the shared target-adapter/API/native-helper boundary before adding MATLAB, STM32CubeIDE, KiCad, or SolidWorks.
+- Release git instructions are prepared but not executed:
+  `git switch develop/0.5.5`, `git status`, `git add ...`, `git commit -m "Complete Talos 0.5.5 Beta"`, `git push origin develop/0.5.5`, then PR/merge/tag only when the owner approves.
+
+Validation result:
+
+```text
+Native benchmark: OK.
+Architecture health: OK.
+Unit tests: Ran 118 tests, OK.
+Release recovery smoke: OK, kept external Arduino edit.
+Documentation link check OK: 32 repo doc references verified.
+Pipeline status: Stage 0 6/6, Stage 1 7/7, Stage 2 7/7, Stage 3 9/9, Stage 4 9/9, Stage 5 7/7, Stage 6 7/7, overall 52/52.
+```
+
 Validation result:
 
 ```text
@@ -195,6 +219,90 @@ Validation commands:
 python -B -m unittest tests.test_desktop_app
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\check_docs_links.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\pipeline_status.ps1
+```
+
+## Stage 5 - Performance And Size Guardrails
+
+Result: complete.
+
+- `scripts/architecture_health.py` records the 0.5.5 baseline guardrails for module size, timing probes, and shell/runtime migration parity.
+- Module-size checks cover `desktop_app.py`, the largest Python service/adapter modules, the main frontend files, and the new frontend module/token split.
+- Responsibility checks are recorded as explicit ownership notes next to each size threshold so future growth has to justify itself or split into the right owner.
+- Timing checks cover startup imports, state refresh, Arduino detection, verify cache lookup, support bundle generation, and diagnostics export.
+- Thresholds are based on current 0.5.5 guardrails and `talos.performance.THRESHOLDS`, with no new release promise implied.
+- Shell/runtime migration remains blocked until a replacement shell proves source/debug, packaged-app, app identity, native binary loading, static UI serving, settings persistence, Arduino detection, sandbox verify, Codex runtime readiness, and support/diagnostics parity.
+- `scripts/check.ps1` now runs the architecture health script after the native benchmark and before unit tests.
+
+Validation commands:
+
+```text
+python -B scripts\architecture_health.py --iterations 2
+python -B scripts\architecture_health.py --json --iterations 1
+python -B -m unittest tests.test_desktop_app
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\check_docs_links.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\pipeline_status.ps1 dev_notes\pipelines\TALOS_PIPELINE_055.md
+git diff --check
+```
+
+Validation result:
+
+```text
+Architecture health: OK.
+Module guardrails: desktop_app.py 170/260, server.py 754/950, arduino.py 1492/1900, codex_bridge.py 1681/2150, app.js 3892/4900, styles.css 3985/5000, split frontend modules all below limits.
+Timing guardrails: startup_imports max 49.761ms, state_refresh max 1093.623ms / 2000ms 0.5.5 baseline, arduino_detection max 5.679ms, verify_cache_lookup max 0.041ms, support_bundle_generation max 3.064ms, diagnostics_export max 322.684ms.
+Shell/runtime migration: replacement shell remains blocked; 10 parity gates recorded.
+scripts/check.ps1: OK.
+Native benchmark: OK.
+Release recovery smoke test: OK.
+Unit tests: Ran 118 tests, OK.
+Documentation link check OK: 32 repo doc references verified.
+Pipeline status: Stage 5 7/7, overall 45/52.
+git diff --check: no whitespace errors; Windows CRLF warnings only.
+```
+
+Validation result:
+
+```text
+Unit tests: Ran 115 tests, OK.
+Documentation link check OK: 32 repo doc references verified.
+Pipeline status: Stage 0 6/6, Stage 1 7/7, Stage 2 7/7, Stage 3 9/9, overall 29/47.
+```
+
+## Stage 4 - Long-Term Native Boundary Plan
+
+Result: complete.
+
+- `scripts/benchmark_native.py` now covers native window/process rows, detection refresh, representative workspace scan, cache-key hashing, and diff/hunk parsing.
+- First native/helper candidates: Windows process/window enumeration, target-app discovery, target metadata probing, and repeated OS query normalization when measurements show user-visible benefit.
+- Keep in Python for now: HTTP route glue, settings/config migration, diagnostics/report composition, Codex runtime orchestration, Arduino sandbox/verify orchestration, and compatibility fallbacks.
+- Stable native API boundary: target discovery should return normalized `target_kind`, `process_id`, `window_title`, `workspace_hint`, `active_file_hint`, `board/profile/toolchain_hint`, `confidence`, and `timestamp`.
+- Stable file/workspace boundary: adapters expose workspace roots, source files, active file, profile/build metadata, verify/simulate command requests, and safe write/apply/rollback primitives.
+- Shell/runtime boundary: desktop shell owns native windowing, titlebar, app identity, and packaging; static web workbench owns UI; local API/IPC owns state/actions; native helper owns OS hot paths; Python bridge remains compatibility/fallback; runtime manager owns Codex/Claude metadata and session readiness.
+- Shell decision: Tauri/Rust is the preferred lightweight candidate. Electron remains a fallback only if Tauri cannot satisfy required Windows windowing, packaging, or WebView behavior.
+- `desktop_app.py` remains the source/debug launcher until a replacement shell proves parity for startup, app identity, native binaries, static UI serving, settings persistence, Arduino detection, verify, and Codex runtime behavior.
+- Missing native binaries must degrade gracefully through Python/PowerShell/WMIC fallbacks, and fallback behavior remains test-covered.
+
+Validation commands:
+
+```text
+python -B scripts\benchmark_native.py --iterations 3 --max-native-ms 250
+python -B -m unittest tests.test_desktop_app
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\check_docs_links.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\pipeline_status.ps1 dev_notes\pipelines\TALOS_PIPELINE_055.md
+git diff --check
+```
+
+Validation result:
+
+```text
+Native benchmark: OK.
+native_window_rows max=0.536ms; native_arduino_process_rows max=5.253ms; detection_refresh max=5.234ms.
+workspace_scan_sample count=24 max=2.387ms; cache_key_hash_sample max=2.738ms; diff_hunk_parse_sample count=4 max=0.246ms.
+Fallback APIs: all required window/process/tool PowerShell and WMIC fallbacks are available.
+Unit tests: Ran 117 tests, OK.
+Documentation link check OK: 32 repo doc references verified.
+Pipeline status: Stage 4 9/9, overall 38/52.
+git diff --check: no whitespace errors; Windows CRLF warnings only.
 ```
 
 Validation result:

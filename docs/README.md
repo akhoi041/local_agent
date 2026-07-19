@@ -16,6 +16,12 @@ It does not replace Codex, Arduino IDE, or VS Code. Codex remains the reasoning 
 - Sandbox compile using `arduino-cli compile --fqbn ...`, with cancellation, cache controls, structured diagnostics, and timing output.
 - Checkpoints, guarded rollback, release evidence, installer smoke tests, and per-user runtime data under `%LOCALAPPDATA%\T-Engine\Talos`.
 
+## Architecture Boundary
+
+Talos 0.5.5 keeps Python as the compatibility bridge while moving broad mechanics behind clearer service boundaries: event state in `talos/event_bus.py`, state composition in `talos/state_service.py`, runtime readiness in `talos/runtime_service.py`, and measurable OS hot paths behind the native helper boundary. The frontend remains static browser-native HTML/CSS/JS with module and token foundations, so no Node.js or bundler is required for this release.
+
+Python is still allowed for the source/debug launcher, local HTTP bridge, Arduino/Codex orchestration, and safe fallbacks. New target work should depend on the 0.6.x adapter contract instead of adding more Arduino-specific shortcuts.
+
 ## Tool API
 
 Default source run URL:
@@ -94,6 +100,9 @@ desktop_app.py          Desktop pywebview shell
 talos/server.py         Local HTTP API server
 talos/client.py         CLI bridge for terminal/debug use
 talos/core.py           Thin Python bridge config and path utilities
+talos/event_bus.py      Transient server and Arduino watcher event state
+talos/state_service.py  App/API state composition and Arduino summaries
+talos/runtime_service.py Codex runtime readiness and blocked-send summaries
 talos/arduino.py        Arduino workspace and sandbox runner
 talos/arduino_events.py Event-assisted Arduino window refresh
 talos/checkpoints.py    Save checkpoints and guarded rollback
@@ -111,6 +120,7 @@ scripts/build_app.ps1   Build one-file Windows executable
 scripts/build_icons.py  Generate PNG and ICO app icons from talos_icon.png
 scripts/build_native.ps1 Build the native Windows helper
 scripts/benchmark_native.py Measure native detection and fallback availability
+scripts/architecture_health.py Architecture size, timing, and shell/runtime guardrails
 scripts/check.ps1       Rebuild and run the normal verification flow
 scripts/clean_runtime.ps1 Remove disposable sandbox, staging, and test cache data
 scripts/install_app.ps1 Install built app to LocalAppData and create desktop shortcut
