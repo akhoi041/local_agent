@@ -1198,7 +1198,6 @@ def parse_compile_output(output: str) -> dict[str, Any]:
         "issue_context": format_compile_issue_context(issues),
     }
 
-
 def compile_cache_key(
     workspace: Path,
     summary: dict[str, Any],

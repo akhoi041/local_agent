@@ -21,7 +21,6 @@ FALLBACK_NONE = "none"
 
 _HEALTH_CACHE: dict[tuple[str, str, float], dict[str, Any]] = {}
 
-
 def _safe_items(items: Any, limit: int, item_limit: int) -> list[str]:
     values = items if isinstance(items, list) else []
     return [str(item)[:item_limit] for item in values[:limit]]
@@ -48,12 +47,10 @@ def runtime_config(config: dict[str, Any] | None = None) -> dict[str, Any]:
         "health_timeout_sec": max(0.2, min(10.0, timeout)),
     }
 
-
 def with_runtime_defaults(config: dict[str, Any] | None = None) -> dict[str, Any]:
     source = dict(config) if isinstance(config, dict) else {}
     source[RUNTIME_CONFIG_KEY] = runtime_config(source)
     return source
-
 
 def file_sha256(path_text: str) -> str:
     path = Path(path_text)
@@ -66,13 +63,11 @@ def file_sha256(path_text: str) -> str:
     except OSError:
         return ""
 
-
 def redact_path(path_text: str) -> str:
     if not str(path_text or "").strip():
         return ""
     name = Path(path_text).name or "<runtime>"
     return f"...\\{name}" if os.name == "nt" else f".../{name}"
-
 
 def _existing_path(path_text: str, path_exists: Callable[[str], bool]) -> str:
     value = str(path_text or "").strip().strip('"')
@@ -83,7 +78,6 @@ def _existing_path(path_text: str, path_exists: Callable[[str], bool]) -> str:
     except OSError:
         candidate = value
     return candidate if path_exists(candidate) else ""
-
 
 def _candidate(provider: str, path_text: str, source: str, warnings: list[str] | None = None) -> dict[str, Any]:
     digest = file_sha256(path_text)
@@ -98,7 +92,6 @@ def _candidate(provider: str, path_text: str, source: str, warnings: list[str] |
         "warnings": warnings or [],
         "limitations": [],
     }
-
 
 def discover_runtime_candidates(
     config: dict[str, Any] | None = None,
@@ -132,7 +125,6 @@ def discover_runtime_candidates(
             ["extension_adjacent_fallback"],
         )
     return candidates
-
 
 def choose_runtime(config: dict[str, Any] | None, candidates: list[dict[str, Any]]) -> dict[str, Any]:
     settings = runtime_config(config or {})
@@ -181,13 +173,11 @@ def choose_runtime(config: dict[str, Any] | None, candidates: list[dict[str, Any
     result["warnings"] = [*result.get("warnings", []), *warnings]
     return result
 
-
 def _hidden_subprocess_flags() -> dict[str, Any]:
     flags: dict[str, Any] = {}
     if os.name == "nt":
         flags["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     return flags
-
 
 def run_runtime_health(
     active: dict[str, Any],
@@ -276,7 +266,6 @@ def run_runtime_health(
             "warnings": ["codex_runtime_health_failed"],
         }
 
-
 def runtime_status(
     config: dict[str, Any] | None = None,
     *,
@@ -311,7 +300,6 @@ def runtime_status(
         "warnings": sorted(set([*active.get("warnings", []), *health.get("warnings", [])])),
     }
 
-
 def runtime_state_summary(status: dict[str, Any]) -> dict[str, Any]:
     active = status.get("active") if isinstance(status.get("active"), dict) else {}
     health = status.get("health") if isinstance(status.get("health"), dict) else {}
@@ -338,10 +326,8 @@ def runtime_state_summary(status: dict[str, Any]) -> dict[str, Any]:
         "limitations": _safe_items(active.get("limitations", []), 6, 120),
     }
 
-
 def clear_runtime_health_cache() -> None:
     _HEALTH_CACHE.clear()
-
 
 def _path_key(path_text: str) -> str:
     value = str(path_text or "").strip()
@@ -351,7 +337,6 @@ def _path_key(path_text: str) -> str:
         return str(Path(value).expanduser()).lower()
     except OSError:
         return value.lower()
-
 
 def update_runtime_pin(
     config: dict[str, Any] | None,
@@ -407,7 +392,6 @@ def update_runtime_pin(
     updated[RUNTIME_CONFIG_KEY] = settings
     clear_runtime_health_cache()
     return {"ok": True, "action": "pinned", "config": updated}
-
 
 def support_bundle_runtime_evidence(status: dict[str, Any]) -> dict[str, Any]:
     active = status.get("active") if isinstance(status.get("active"), dict) else {}

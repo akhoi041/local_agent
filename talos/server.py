@@ -19,23 +19,16 @@ from talos.core import (
     now,
     save_config,
 )
-from talos.arduino import (
-    cancel_arduino_compile,
-    clear_arduino_compile_cache_result,
-    codex_context_package,
-    delete_workspace_file,
-    discover_arduino_projects,
-    environment_profile,
-    profile_readiness,
-    read_workspace_file,
-    run_arduino_compile,
-    save_environment_profile,
-    workspace_context,
-    workspace_map,
-    workspace_summary,
-    write_workspace_file,
-)
+from talos.arduino_adapter import ArduinoTargetAdapter
 from talos.codex_bridge import CODEX_BRIDGE
+from talos.contracts import (
+    codex_context_contract,
+    diagnostics_contract,
+    evidence_contract,
+    target_context_contract,
+    targets_contract,
+    verify_result_contract,
+)
 from talos.diagnostics import diagnostics_export, diagnostics_settings, record_diagnostic
 from talos.codex_runtime import (
     runtime_status,
@@ -76,9 +69,23 @@ from talos.runtime_service import (
     selected_runtime_payload,
 )
 from talos.state_service import state_payload
+from talos.targets import TargetRegistry
 
 ASSET_ROOT = Path(getattr(sys, "_MEIPASS", ROOT))
 FRONTEND = ASSET_ROOT / "web_frontend" if getattr(sys, "frozen", False) else ROOT / "ui" / "web_frontend"
+ARDUINO_TARGET = ArduinoTargetAdapter()
+TARGET_REGISTRY = TargetRegistry()
+TARGET_REGISTRY.register(ARDUINO_TARGET)
+
+
+def target_state(config: dict[str, Any]) -> dict[str, Any]:
+    summary = ARDUINO_TARGET.workspace_summary(config)
+    latest_verify = latest_verify_for_workspace(str(summary.get("path") or ""))
+    return {
+        "active": ARDUINO_TARGET.target_id,
+        "registered": TARGET_REGISTRY.metadata(),
+        "contexts": [ARDUINO_TARGET.context(config, latest_verify).to_dict()],
+    }
 
 class TalosWebHandler(BaseHTTPRequestHandler):
     server_version = "TalosWeb/1.0"
@@ -88,6 +95,9 @@ class TalosWebHandler(BaseHTTPRequestHandler):
         query = parse_qs(parsed.query)
         if self.path == "/api/state":
             self.send_json(state_payload())
+            return
+        if parsed.path == "/api/targets":
+            self.send_json(targets_contract({"ok": True, "targets": target_state(load_config())}))
             return
         if parsed.path == "/api/health":
             app_identity = load_app_identity()
@@ -102,13 +112,26 @@ class TalosWebHandler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/arduino_context":
             config = load_config()
-            summary = workspace_summary(config)
-            self.send_json({
+            summary = ARDUINO_TARGET.workspace_summary(config)
+            workspace_path = str(summary.get("path") or "")
+            latest_verify = latest_verify_for_workspace(workspace_path)
+            workspace_map = ARDUINO_TARGET.workspace_map(config, latest_verify)
+            profile = ARDUINO_TARGET.environment_profile(config, workspace_path)
+            profile_readiness = ARDUINO_TARGET.profile_readiness(config)
+            self.send_json(target_context_contract({
                 "ok": True,
-                "context": workspace_context(config),
+                "context": ARDUINO_TARGET.workspace_context(config),
                 "arduino": summary,
-                "workspace_map": workspace_map(config, latest_verify_for_workspace(str(summary.get("path") or ""))),
-            })
+                "workspace_map": workspace_map,
+                "target": ARDUINO_TARGET.context(
+                    config,
+                    latest_verify,
+                    summary=summary,
+                    profile=profile,
+                    profile_readiness=profile_readiness,
+                    workspace_map=workspace_map,
+                ).to_dict(),
+            }))
             return
         if parsed.path == "/api/arduino_events":
             self.send_json({"ok": True, **arduino_event_status()})
@@ -116,14 +139,14 @@ class TalosWebHandler(BaseHTTPRequestHandler):
         if parsed.path == "/api/arduino_profile":
             config = load_config()
             workspace_path = query.get("path", [str(config.get("arduino_workspace_path") or "")])[0]
-            self.send_json({"ok": True, "profile": environment_profile(config, workspace_path)})
+            self.send_json({"ok": True, "profile": ARDUINO_TARGET.environment_profile(config, workspace_path)})
             return
         if parsed.path == "/api/arduino_projects":
             config = load_config()
-            self.send_json({"ok": True, "projects": discover_arduino_projects(config)})
+            self.send_json({"ok": True, "projects": ARDUINO_TARGET.discover_projects(config)})
             return
         if parsed.path == "/api/arduino_file":
-            result = read_workspace_file(load_config(), query.get("path", [""])[0])
+            result = ARDUINO_TARGET.read_file(load_config(), query.get("path", [""])[0])
             self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
             return
         if parsed.path == "/api/arduino_checkpoint":
@@ -152,7 +175,7 @@ class TalosWebHandler(BaseHTTPRequestHandler):
             config = load_config()
             app_identity = load_app_identity()
             build_metadata = load_build_metadata(app_identity)
-            summary = workspace_summary(config)
+            summary = ARDUINO_TARGET.workspace_summary(config)
             workspace = str(summary.get("path") or "")
             latest_verify = latest_verify_for_workspace(workspace)
             redacted = query.get("redact", ["1"])[0] not in {"0", "false", "False"}
@@ -160,8 +183,8 @@ class TalosWebHandler(BaseHTTPRequestHandler):
                 app=app_identity,
                 build=build_metadata,
                 workspace_summary=summary,
-                profile=environment_profile(config, workspace),
-                profile_readiness=profile_readiness(config),
+                profile=ARDUINO_TARGET.environment_profile(config, workspace),
+                profile_readiness=ARDUINO_TARGET.profile_readiness(config),
                 latest_verify=latest_verify,
                 history=filtered_run_history(workspace=workspace),
                 redact=redacted,
@@ -174,7 +197,7 @@ class TalosWebHandler(BaseHTTPRequestHandler):
             config = load_config()
             app_identity = load_app_identity()
             build_metadata = load_build_metadata(app_identity)
-            self.send_json({"ok": True, "diagnostics": diagnostics_export(config, app_identity, build_metadata)})
+            self.send_json(diagnostics_contract({"ok": True, "diagnostics": diagnostics_export(config, app_identity, build_metadata)}))
             return
         if parsed.path == "/api/performance_guardrails":
             self.send_json({"ok": True, "performance": performance_guardrails()})
@@ -240,14 +263,14 @@ class TalosWebHandler(BaseHTTPRequestHandler):
             config["arduino_workspace_path"] = str(payload.get("path", "")).strip()
             config["arduino_fqbn"] = str(payload.get("fqbn", config.get("arduino_fqbn", ""))).strip()
             save_config(config)
-            summary = workspace_summary(config)
+            summary = ARDUINO_TARGET.workspace_summary(config)
             log_event(f"{now()} configured Arduino workspace: {summary.get('path') or 'none'}")
             self.send_json({"ok": summary["valid"], "arduino": summary})
             return
         if self.path == "/api/arduino_profile":
             config = load_config()
             workspace_path = str(payload.get("path", config.get("arduino_workspace_path", ""))).strip()
-            result = save_environment_profile(config, workspace_path, payload)
+            result = ARDUINO_TARGET.save_environment_profile(config, workspace_path, payload)
             if not result.get("ok"):
                 self.send_json(result, HTTPStatus.BAD_REQUEST)
                 return
@@ -257,7 +280,7 @@ class TalosWebHandler(BaseHTTPRequestHandler):
                     config["arduino_fqbn"] = profile_fqbn
             save_config(config)
             log_event(f"{now()} saved Arduino environment profile: {result.get('path')}")
-            self.send_json(result)
+            self.send_json(verify_result_contract(result))
             return
         if self.path == "/api/arduino_verify":
             config = load_config()
@@ -270,8 +293,8 @@ class TalosWebHandler(BaseHTTPRequestHandler):
             override = payload.get("editor_override") if isinstance(payload.get("editor_override"), dict) else {}
             override_path = str(override.get("path") or "").replace("\\", "/") if override else ""
             overrides = {override_path: str(override.get("content") or "")} if override_path else None
-            result = run_arduino_compile(config, overrides=overrides)
-            summary = workspace_summary(config)
+            result = ARDUINO_TARGET.verify(config, overrides=overrides)
+            summary = ARDUINO_TARGET.workspace_summary(config)
             result["verify_context"] = {
                 "source": source,
                 "workspace": str(summary.get("path") or ""),
@@ -281,7 +304,7 @@ class TalosWebHandler(BaseHTTPRequestHandler):
             }
             record_verify(result, source)
             if source == "codex_patch":
-                record_patch_verification(str(workspace_summary(config).get("path") or ""), result)
+                record_patch_verification(str(ARDUINO_TARGET.workspace_summary(config).get("path") or ""), result)
             status = "passed" if result.get("ok") else result.get("status", "failed")
             record_diagnostic(config, "verify_passed" if result.get("ok") else "verify_failed", {
                 "workspace": summary.get("path", ""),
@@ -298,27 +321,27 @@ class TalosWebHandler(BaseHTTPRequestHandler):
             self.send_json(result)
             return
         if self.path == "/api/arduino_verify_cancel":
-            result = cancel_arduino_compile()
+            result = ARDUINO_TARGET.cancel_verify()
             if result.get("ok"):
                 log_event(f"{now()} Arduino verify cancellation requested")
             self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.CONFLICT)
             return
         if self.path == "/api/arduino_verify_cache_clear":
-            result = clear_arduino_compile_cache_result()
+            result = ARDUINO_TARGET.clear_verify_cache()
             log_event(f"{now()} cleared Arduino compile cache ({result.get('cleared')} entries)")
             self.send_json(result)
             return
         if self.path == "/api/release_evidence":
             config = load_config()
-            summary = workspace_summary(config)
+            summary = ARDUINO_TARGET.workspace_summary(config)
             workspace = str(summary.get("path") or "")
             latest_verify = latest_verify_for_workspace(workspace)
             verify_result = payload.get("verify_result") if isinstance(payload.get("verify_result"), dict) else latest_verify
             if not isinstance(verify_result, dict):
-                self.send_json({"ok": False, "error": "Run Verify Sandbox before recording release evidence."}, HTTPStatus.BAD_REQUEST)
+                self.send_json(evidence_contract({"ok": False, "error": "Run Verify Sandbox before recording release evidence."}), HTTPStatus.BAD_REQUEST)
                 return
-            readiness = profile_readiness(config)
-            arduino_map = workspace_map(config, latest_verify)
+            readiness = ARDUINO_TARGET.profile_readiness(config)
+            arduino_map = ARDUINO_TARGET.workspace_map(config, latest_verify)
             evidence = record_release_evidence(
                 arduino_map,
                 readiness,
@@ -327,7 +350,7 @@ class TalosWebHandler(BaseHTTPRequestHandler):
                 str(payload.get("release") or "0.4.0-pre-alpha"),
             )
             log_event(f"{now()} recorded Arduino release evidence: {evidence.get('status')}")
-            self.send_json({"ok": True, "evidence": evidence})
+            self.send_json(evidence_contract({"ok": True, "evidence": evidence}))
             return
         if self.path == "/api/arduino_file":
             config = load_config()
@@ -335,7 +358,7 @@ class TalosWebHandler(BaseHTTPRequestHandler):
             if not checkpoint_result.get("ok"):
                 self.send_json(checkpoint_result, HTTPStatus.BAD_REQUEST)
                 return
-            result = write_workspace_file(
+            result = ARDUINO_TARGET.write_file(
                 config,
                 str(payload.get("path", "")),
                 str(payload.get("content", "")),
@@ -345,7 +368,7 @@ class TalosWebHandler(BaseHTTPRequestHandler):
             if result.get("ok"):
                 checkpoint_saved = mark_checkpoint_saved(checkpoint_id, str(payload.get("content", "")))
                 result["checkpoint"] = checkpoint_saved.get("checkpoint") if checkpoint_saved.get("ok") else None
-                workspace = workspace_summary(config)
+                workspace = ARDUINO_TARGET.workspace_summary(config)
                 patch_result = CODEX_BRIDGE.mark_patch_saved(str(workspace.get("path") or ""), str(result.get("path") or ""))
                 if patch_result.get("saved"):
                     record_patch_transition(patch_result.get("patch") or {}, "saved", str(result.get("path") or ""))
@@ -358,20 +381,20 @@ class TalosWebHandler(BaseHTTPRequestHandler):
             config = load_config()
             result = rollback_last_checkpoint(config, str(payload.get("path", "")))
             if result.get("ok"):
-                record_rollback(str(workspace_summary(config).get("path") or ""), str(result.get("path") or ""))
+                record_rollback(str(ARDUINO_TARGET.workspace_summary(config).get("path") or ""), str(result.get("path") or ""))
                 log_event(f"{now()} rolled back Arduino file: {result.get('path')}")
             self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
             return
         if self.path == "/api/arduino_delete":
-            result = delete_workspace_file(load_config(), str(payload.get("path", "")))
+            result = ARDUINO_TARGET.delete_file(load_config(), str(payload.get("path", "")))
             if result.get("ok"):
                 log_event(f"{now()} deleted Arduino file: {result.get('path')}")
             self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
             return
         if self.path == "/api/codex_context_package":
-            workspace = workspace_summary(load_config())
+            workspace = ARDUINO_TARGET.workspace_summary(load_config())
             latest_verify = latest_verify_for_workspace(str(workspace.get("path") or ""))
-            package = codex_context_package(
+            package = ARDUINO_TARGET.context_package(
                 load_config(),
                 payload.get("active_file") if isinstance(payload.get("active_file"), dict) else {},
                 str(payload.get("verify_context", "")),
@@ -379,12 +402,12 @@ class TalosWebHandler(BaseHTTPRequestHandler):
                 str(payload.get("message", "")),
                 latest_verify,
             )
-            self.send_json({"ok": True, "package": package})
+            self.send_json(codex_context_contract({"ok": True, "package": package}))
             return
         if self.path == "/api/codex_message":
             config = load_config()
             _, runtime_summary, gate = selected_runtime_payload(config)
-            workspace = workspace_summary(config)
+            workspace = ARDUINO_TARGET.workspace_summary(config)
             if gate["blocked"]:
                 result = {
                     "ok": False,
@@ -406,14 +429,14 @@ class TalosWebHandler(BaseHTTPRequestHandler):
                 )
                 self.send_json(result, HTTPStatus.BAD_REQUEST)
                 return
-            workspace["map"] = workspace_map(
+            workspace["map"] = ARDUINO_TARGET.workspace_map(
                 config,
                 latest_verify_for_workspace(str(workspace.get("path") or "")),
             )
             active_file = payload.get("active_file")
             if not isinstance(active_file, dict):
                 active_file = {}
-            context_package = codex_context_package(
+            context_package = ARDUINO_TARGET.context_package(
                 config,
                 active_file,
                 str(payload.get("verify_context", "")),
@@ -450,7 +473,7 @@ class TalosWebHandler(BaseHTTPRequestHandler):
             if os.environ.get("TALOS_SMOKE_HARNESS") != "1":
                 self.send_json({"error": "Not found."}, HTTPStatus.NOT_FOUND)
                 return
-            workspace = workspace_summary(load_config())
+            workspace = ARDUINO_TARGET.workspace_summary(load_config())
             result = CODEX_BRIDGE.create_smoke_patch(
                 str(workspace.get("path") or ""),
                 str(payload.get("path", "")),
@@ -464,7 +487,7 @@ class TalosWebHandler(BaseHTTPRequestHandler):
         if self.path == "/api/codex_reconnect":
             config = load_config()
             _, runtime_summary, gate = selected_runtime_payload(config, force=True)
-            workspace = workspace_summary(config)
+            workspace = ARDUINO_TARGET.workspace_summary(config)
             if gate["blocked"]:
                 result = {
                     "ok": False,
@@ -513,7 +536,7 @@ class TalosWebHandler(BaseHTTPRequestHandler):
             self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
             return
         if self.path == "/api/codex_apply_patch":
-            workspace = workspace_summary(load_config())
+            workspace = ARDUINO_TARGET.workspace_summary(load_config())
             result = CODEX_BRIDGE.apply_patch(
                 str(payload.get("id", "")),
                 str(workspace.get("path") or ""),
@@ -525,7 +548,7 @@ class TalosWebHandler(BaseHTTPRequestHandler):
             self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
             return
         if self.path == "/api/codex_apply_hunk":
-            workspace = workspace_summary(load_config())
+            workspace = ARDUINO_TARGET.workspace_summary(load_config())
             result = CODEX_BRIDGE.apply_hunk(
                 str(payload.get("id", "")),
                 str(workspace.get("path") or ""),
@@ -537,7 +560,7 @@ class TalosWebHandler(BaseHTTPRequestHandler):
             self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
             return
         if self.path == "/api/codex_reject_hunk":
-            workspace = workspace_summary(load_config())
+            workspace = ARDUINO_TARGET.workspace_summary(load_config())
             result = CODEX_BRIDGE.reject_hunk(
                 str(payload.get("id", "")),
                 str(workspace.get("path") or ""),
@@ -549,14 +572,14 @@ class TalosWebHandler(BaseHTTPRequestHandler):
             self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
             return
         if self.path == "/api/codex_apply_all":
-            workspace = workspace_summary(load_config())
+            workspace = ARDUINO_TARGET.workspace_summary(load_config())
             result = CODEX_BRIDGE.apply_all(str(payload.get("id", "")), str(workspace.get("path") or ""))
             if result.get("ok"):
                 record_patch_transition(result.get("patch") or {}, "turn-applied")
             self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
             return
         if self.path == "/api/codex_reject_all":
-            workspace = workspace_summary(load_config())
+            workspace = ARDUINO_TARGET.workspace_summary(load_config())
             result = CODEX_BRIDGE.reject_all(str(payload.get("id", "")), str(workspace.get("path") or ""))
             if result.get("ok"):
                 record_patch_transition(result.get("patch") or {}, "turn-rejected")
@@ -564,7 +587,7 @@ class TalosWebHandler(BaseHTTPRequestHandler):
             return
         if self.path == "/api/codex_verify_patch":
             config = load_config()
-            workspace = workspace_summary(config)
+            workspace = ARDUINO_TARGET.workspace_summary(config)
             staged = CODEX_BRIDGE.staged_sandbox_overrides(
                 str(payload.get("id", "")),
                 str(workspace.get("path") or ""),
@@ -572,7 +595,7 @@ class TalosWebHandler(BaseHTTPRequestHandler):
             if not staged.get("ok"):
                 self.send_json(staged, HTTPStatus.BAD_REQUEST)
                 return
-            result = run_arduino_compile(config, overrides=staged.get("overrides") or {})
+            result = ARDUINO_TARGET.verify(config, overrides=staged.get("overrides") or {})
             result["patch_id"] = str(payload.get("id") or "")
             record_verify(result, "codex_patch")
             record_patch_transition(
@@ -584,7 +607,7 @@ class TalosWebHandler(BaseHTTPRequestHandler):
             self.send_json(result)
             return
         if self.path == "/api/codex_review_patch":
-            workspace = workspace_summary(load_config())
+            workspace = ARDUINO_TARGET.workspace_summary(load_config())
             result = CODEX_BRIDGE.review_patch(
                 str(payload.get("id", "")),
                 str(workspace.get("path") or ""),
@@ -595,7 +618,7 @@ class TalosWebHandler(BaseHTTPRequestHandler):
             self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
             return
         if self.path == "/api/codex_save_patch":
-            workspace = workspace_summary(load_config())
+            workspace = ARDUINO_TARGET.workspace_summary(load_config())
             result = CODEX_BRIDGE.mark_patch_saved(
                 str(workspace.get("path") or ""),
                 str(payload.get("path", "")),
@@ -612,7 +635,7 @@ class TalosWebHandler(BaseHTTPRequestHandler):
             self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
             return
         if self.path == "/api/codex_apply_conflict":
-            workspace = workspace_summary(load_config())
+            workspace = ARDUINO_TARGET.workspace_summary(load_config())
             result = CODEX_BRIDGE.apply_conflict_to_editor(
                 str(payload.get("id", "")),
                 str(workspace.get("path") or ""),
@@ -624,7 +647,7 @@ class TalosWebHandler(BaseHTTPRequestHandler):
             self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
             return
         if self.path == "/api/codex_keep_external":
-            workspace = workspace_summary(load_config())
+            workspace = ARDUINO_TARGET.workspace_summary(load_config())
             result = CODEX_BRIDGE.keep_external_conflict(
                 str(payload.get("id", "")),
                 str(workspace.get("path") or ""),
@@ -636,7 +659,7 @@ class TalosWebHandler(BaseHTTPRequestHandler):
             self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
             return
         if self.path == "/api/codex_merge_draft":
-            workspace = workspace_summary(load_config())
+            workspace = ARDUINO_TARGET.workspace_summary(load_config())
             result = CODEX_BRIDGE.draft_conflict_merge(
                 str(payload.get("id", "")),
                 str(workspace.get("path") or ""),
@@ -652,7 +675,7 @@ class TalosWebHandler(BaseHTTPRequestHandler):
             self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
             return
         if self.path == "/api/codex_cancel":
-            workspace = workspace_summary(load_config())
+            workspace = ARDUINO_TARGET.workspace_summary(load_config())
             result = CODEX_BRIDGE.cancel_turn()
             if result.get("ok"):
                 record_codex_turn(
@@ -666,7 +689,7 @@ class TalosWebHandler(BaseHTTPRequestHandler):
         if self.path == "/api/codex_conversation":
             result = CODEX_BRIDGE.select_conversation(str(payload.get("id", "")))
             if result.get("ok"):
-                workspace = workspace_summary(load_config())
+                workspace = ARDUINO_TARGET.workspace_summary(load_config())
                 record_codex_turn(
                     str(workspace.get("path") or ""),
                     "",

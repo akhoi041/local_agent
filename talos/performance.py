@@ -20,7 +20,6 @@ THRESHOLDS: dict[str, float] = {
     "installed_app_health_seconds": 3.0,
 }
 
-
 def performance_guardrails() -> dict[str, Any]:
     return {
         "schema_version": PERFORMANCE_SCHEMA_VERSION,

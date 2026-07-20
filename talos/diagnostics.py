@@ -52,7 +52,6 @@ ALLOWED_EVENTS = {
     "crash_marker",
 }
 
-
 def diagnostics_settings(config: dict[str, Any]) -> dict[str, Any]:
     settings = config.get("diagnostics") if isinstance(config.get("diagnostics"), dict) else {}
     return {
@@ -62,22 +61,18 @@ def diagnostics_settings(config: dict[str, Any]) -> dict[str, Any]:
         "schema_version": DIAGNOSTICS_SCHEMA_VERSION,
     }
 
-
 def normalize_event_name(name: str) -> str:
     value = str(name or "").strip().lower().replace("-", "_").replace(" ", "_")
     return value if value in ALLOWED_EVENTS else "app_started"
 
-
 def _safe_string(value: Any, limit: int = 240) -> str:
     return str(value or "").strip()[:limit]
-
 
 def _workspace_hash(path_text: str) -> str:
     value = str(path_text or "").strip().lower()
     if not value:
         return ""
     return hashlib.sha256(value.encode("utf-8", errors="ignore")).hexdigest()[:16]
-
 
 def sanitize_payload(payload: dict[str, Any] | None = None) -> dict[str, Any]:
     source = payload if isinstance(payload, dict) else {}
@@ -111,14 +106,12 @@ def sanitize_payload(payload: dict[str, Any] | None = None) -> dict[str, Any]:
             sanitized[clean_key] = _safe_string(value)
     return sanitized
 
-
 def _load_state() -> dict[str, Any]:
     data = read_json_file(DIAGNOSTICS_PATH, {})
     if not isinstance(data, dict):
         return {"schema_version": DIAGNOSTICS_SCHEMA_VERSION, "events": []}
     events = data.get("events") if isinstance(data.get("events"), list) else []
     return {"schema_version": DIAGNOSTICS_SCHEMA_VERSION, "events": [event for event in events if isinstance(event, dict)][-DIAGNOSTICS_LIMIT:]}
-
 
 def record_diagnostic(config: dict[str, Any], event: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
     settings = diagnostics_settings(config)
@@ -135,7 +128,6 @@ def record_diagnostic(config: dict[str, Any], event: str, payload: dict[str, Any
     state["events"] = state["events"][-DIAGNOSTICS_LIMIT:]
     write_json_file(DIAGNOSTICS_PATH, state)
     return {"ok": True, "recorded": True, "event": entry}
-
 
 def diagnostics_export(config: dict[str, Any], app: dict[str, Any], build: dict[str, Any]) -> dict[str, Any]:
     settings = diagnostics_settings(config)

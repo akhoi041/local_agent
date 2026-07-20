@@ -12,7 +12,15 @@ from talos import codex_runtime
 from talos import checkpoints as checkpoint_store
 from talos import core, native_bridge
 from talos import run_history as run_history_store
+from talos.contracts import (
+    LOCAL_API_VERSION,
+    STATE_CONTRACT,
+    TARGETS_CONTRACT,
+    require_contract,
+    targets_contract,
+)
 from talos.arduino_events import ArduinoEventWatcher, is_arduino_window_title
+from talos.arduino_adapter import ArduinoTargetAdapter
 from talos.arduino import (
     cached_compile_result,
     clear_arduino_compile_cache,
@@ -77,8 +85,96 @@ from talos.diagnostics import diagnostics_export, diagnostics_settings, record_d
 from talos.performance import performance_guardrails
 from talos.runtime_service import codex_status_payload, runtime_event_detail, runtime_gate, runtime_outcomes
 from talos.state_service import state_payload
+from talos.targets import TargetRegistry
 
 class TalosArduinoTests(unittest.TestCase):
+    def test_local_api_contract_helpers_preserve_payload_shape(self) -> None:
+        payload = targets_contract({"ok": True, "targets": {"active": "arduino"}})
+
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["targets"]["active"], "arduino")
+        self.assertEqual(payload["contract"]["name"], TARGETS_CONTRACT)
+        self.assertEqual(payload["contract"]["version"], LOCAL_API_VERSION)
+        require_contract(payload, TARGETS_CONTRACT)
+        with self.assertRaises(ValueError):
+            require_contract(payload, STATE_CONTRACT)
+
+    def test_target_registry_reports_arduino_adapter_metadata(self) -> None:
+        registry = TargetRegistry()
+        adapter = ArduinoTargetAdapter()
+
+        registry.register(adapter)
+
+        self.assertIs(registry.get("arduino"), adapter)
+        self.assertEqual(
+            registry.metadata(),
+            [
+                {
+                    "id": "arduino",
+                    "name": "Arduino IDE",
+                    "capabilities": list(adapter.capabilities),
+                }
+            ],
+        )
+        self.assertIn("verify", adapter.capabilities)
+        self.assertIn("workspace_map", adapter.capabilities)
+
+    def test_arduino_target_adapter_represents_workspace_context(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp) / "Blink"
+            root.mkdir()
+            (root / "Blink.ino").write_text("void setup() {}\nvoid loop() {}\n", encoding="utf-8")
+            (root / "Driver.cpp").write_text("void driver() {}\n", encoding="utf-8")
+            adapter = ArduinoTargetAdapter()
+
+            context = adapter.context(
+                {
+                    "arduino_workspace_path": str(root),
+                    "arduino_fqbn": "arduino:avr:uno",
+                    "arduino_profiles": {},
+                }
+            ).to_dict()
+
+            self.assertEqual(context["target_id"], "arduino")
+            self.assertEqual(context["target_name"], "Arduino IDE")
+            self.assertIn("read_file", context["capabilities"])
+            self.assertEqual(context["selected_workspace"]["main_file"], "Blink.ino")
+            self.assertEqual(context["selected_workspace"]["metadata"]["fqbn"], "arduino:avr:uno")
+            self.assertEqual(
+                [item["path"] for item in context["selected_workspace"]["files"]],
+                ["Blink.ino", "Driver.cpp"],
+            )
+            self.assertEqual(context["profile"]["fqbn"], "arduino:avr:uno")
+
+    def test_state_payload_exposes_generic_target_context(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp) / "Blink"
+            root.mkdir()
+            (root / "Blink.ino").write_text("void setup() {}\n", encoding="utf-8")
+            config = {"theme": "light", "arduino_workspace_path": str(root), "arduino_fqbn": "arduino:avr:uno"}
+            runtime_probe = {
+                "active": {"provider": "none", "display_path": "", "warnings": ["missing_runtime"], "limitations": []},
+                "candidates": [],
+                "health": {"status": "missing", "ready": False, "duration_ms": 0},
+                "warnings": ["missing_runtime"],
+            }
+
+            with (
+                patch("talos.state_service.load_config", return_value=config),
+                patch("talos.state_service.list_arduino_tool_processes", return_value=[]),
+                patch("talos.state_service.list_window_rows", return_value=[]),
+                patch("talos.state_service.list_arduino_open_workspaces", return_value=[]),
+                patch("talos.state_service.list_arduino_workspace_boards", return_value={}),
+                patch("talos.state_service.runtime_status", return_value=runtime_probe),
+            ):
+                payload = state_payload()
+
+            self.assertEqual(payload["targets"]["active"], "arduino")
+            self.assertEqual(payload["contract"]["name"], STATE_CONTRACT)
+            self.assertEqual(payload["contract"]["version"], LOCAL_API_VERSION)
+            self.assertEqual(payload["targets"]["registered"][0]["id"], "arduino")
+            self.assertEqual(payload["targets"]["contexts"][0]["selected_workspace"]["main_file"], "Blink.ino")
+
     def test_codex_prompt_contains_selected_arduino_context(self) -> None:
         prompt = build_codex_prompt(
             "Fix the compile error.",
@@ -2322,7 +2418,6 @@ class TalosArduinoTests(unittest.TestCase):
         }
         with (
             patch("talos.state_service.load_config", return_value=config),
-            patch("talos.state_service.list_arduino_ide_processes", return_value=[]) as ide_scan,
             patch("talos.state_service.list_arduino_tool_processes", return_value=[]) as tool_scan,
             patch("talos.state_service.list_window_rows", return_value=[{"pid": 0, "title": "test | Arduino IDE 2.3.4"}]) as window_scan,
             patch("talos.state_service.list_arduino_open_workspaces", return_value=[]),
@@ -2331,7 +2426,6 @@ class TalosArduinoTests(unittest.TestCase):
         ):
             payload = state_payload()
 
-        self.assertEqual(ide_scan.call_count, 1)
         self.assertEqual(tool_scan.call_count, 1)
         self.assertEqual(window_scan.call_count, 1)
         identity = json.loads((Path(__file__).parents[1] / "config" / "app_identity.json").read_text(encoding="utf-8"))
@@ -2346,7 +2440,10 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertTrue(payload["arduino_ide"]["running"])
         self.assertIn("arduino_profile_readiness", payload)
         self.assertEqual(payload["codex_runtime"]["provider"], "none")
+        self.assertEqual(payload["contract"]["name"], STATE_CONTRACT)
+        self.assertEqual(payload["contract"]["version"], LOCAL_API_VERSION)
         self.assertEqual(payload["codex_runtime"]["health"]["status"], "missing")
+        self.assertIn("GET /api/targets", payload["tools"])
         self.assertIn("POST /api/release_evidence", payload["tools"])
         self.assertIn("GET /api/codex_runtime", payload["tools"])
         self.assertIn("POST /api/codex_runtime_pin", payload["tools"])
@@ -2369,6 +2466,19 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertNotIn("def state_payload(", server_source)
         self.assertNotIn("def runtime_gate(", server_source)
         self.assertNotIn("def log_event(", server_source)
+
+    def test_stage_060_server_routes_public_payloads_through_contracts(self) -> None:
+        server_source = (Path(__file__).parents[1] / "talos" / "server.py").read_text(encoding="utf-8")
+
+        for serializer in (
+            "targets_contract(",
+            "target_context_contract(",
+            "diagnostics_contract(",
+            "verify_result_contract(",
+            "evidence_contract(",
+            "codex_context_contract(",
+        ):
+            self.assertIn(serializer, server_source)
 
     def test_performance_guardrails_document_runtime_and_process_policy(self) -> None:
         guardrails = performance_guardrails()
