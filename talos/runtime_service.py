@@ -9,7 +9,6 @@ from talos.core import load_config
 from talos.diagnostics import record_diagnostic
 from talos.run_history import record_runtime_event
 
-
 def runtime_gate(runtime_summary: dict[str, Any]) -> dict[str, Any]:
     health = runtime_summary.get("health") if isinstance(runtime_summary.get("health"), dict) else {}
     provider = str(runtime_summary.get("provider") or PROVIDER_NONE)
@@ -61,7 +60,6 @@ def runtime_gate(runtime_summary: dict[str, Any]) -> dict[str, Any]:
         "warnings": readiness_warnings,
     }
 
-
 def selected_runtime_payload(
     config: dict[str, Any] | None = None,
     *,
@@ -74,7 +72,6 @@ def selected_runtime_payload(
     active = full_status.get("active") if isinstance(full_status.get("active"), dict) else {}
     CODEX_BRIDGE.set_runtime_path(str(active.get("path") or ""))
     return full_status, summary, gate
-
 
 def runtime_event_detail(status: dict[str, Any]) -> dict[str, Any]:
     active = status.get("active") if isinstance(status.get("active"), dict) else {}
@@ -99,7 +96,6 @@ def runtime_event_detail(status: dict[str, Any]) -> dict[str, Any]:
         "warnings": warnings[:12],
     }
 
-
 def runtime_outcomes(status: dict[str, Any]) -> list[tuple[str, str]]:
     active = status.get("active") if isinstance(status.get("active"), dict) else {}
     health = status.get("health") if isinstance(status.get("health"), dict) else {}
@@ -119,7 +115,6 @@ def runtime_outcomes(status: dict[str, Any]) -> list[tuple[str, str]]:
         outcomes.append(("runtime_fallback_used", "codex_runtime_fallback_used"))
     return outcomes
 
-
 def record_runtime_status(config: dict[str, Any], status: dict[str, Any], action: str = "") -> None:
     workspace = str(workspace_summary(config).get("path") or "")
     detail = runtime_event_detail(status)
@@ -128,7 +123,6 @@ def record_runtime_status(config: dict[str, Any], status: dict[str, Any], action
     for outcome, diagnostic in runtime_outcomes(status):
         record_runtime_event(workspace, outcome, detail)
         record_diagnostic(config, diagnostic, detail)
-
 
 def codex_status_payload(*, start: bool = True, force_runtime: bool = False) -> dict[str, Any]:
     _, runtime_summary, gate = selected_runtime_payload(load_config(), force=force_runtime)

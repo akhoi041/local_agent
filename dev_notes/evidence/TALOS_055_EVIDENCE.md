@@ -340,3 +340,32 @@ python -B -m unittest tests.test_desktop_app
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\check_docs_links.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\pipeline_status.ps1
 ```
+## 2026-07-20 Architecture Pivot Update
+
+- Rewrote `dev_notes/roadmap/TALOS_ROADMAP.md` around the long-term rebuild direction.
+- Reframed 0.5.5 as the Architecture Pivot Patch instead of another feature patch.
+- Rewrote `dev_notes/pipelines/TALOS_PIPELINE_060.md` so 0.6.0 requires real shell/core/API/runtime/target boundary implementation.
+- Added `dev_notes/pipelines/TALOS_PIPELINE_065.md` for Python decomposition after the 0.6.0 boundary work exists.
+- Confirmed target expansion remains blocked until Talos Core Complete; MATLAB, STM32CubeIDE, KiCad, and SolidWorks must not start on the Python-heavy prototype foundation.
+- No commit, tag, or push was performed in this update.
+
+## 2026-07-20 Stage 6 Final Handoff Revalidation
+
+Result: complete.
+
+- Full automated regression passed with `python -B -m unittest tests.test_desktop_app`.
+- Architecture health passed with `python -B scripts\architecture_health.py`.
+- Source/debug launch check passed with `python -B -m py_compile desktop_app.py talos\server.py talos\runtime_service.py talos\state_service.py talos\arduino.py talos\codex_bridge.py`.
+- User-facing release wording did not need another README or release-note update for 0.5.5 because this patch is an internal architecture-pivot handoff, not a new user workflow release.
+- No commit, tag, or push was performed.
+
+Validation result:
+
+```text
+Unit tests: Ran 123 tests, OK.
+Architecture health: status OK.
+Module guardrails: all checked modules below limits.
+Timing guardrails: startup_imports, state_refresh, arduino_detection, verify_cache_lookup, support_bundle_generation, and diagnostics_export all below limits.
+Shell/runtime migration: replacement shell remains blocked until parity gates are proven.
+Source/debug py_compile: OK.
+```
