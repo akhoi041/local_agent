@@ -221,3 +221,104 @@ Safety conclusion:
 - `talos/runtime_core.py` no longer imports or calls `CODEX_BRIDGE` directly; Codex actions are routed through `CodexRuntimeProvider`.
 
 Conclusion: Stage 5 is implemented in code. Runtime behavior is provider-owned, Codex is the first real provider, future providers are placeholders, metadata display is credential-safe, and VS Code extension-adjacent runtime paths are treated only as fallback candidates.
+
+## Stage 6 - Python Compatibility Bridge
+
+Status: complete.
+
+Implementation:
+
+- Added `talos/python_ownership.py` with a code-owned Python module ownership map covering launcher, shell provider, core implementation, target adapter, runtime provider, diagnostics, native fallback, storage, API bridge, and migration-candidate modules.
+- Marked 0.6.5 migration hot paths explicitly: process/window discovery, file watching, hashing/cache keys, diff/hunk parsing, task orchestration, and heavy workspace scans.
+- Added `boundary_check()` to freeze the current `talos.server` compatibility import baseline, so new direct server access to internal helpers is caught by tests before Python reduction work begins.
+- Declared no stale Python path safe to remove in Stage 6 without changing current runtime behavior. Future stale paths must be marked with `role="stale"` and will fail the boundary check until archived or removed.
+- Preserved fallback policy: Python remains available as bridge/fallback while native/core boundaries are introduced, and missing native helper support remains non-fatal.
+
+Validation:
+
+- `python -B -m py_compile talos\python_ownership.py tests\test_desktop_app.py`
+- `python -B -m unittest -q tests.test_desktop_app`
+- Result: 135 tests passed.
+
+Conclusion: Stage 6 is implemented in code. Python now has explicit ownership, hot-path migration targets, and a boundary check, so 0.6.5 can reduce Python without guessing or breaking fallback behavior.
+
+## Stage 7 - Native Helper Boundary
+
+Status: complete.
+
+Implementation:
+
+- Added `talos/native_boundary.py` as the single reporting and measurement boundary for native acceleration.
+- Kept `talos/native_bridge.py` as the raw platform bridge and fallback layer; product state now consumes native status through the boundary.
+- Exposed native capability status for library presence, window titles, window rows, process rows, and `.ino` extraction.
+- Exposed operation reports for detection, scan, hash, diff, and verify-preparation candidates with `native_backed`, `fallback_backed`, selected backend, and last timing.
+- Added migration gates for hashing/cache keys, diff/hunk parsing, verify preparation, and heavy workspace scans that are not ready to move yet.
+- Added `talos.native_boundary` to the Python ownership map as the native adapter boundary.
+
+Validation:
+
+- `python -B -m py_compile talos\native_boundary.py talos\state_service.py talos\python_ownership.py tests\test_desktop_app.py`
+- `python -B -m unittest -q tests.test_desktop_app`
+- Result: 138 tests passed.
+
+Conclusion: Stage 7 is implemented in code. Native acceleration now has a single product-facing boundary with measurable fallback behavior, and missing native helper support remains non-fatal.
+
+## Stage 8 - Arduino Compatibility Smoke
+
+Status: complete.
+
+Implementation:
+
+- Added `talos/arduino_smoke.py` as a real smoke path over the rebuilt boundaries.
+- The smoke creates a synthetic Arduino sketch with `Stage8Smoke.ino`, `Driver.h`, and `Driver.cpp`.
+- It exercises Arduino project detection, workspace/source inspection, selected board/profile verify payload, context package coverage, Codex patch staging, apply-to-editor, save-to-workspace, and reject safety.
+- Codex staging is redirected to a temporary smoke folder during validation so AppData, user settings, and real sketches are not modified.
+
+Validation:
+
+- `python -B -m py_compile talos\arduino_smoke.py tests\test_desktop_app.py`
+- `python -B -m unittest -q tests.test_desktop_app.TalosArduinoTests.test_stage_060_arduino_compatibility_smoke_exercises_product_flow`
+- `python -B -m unittest -q tests.test_desktop_app`
+- Result: 139 tests passed.
+
+Conclusion: Stage 8 is implemented in code. Arduino remains usable through the new shell, core, contract, target, runtime, Python-bridge, and native-boundary structure, with apply/reject/save behavior covered by an automated compatibility smoke.
+
+## Stage 9 - 0.6.5 Handoff
+
+Status: complete.
+
+Completed 0.6.0 boundaries:
+
+- Shell provider boundary for desktop launch/window behavior.
+- Core runtime boundary for state and orchestration ownership.
+- Versioned local API contract for UI/runtime-facing payloads.
+- Target host boundary with Arduino as the first real adapter.
+- Runtime provider boundary for Codex-compatible provider behavior and credential-safe metadata.
+- Python ownership map that marks bridge/fallback/migration code explicitly.
+- Native helper boundary with measurable fallback behavior.
+- Arduino compatibility smoke over detection, source inspection, context packaging, apply/reject/save, and verify payload behavior.
+
+Remaining Python migration candidates for 0.6.5:
+
+- Process/window detection.
+- File watching and workspace scanning.
+- Hashing and cache-key generation.
+- Diff and hunk parsing.
+- Verify preparation.
+- Task orchestration and cancellation state.
+- Runtime discovery health and repeated subprocess/window churn.
+
+0.6.5 pipeline check:
+
+- `dev_notes/pipelines/TALOS_PIPELINE_065.md` matches the actual 0.6.0 result.
+- It starts with baseline measurement before implementation changes.
+- It keeps `desktop_app.py` as the source/debug launcher.
+- It preserves the no-new-target rule.
+- It frames Python decomposition as behavior-preserving optimization, not feature expansion.
+
+Validation:
+
+- `python -B -m unittest -q tests.test_desktop_app`
+- Result: 139 tests passed.
+
+Conclusion: Stage 9 is complete. 0.6.5 can start reducing Python hot paths without changing product behavior.

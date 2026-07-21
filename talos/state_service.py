@@ -9,11 +9,12 @@ from talos.contracts import state_contract
 from talos.core import APP_DATA_ROOT, ROOT, load_app_identity, load_build_metadata, load_config
 from talos.diagnostics import diagnostics_settings
 from talos.event_bus import EVENTS, arduino_event_status
-from talos.native_bridge import (
+from talos.native_boundary import (
     list_arduino_open_workspaces,
     list_arduino_tool_processes,
     list_arduino_workspace_boards,
     list_window_rows,
+    native_boundary_report,
     native_available,
 )
 from talos.run_history import latest_verify_for_workspace
@@ -75,6 +76,7 @@ def state_payload(runtime: Any | None = None) -> dict[str, Any]:
         "app": app_identity,
         "build": build_metadata,
         "native_available": native_available(),
+        "native_boundary": native_boundary_report(),
         "config": {
             "theme": config.get("theme", "light"),
             "arduino_workspace_path": config.get("arduino_workspace_path", ""),

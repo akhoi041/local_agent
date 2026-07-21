@@ -8,6 +8,15 @@ Purpose: reduce Python from hot-path and mixed-ownership app logic after 0.6.0 e
 
 Release evidence: `dev_notes/evidence/TALOS_065_EVIDENCE.md`
 
+## 0.6.0 Handoff Baseline
+
+0.6.0 completed the real architecture foundation that 0.6.5 depends on:
+
+- `desktop_app.py` remains the source/debug launcher.
+- Shell ownership, core runtime ownership, local API contracts, target hosting, runtime providers, Python ownership, native helper access, and Arduino compatibility smoke now have explicit boundaries.
+- Python is still allowed as bridge/fallback/migration code, but the known hot paths are documented and measurable.
+- 0.6.5 must not add new target products. It must reduce or contain Python hot paths while preserving current Arduino behavior.
+
 ## Exit Condition
 
 0.6.5 is complete when the heaviest Python-owned paths are either moved behind native/core boundaries or explicitly scheduled with measured risk, the source/debug launcher still works, Arduino behavior is unchanged, and later Arduino hardening can proceed without depending on Python-only shortcuts.

@@ -119,9 +119,9 @@ Migration rules:
 | 0.3.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_030.md` | Completed Codex-Arduino workflow maturity release. |
 | 0.4.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_040.md` | Completed product readiness, UI/UX, diagnostics, and tester preparation. |
 | 0.5.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_050.md` | Completed Codex Runtime Manager foundation. |
-| 0.5.5 Beta | `dev_notes/pipelines/TALOS_PIPELINE_055.md` | Active architecture pivot patch. |
-| 0.6.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_060.md` | Planned core runtime rewrite foundation. |
-| 0.6.5 Beta | `dev_notes/pipelines/TALOS_PIPELINE_065.md` | Planned Python decomposition and native/core extraction. |
+| 0.5.5 Beta | `dev_notes/pipelines/TALOS_PIPELINE_055.md` | Completed architecture pivot patch. |
+| 0.6.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_060.md` | Completed core runtime rewrite foundation with real shell/core/API/runtime/target boundaries. |
+| 0.6.5 Beta | `dev_notes/pipelines/TALOS_PIPELINE_065.md` | Ready to start Python decomposition and native/core extraction from measured 0.6.0 behavior. |
 | 0.7.0 Beta | Open as `dev_notes/pipelines/TALOS_PIPELINE_070.md` when version starts. | Planned Arduino adapter port on the new architecture. |
 | 0.7.5 Beta | Open as `dev_notes/pipelines/TALOS_PIPELINE_075.md` when version starts. | Planned Arduino workflow hardening. |
 | 0.8.0 Beta | Open as `dev_notes/pipelines/TALOS_PIPELINE_080.md` when version starts. | Planned Talos Core Complete gate. |
@@ -188,7 +188,7 @@ Pipeline:
 
 ### 0.5.5 Beta - Architecture Pivot Patch
 
-Status: active.
+Status: completed.
 
 Purpose:
 
@@ -209,7 +209,7 @@ Pipeline:
 
 ### 0.6.0 Beta - Core Runtime Rewrite Foundation
 
-Status: planned.
+Status: completed.
 
 Purpose:
 
@@ -227,9 +227,15 @@ Pipeline:
 
 - `dev_notes/pipelines/TALOS_PIPELINE_060.md`
 
+Result:
+
+- Implemented reusable boundaries for shell, core runtime, local API contracts, target adapters, runtime providers, Python ownership, native helper access, and Arduino compatibility smoke.
+- Preserved `desktop_app.py` as the source/debug launcher while making future non-Python shell work possible.
+- Handed off remaining Python hot paths to 0.6.5 with explicit ownership and measurement requirements.
+
 ### 0.6.5 Beta - Python Decomposition
 
-Status: planned.
+Status: ready to start.
 
 Purpose:
 

@@ -34,6 +34,7 @@ from talos.contracts import (
 )
 from talos.arduino_events import ArduinoEventWatcher, is_arduino_window_title
 from talos.arduino_adapter import ArduinoTargetAdapter
+from talos.arduino_smoke import run_arduino_compatibility_smoke
 from talos.arduino import (
     cached_compile_result,
     clear_arduino_compile_cache,
@@ -65,6 +66,7 @@ from talos.native_bridge import (
     parse_process_rows_payload,
     parse_window_rows_payload,
 )
+from talos.native_boundary import NativeHelperBoundary, native_boundary_report
 from talos.codex_bridge import (
     CODEX_TURN_TIMEOUT_SECONDS,
     CodexBridge,
@@ -96,6 +98,7 @@ from talos.run_history import (
 )
 from talos.diagnostics import diagnostics_export, diagnostics_settings, record_diagnostic, sanitize_payload
 from talos.performance import performance_guardrails
+from talos.python_ownership import HOT_PATH_MIGRATION_TARGETS, boundary_check, ownership_by_module, ownership_report
 from talos.runtime_service import codex_status_payload, runtime_event_detail, runtime_gate, runtime_outcomes
 from talos.state_service import state_payload
 from talos.targets import TargetRegistry
@@ -203,6 +206,23 @@ class TalosArduinoTests(unittest.TestCase):
             self.assertEqual(workspace.name, "Blink.ino")
             self.assertEqual([item.name for item in artifacts], ["Blink.ino", "Driver.cpp"])
             self.assertEqual(profile.fqbn, "arduino:avr:uno")
+
+    def test_stage_060_arduino_compatibility_smoke_exercises_product_flow(self) -> None:
+        with TemporaryDirectory() as tmp:
+            result = run_arduino_compatibility_smoke(tmp)
+
+            self.assertTrue(result["ok"], result["checks"])
+            self.assertEqual(result["main_sketch"], "Stage8Smoke.ino")
+            self.assertEqual(
+                result["source_files"],
+                ["Driver.cpp", "Driver.h", "Stage8Smoke.ino"],
+            )
+            self.assertTrue(result["context_coverage"]["active_file"])
+            self.assertTrue(result["context_coverage"]["workspace_map"])
+            self.assertEqual(result["verify"]["status"], "passed")
+            self.assertEqual(result["verify"]["profile"], "arduino:avr:uno")
+            self.assertEqual(result["patch"]["apply_status"], "saved")
+            self.assertEqual(result["patch"]["reject_status"], "rejected")
 
     def test_state_payload_exposes_generic_target_context(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -2193,6 +2213,97 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("self.codex_provider.send_message", source)
         self.assertNotIn("CODEX_BRIDGE", source)
         self.assertNotIn("self.codex_bridge", source)
+
+    def test_stage_060_python_ownership_marks_hot_paths_and_fallbacks(self) -> None:
+        ownership = ownership_by_module()
+        report = ownership_report()
+
+        for module in (
+            "talos.arduino",
+            "talos.arduino_events",
+            "talos.codex_bridge",
+            "talos.codex_runtime",
+            "talos.native_bridge",
+            "talos.runtime_core",
+            "talos.state_service",
+        ):
+            self.assertIn(module, ownership)
+            self.assertTrue(ownership[module].hot_path)
+
+        for target in (
+            "process/window discovery",
+            "file watching",
+            "hashing/cache keys",
+            "diff/hunk parsing",
+            "task orchestration",
+            "heavy workspace scans",
+        ):
+            self.assertIn(target, HOT_PATH_MIGRATION_TARGETS)
+            self.assertIn(target, report["migration_targets"])
+
+        fallback_modules = {
+            entry.module
+            for entry in ownership.values()
+            if entry.fallback_required
+        }
+        self.assertIn("talos.native_bridge", fallback_modules)
+        self.assertIn("talos.arduino_events", fallback_modules)
+        self.assertIn("talos.codex_bridge", fallback_modules)
+
+    def test_stage_060_python_boundary_check_freezes_server_import_baseline(self) -> None:
+        result = boundary_check(Path(__file__).parents[1])
+
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(result["new_direct_imports"], [])
+        self.assertEqual(result["stale_declared"], [])
+        self.assertIn("talos.runtime_core", result["server_imports"])
+        self.assertIn("fallback", result["fallback_policy"].lower())
+
+    def test_stage_060_native_boundary_reports_capabilities_and_fallbacks(self) -> None:
+        report = native_boundary_report()
+
+        self.assertIn(report["available"], (True, False))
+        self.assertIn("operations", report)
+        for operation in (
+            "detection.window_titles",
+            "detection.window_rows",
+            "detection.arduino_processes",
+            "scan.open_workspaces",
+            "scan.workspace_boards",
+            "hash.cache_keys",
+            "diff.hunks",
+            "verify.preparation",
+        ):
+            self.assertIn(operation, report["operations"])
+            self.assertIn("native_backed", report["operations"][operation])
+            self.assertIn("fallback_backed", report["operations"][operation])
+
+        self.assertFalse(report["operations"]["hash.cache_keys"]["native_backed"])
+        self.assertTrue(report["operations"]["hash.cache_keys"]["fallback_backed"])
+        self.assertTrue(
+            any(gate["primitive"] == "hashing/cache keys" for gate in report["migration_gates"])
+        )
+
+    def test_stage_060_native_boundary_records_timing_without_native_requirement(self) -> None:
+        boundary = NativeHelperBoundary()
+
+        result = boundary.measure_candidate("diff.hunks", lambda: "ok")
+        report = boundary.report()
+
+        self.assertEqual(result, "ok")
+        self.assertIsNotNone(report["operations"]["diff.hunks"]["last_ms"])
+        self.assertGreaterEqual(report["operations"]["diff.hunks"]["last_ms"], 0)
+
+    def test_state_payload_includes_native_boundary_report(self) -> None:
+        with patch("talos.state_service.list_arduino_tool_processes", return_value=[]), \
+            patch("talos.state_service.list_window_rows", return_value=[]), \
+            patch("talos.state_service.list_arduino_open_workspaces", return_value={}), \
+            patch("talos.state_service.list_arduino_workspace_boards", return_value={}):
+            payload = state_payload()
+
+        self.assertIn("native_boundary", payload)
+        self.assertIn("operations", payload["native_boundary"])
+        self.assertIn("verify.preparation", payload["native_boundary"]["operations"])
 
     def test_codex_status_starts_runtime_without_blocking_for_handshake(self) -> None:
         bridge = CodexBridge(persist_reviews=False)
