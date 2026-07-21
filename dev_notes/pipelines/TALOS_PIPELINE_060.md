@@ -111,11 +111,19 @@ Exit condition: runtime behavior is provider-owned, credential-safe, and not har
 
 Purpose: keep the current app working while preparing Python reduction.
 
-- [ ] Add an ownership map in code or config for Python modules: launcher, shell provider, core implementation, target adapter, runtime provider, diagnostics, native fallback, or migration candidate.
-- [ ] Mark hot paths that must move in 0.6.5: process/window discovery, file watching, hashing/cache keys, diff/hunk parsing, task orchestration, and heavy workspace scans.
-- [ ] Add a boundary check that flags new direct frontend/server access to internal helper modules.
-- [ ] Remove or archive stale Python paths that no longer support the current architecture.
-- [ ] Keep fallback behavior for machines without native helper support.
+- [x] Add an ownership map in code or config for Python modules: launcher, shell provider, core implementation, target adapter, runtime provider, diagnostics, native fallback, or migration candidate.
+- [x] Mark hot paths that must move in 0.6.5: process/window discovery, file watching, hashing/cache keys, diff/hunk parsing, task orchestration, and heavy workspace scans.
+- [x] Add a boundary check that flags new direct frontend/server access to internal helper modules.
+- [x] Remove or archive stale Python paths that no longer support the current architecture.
+- [x] Keep fallback behavior for machines without native helper support.
+
+Stage 6 implementation note:
+
+- Added `talos/python_ownership.py` as the code-owned Python compatibility map.
+- Marked Arduino discovery/events, runtime bridge/discovery, state projection, run history, native fallback, and orchestration as migration hot paths for 0.6.5.
+- Added a server import boundary check that freezes the current compatibility baseline and fails if new direct internal helper imports are added.
+- No stale Python path was safe to delete in this stage without changing current behavior; stale paths must now be declared with `role="stale"` and will fail the check until removed or archived.
+- Preserved Python fallback behavior for machines without native helper support.
 
 Exit condition: Python is explicitly a bridge/fallback/migration layer, and 0.6.5 can reduce it without guessing.
 
@@ -123,11 +131,19 @@ Exit condition: Python is explicitly a bridge/fallback/migration layer, and 0.6.
 
 Purpose: make native acceleration a controlled interface, not scattered C calls.
 
-- [ ] Expose native helper capabilities through one adapter.
-- [ ] Report which operations are native-backed and which are fallback-backed.
-- [ ] Add timing hooks for detection, scan, hash, diff, and verify preparation candidates.
-- [ ] Keep missing-native behavior non-fatal.
-- [ ] Record migration gates for primitives not ready to move yet.
+- [x] Expose native helper capabilities through one adapter.
+- [x] Report which operations are native-backed and which are fallback-backed.
+- [x] Add timing hooks for detection, scan, hash, diff, and verify preparation candidates.
+- [x] Keep missing-native behavior non-fatal.
+- [x] Record migration gates for primitives not ready to move yet.
+
+Stage 7 implementation note:
+
+- Added `talos/native_boundary.py` as the single product-facing native helper boundary.
+- Kept `talos/native_bridge.py` as the raw ctypes/fallback layer while `native_boundary` owns capabilities, operation status, fallback status, timing hooks, and migration gates.
+- Routed `/api/state` through the native boundary report so the UI/API can distinguish native-backed detection from fallback-backed scan/hash/diff/verify-preparation candidates.
+- Added timing measurement hooks for detection, scan, hash, diff, and verify preparation operation keys without requiring the native DLL to exist.
+- Added `talos.native_boundary` to the Python ownership map as the native adapter boundary for 0.6.5 migration work.
 
 Exit condition: native acceleration has a single boundary and measurable fallback behavior.
 
@@ -135,12 +151,18 @@ Exit condition: native acceleration has a single boundary and measurable fallbac
 
 Purpose: prove the rebuild did not break the first product workflow.
 
-- [ ] Detect open Arduino sketches and source tabs.
-- [ ] Select a sketch and inspect `.ino`, `.h`, and `.cpp` files.
-- [ ] Verify sandbox compile with the selected board/profile.
-- [ ] Send a Codex turn with context package preview.
-- [ ] Apply/reject/save remains safe and recoverable.
-- [ ] Record the smoke result in `dev_notes/evidence/TALOS_060_EVIDENCE.md`.
+- [x] Detect open Arduino sketches and source tabs.
+- [x] Select a sketch and inspect `.ino`, `.h`, and `.cpp` files.
+- [x] Verify sandbox compile with the selected board/profile.
+- [x] Send a Codex turn with context package preview.
+- [x] Apply/reject/save remains safe and recoverable.
+- [x] Record the smoke result in `dev_notes/evidence/TALOS_060_EVIDENCE.md`.
+
+Stage 8 implementation note:
+
+- Added `talos/arduino_smoke.py`, a synthetic Arduino compatibility smoke that exercises the Arduino adapter, context-package contract, verify profile payload, Codex patch staging, apply-to-editor, save-to-workspace, and reject path without requiring a live Arduino IDE, hardware board, or Codex runtime.
+- The smoke fixture includes `.ino`, `.h`, and `.cpp` source tabs so the first product workflow remains covered after the 0.6.0 boundary rebuild.
+- Codex staging is redirected to the smoke workspace during the test, keeping AppData and user state untouched.
 
 Exit condition: Arduino remains usable on top of the new boundaries.
 
@@ -148,9 +170,15 @@ Exit condition: Arduino remains usable on top of the new boundaries.
 
 Purpose: prepare the Python-decomposition patch release.
 
-- [ ] Summarize completed boundaries and remaining Python migration candidates.
-- [ ] Update roadmap status for 0.6.0.
-- [ ] Confirm `dev_notes/pipelines/TALOS_PIPELINE_065.md` matches the actual 0.6.0 result.
-- [ ] Record final evidence in `dev_notes/evidence/TALOS_060_EVIDENCE.md`.
+- [x] Summarize completed boundaries and remaining Python migration candidates.
+- [x] Update roadmap status for 0.6.0.
+- [x] Confirm `dev_notes/pipelines/TALOS_PIPELINE_065.md` matches the actual 0.6.0 result.
+- [x] Record final evidence in `dev_notes/evidence/TALOS_060_EVIDENCE.md`.
 
 Exit condition: 0.6.5 can start reducing Python hot paths without changing product behavior.
+
+Stage 9 implementation note:
+
+- Completed 0.6.0 boundaries: shell provider, core runtime, versioned local API contract, target host with Arduino adapter, runtime provider, Python ownership map, native acceleration boundary, and Arduino compatibility smoke.
+- Remaining 0.6.5 migration candidates: process/window detection, file watching and workspace scan, hashing/cache keys, diff/hunk parsing, task orchestration, runtime discovery health, and repeated subprocess/window churn.
+- `dev_notes/pipelines/TALOS_PIPELINE_065.md` was reviewed against the actual 0.6.0 result. It starts with measurement, keeps the no-new-target rule, preserves `desktop_app.py` as the debug launcher, and reduces Python hot paths without changing product behavior.
