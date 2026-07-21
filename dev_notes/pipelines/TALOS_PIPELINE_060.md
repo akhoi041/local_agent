@@ -42,11 +42,11 @@ Exit condition: the current app still runs, but shell concerns are isolated behi
 
 Purpose: create the real backend owner of app state and orchestration.
 
-- [ ] Add a core runtime module/package that owns workspace state, selected target, selected file, verify state, runtime state, diagnostics state, and task history coordination.
-- [ ] Route HTTP/local API endpoints through the core runtime instead of directly reading/writing scattered module globals.
-- [ ] Move task queue and cancellation state behind the core boundary.
-- [ ] Add tests proving existing `/api/state`, Arduino workspace, verify, Codex package, and settings behavior still work through the new boundary.
-- [ ] Keep Python implementation acceptable for this stage only because the boundary, not the language, is the product contract.
+- [x] Add a core runtime module/package that owns workspace state, selected target, selected file, verify state, runtime state, diagnostics state, and task history coordination.
+- [x] Route HTTP/local API endpoints through the core runtime instead of directly reading/writing scattered module globals.
+- [x] Move task queue and cancellation state behind the core boundary.
+- [x] Add tests proving existing `/api/state`, Arduino workspace, verify, Codex package, and settings behavior still work through the new boundary.
+- [x] Keep Python implementation acceptable for this stage only because the boundary, not the language, is the product contract.
 
 Exit condition: server endpoints depend on a core runtime boundary, not on direct helper-module shortcuts.
 
@@ -54,23 +54,37 @@ Exit condition: server endpoints depend on a core runtime boundary, not on direc
 
 Purpose: make frontend, runtime providers, target adapters, and shell communicate through stable payloads.
 
-- [ ] Define versioned contract serializers for app state, target state, workspace map, source file, verify result, runtime status, diagnostics, command palette, settings, and evidence.
-- [ ] Add compatibility/version fields to UI-facing responses.
-- [ ] Validate outbound payloads in tests so internal Python object shapes do not leak into the local API.
-- [ ] Keep old Arduino API endpoints as compatibility wrappers only.
-- [ ] Document breaking-change rules for later Tauri/Rust IPC migration.
+- [x] Define versioned contract serializers for app state, target state, workspace map, source file, verify result, runtime status, diagnostics, command palette, settings, and evidence.
+- [x] Add compatibility/version fields to UI-facing responses.
+- [x] Validate outbound payloads in tests so internal Python object shapes do not leak into the local API.
+- [x] Keep old Arduino API endpoints as compatibility wrappers only.
+- [x] Document breaking-change rules for later Tauri/Rust IPC migration.
 
 Exit condition: UI/runtime-facing data has explicit contracts and tests.
+
+Stage 3 implementation note:
+
+- Added explicit local API metadata with `api_version` and compatibility mode on UI/runtime-facing payloads.
+- Expanded contract serializers for workspace maps, source files, verify results, runtime status, settings, command palette, diagnostics, evidence, state, targets, target context, and Codex context packages.
+- Routed source file reads/writes, Arduino verify, Codex patch verify, runtime status, settings save, and command palette data through versioned contract surfaces while keeping existing Arduino endpoint paths stable.
+- Breaking changes require a new local API version; additive fields remain allowed under `talos.local-api.v1`.
 
 ## Stage 4 - Target Host Skeleton
 
 Purpose: create the shared place where Arduino, MATLAB, STM32CubeIDE, KiCad, and SolidWorks will eventually plug in.
 
-- [ ] Implement target registry, target capabilities, target workspace identity, source/design artifact identity, profile, context package, verify/check action, write/apply action, rollback action, and diagnostics hooks.
-- [ ] Wrap the existing Arduino behavior as the first compatibility target adapter.
-- [ ] Expose generic target metadata through `/api/targets` while preserving Arduino-specific endpoints.
-- [ ] Add tests that assert Arduino can be represented through the generic target contract.
-- [ ] Block non-Arduino target stubs from claiming support before they implement real workflows.
+- [x] Implement target registry, target capabilities, target workspace identity, source/design artifact identity, profile, context package, verify/check action, write/apply action, rollback action, and diagnostics hooks.
+- [x] Wrap the existing Arduino behavior as the first compatibility target adapter.
+- [x] Expose generic target metadata through `/api/targets` while preserving Arduino-specific endpoints.
+- [x] Add tests that assert Arduino can be represented through the generic target contract.
+- [x] Block non-Arduino target stubs from claiming support before they implement real workflows.
+
+Stage 4 implementation note:
+
+- `talos/targets.py` now defines target actions, implemented/placeholder status, registry metadata, and a guard that prevents unimplemented adapters from being registered as supported targets by default.
+- `talos/arduino_adapter.py` exposes Arduino as the first real target adapter with workspace identity, artifact identity, profile identity, context package, verify, write, rollback, and diagnostics hooks.
+- `/api/targets` continues to expose generic metadata through `RUNTIME_CORE.targets_payload()` while Arduino-specific endpoints remain compatibility surfaces.
+- Regression tests verify Arduino's generic target contract and confirm non-Arduino placeholders cannot claim support without an explicit placeholder opt-in.
 
 Exit condition: Arduino is the first real adapter on a shared target host, and future target apps have a real integration shape.
 
@@ -78,11 +92,18 @@ Exit condition: Arduino is the first real adapter on a shared target host, and f
 
 Purpose: make Codex/Claude/runtime integration replaceable and explicit.
 
-- [ ] Implement a runtime provider registry for Codex first and placeholders only for future providers.
-- [ ] Route discovery, health, pinning, app-server status, context package, message sending, patch/review actions, and safe metadata display through the provider boundary.
-- [ ] Enforce a metadata allowlist: source, path, version, hash, auth readiness, app-server readiness, safe account/plan fields only if the runtime exposes them.
-- [ ] Prove Talos does not store OpenAI credentials, session tokens, cookies, or inferred subscription data.
-- [ ] Treat VS Code extension-adjacent runtime paths as fallback candidates, not the product foundation.
+- [x] Implement a runtime provider registry for Codex first and placeholders only for future providers.
+- [x] Route discovery, health, pinning, app-server status, context package, message sending, patch/review actions, and safe metadata display through the provider boundary.
+- [x] Enforce a metadata allowlist: source, path, version, hash, auth readiness, app-server readiness, safe account/plan fields only if the runtime exposes them.
+- [x] Prove Talos does not store OpenAI credentials, session tokens, cookies, or inferred subscription data.
+- [x] Treat VS Code extension-adjacent runtime paths as fallback candidates, not the product foundation.
+
+Stage 5 implementation note:
+
+- Added `talos/runtime_provider.py` with a Codex provider, provider registry, placeholder runtime providers, and a safe runtime metadata sanitizer.
+- `TalosRuntimeCore` now routes Codex state, runtime discovery/health, pinning, app-server status, message sending, reconnect/cancel/conversation, review restore/discard, and shutdown through the Codex provider boundary.
+- Runtime metadata is allowlisted to source/path/version/hash/readiness plus safe account/plan fields only; token, cookie, session, password, authorization, API key, bearer, refresh, and secret fields are dropped.
+- VS Code extension-adjacent runtime paths remain a fallback-candidate policy, not the product foundation.
 
 Exit condition: runtime behavior is provider-owned, credential-safe, and not hardwired to VS Code UI behavior.
 
