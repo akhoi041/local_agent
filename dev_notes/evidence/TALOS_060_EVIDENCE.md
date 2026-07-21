@@ -84,6 +84,71 @@ Validation:
 
 Conclusion: Stage 1 is implemented in code. Talos still launches from `desktop_app.py`, while app identity, icon lookup, port selection, frontend hosting, pywebview startup, and window behavior now sit behind a shell provider boundary.
 
+## Stage 2 - Core Runtime Boundary
+
+Status: complete.
+
+Implementation:
+
+- Added `talos/runtime_core.py` as the backend orchestration boundary for state payloads, target state, Arduino context/profile/projects/events, workspace updates, verify/cancel/cache-clear, Codex runtime health/status, context packages, message flow, reconnect/cancel/conversation handling, diagnostics/support/run history, and release evidence.
+- Updated `talos/server.py` so product HTTP/local API workflows delegate through `RUNTIME_CORE` instead of directly reaching scattered helper-module state.
+- Updated `talos/state_service.py` so state payload construction can receive runtime-owned config, target, verify, and Codex runtime status data.
+- Moved task/cancellation-facing operations for Arduino verify and Codex turns behind the runtime core boundary while keeping existing compatibility endpoints stable.
+- Kept Python as the implementation bridge for this stage only; the product contract is now the runtime boundary that a later non-Python shell/core can replace.
+
+Validation:
+
+- `python -B -m py_compile talos\runtime_core.py talos\state_service.py talos\server.py`
+- `python -B -m unittest tests.test_desktop_app`
+- Result: 127 tests passed.
+
+Conclusion: Stage 2 is implemented in code. Server endpoints now route core product workflows through `RUNTIME_CORE`, while existing state, Arduino workspace/verify, Codex package/message, and settings behavior remain covered by regression tests.
+
+## Stage 3 - Versioned Local API And IPC Contract
+
+Status: complete.
+
+Implementation:
+
+- Expanded `talos/contracts.py` with explicit contract serializers for workspace maps, source files, verify results, runtime status, settings, command palette, and existing state/target/Codex/diagnostics/evidence surfaces.
+- Added `api_version` and compatibility metadata to UI/runtime-facing contract payloads so future Tauri/Rust IPC can distinguish additive changes from breaking ones.
+- Routed server/runtime outputs for source file reads/writes, Arduino verify, Codex patch verify, runtime status, settings save, and command palette through contract boundaries.
+- Added `/api/command_palette` as a versioned local API surface for shell/menu integrations.
+- Preserved current Arduino endpoint paths as compatibility wrappers instead of forcing frontend churn during the architecture rebuild.
+
+Versioning rules:
+
+- Additive fields may remain on `talos.local-api.v1`.
+- Removing, renaming, or changing the meaning of UI/runtime-facing fields requires a new local API version.
+- Raw helper dictionaries should not cross the local API/IPC boundary without a serializer in `talos/contracts.py`.
+
+Validation:
+
+- `python -B -m py_compile talos\contracts.py talos\runtime_core.py talos\server.py tests\test_desktop_app.py`
+- `python -B -m unittest tests.test_desktop_app`
+- Result: 129 tests passed.
+
+Conclusion: Stage 3 is implemented in code. Talos now has explicit local API contracts for the current frontend/runtime boundary while retaining Arduino compatibility endpoints for the active UI.
+
+## Stage 4 - Target Host Skeleton
+
+Status: complete.
+
+Implementation:
+
+- Expanded `talos/targets.py` from basic target metadata into a shared target host skeleton with target actions, implemented/placeholder status, and registry blocking for unsupported adapters.
+- Expanded `talos/arduino_adapter.py` so Arduino is the first concrete compatibility target with workspace identity, source artifact identity, profile identity, context package, verify, write, rollback, and diagnostics hooks.
+- Preserved Arduino-specific endpoints while keeping `/api/targets` as the generic target metadata surface for future MATLAB, STM32CubeIDE, KiCad, and SolidWorks adapters.
+- Added regression coverage for Arduino generic target representation and for blocking unimplemented target stubs from claiming support.
+
+Validation:
+
+- `python -B -m py_compile talos\targets.py talos\arduino_adapter.py talos\runtime_core.py talos\server.py tests\test_desktop_app.py`
+- `python -B -m unittest tests.test_desktop_app`
+- Result: 130 tests passed.
+
+Conclusion: Stage 4 is implemented in code. Arduino now runs as the first real adapter on a shared target host, and future target apps have a concrete integration shape without being allowed to report support prematurely.
+
 ## Previous Draft - Target Adapter Foundation
 
 Status: complete.
@@ -131,3 +196,28 @@ Validation:
 - Timing note: `state_refresh` averaged `1069.872 ms`, under the `2000 ms` guardrail, after reusing one Arduino process/window snapshot for contract serialization.
 
 Conclusion: Stage 2 now has a real versioned local contract layer. The frontend and future runtime/target adapters can consume stable payloads without depending on raw Python helper shapes.
+
+## Stage 5 - Runtime Provider Boundary
+
+Status: complete.
+
+Implementation:
+
+- Added `talos/runtime_provider.py` as the runtime-provider boundary with a Codex provider, provider registry, placeholder runtime providers, and safe runtime metadata sanitization.
+- Routed Codex state, runtime discovery/health, pinning, app-server status, message sending, reconnect/cancel/conversation handling, review restore/discard, support evidence, and shutdown through `TalosRuntimeCore.codex_provider`.
+- Kept Codex message/review result payloads intact for user-visible chat and patch data, while runtime metadata display is allowlisted.
+- Marked VS Code extension-adjacent runtime discovery as `extension_adjacent_candidate_only`, a fallback candidate policy rather than the product foundation.
+
+Validation:
+
+- `python -B -m py_compile talos\runtime_provider.py talos\runtime_core.py tests\test_desktop_app.py`
+- `python -B -m unittest tests.test_desktop_app`
+- Result: 133 tests passed.
+
+Safety conclusion:
+
+- `talos/runtime_provider.py` drops token, cookie, session, password, authorization, API key, bearer, refresh, and secret metadata keys.
+- Provider metadata explicitly reports that Talos stores no runtime credentials, tokens, or cookies.
+- `talos/runtime_core.py` no longer imports or calls `CODEX_BRIDGE` directly; Codex actions are routed through `CodexRuntimeProvider`.
+
+Conclusion: Stage 5 is implemented in code. Runtime behavior is provider-owned, Codex is the first real provider, future providers are placeholders, metadata display is credential-safe, and VS Code extension-adjacent runtime paths are treated only as fallback candidates.

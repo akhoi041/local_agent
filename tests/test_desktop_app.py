@@ -13,11 +13,24 @@ from talos import checkpoints as checkpoint_store
 from talos import core, native_bridge
 from talos import run_history as run_history_store
 from talos.contracts import (
+    COMMAND_PALETTE_CONTRACT,
+    LOCAL_API_COMPATIBILITY,
     LOCAL_API_VERSION,
+    RUNTIME_STATUS_CONTRACT,
+    SETTINGS_CONTRACT,
+    SOURCE_FILE_CONTRACT,
     STATE_CONTRACT,
     TARGETS_CONTRACT,
+    VERIFY_RESULT_CONTRACT,
+    WORKSPACE_MAP_CONTRACT,
+    command_palette_contract,
     require_contract,
+    runtime_status_contract,
+    settings_contract,
+    source_file_contract,
     targets_contract,
+    verify_result_contract,
+    workspace_map_contract,
 )
 from talos.arduino_events import ArduinoEventWatcher, is_arduino_window_title
 from talos.arduino_adapter import ArduinoTargetAdapter
@@ -95,9 +108,26 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertEqual(payload["targets"]["active"], "arduino")
         self.assertEqual(payload["contract"]["name"], TARGETS_CONTRACT)
         self.assertEqual(payload["contract"]["version"], LOCAL_API_VERSION)
+        self.assertEqual(payload["api_version"], LOCAL_API_VERSION)
+        self.assertEqual(payload["compatibility"]["mode"], LOCAL_API_COMPATIBILITY)
         require_contract(payload, TARGETS_CONTRACT)
         with self.assertRaises(ValueError):
             require_contract(payload, STATE_CONTRACT)
+
+    def test_stage_060_local_api_contract_serializers_cover_stage_3_surfaces(self) -> None:
+        cases = (
+            (workspace_map_contract({"ok": True, "workspace_map": {}}), WORKSPACE_MAP_CONTRACT),
+            (source_file_contract({"ok": True, "path": "Blink.ino", "content": ""}), SOURCE_FILE_CONTRACT),
+            (verify_result_contract({"ok": True, "status": "passed"}), VERIFY_RESULT_CONTRACT),
+            (runtime_status_contract({"ok": True, "runtime": {"provider": "none"}}), RUNTIME_STATUS_CONTRACT),
+            (command_palette_contract({"ok": True, "commands": []}), COMMAND_PALETTE_CONTRACT),
+            (settings_contract({"ok": True, "config": {}}), SETTINGS_CONTRACT),
+        )
+
+        for payload, contract_name in cases:
+            require_contract(payload, contract_name)
+            self.assertEqual(payload["api_version"], LOCAL_API_VERSION)
+            self.assertEqual(payload["compatibility"]["mode"], LOCAL_API_COMPATIBILITY)
 
     def test_target_registry_reports_arduino_adapter_metadata(self) -> None:
         registry = TargetRegistry()
@@ -105,19 +135,35 @@ class TalosArduinoTests(unittest.TestCase):
 
         registry.register(adapter)
 
+        metadata = registry.metadata()
         self.assertIs(registry.get("arduino"), adapter)
-        self.assertEqual(
-            registry.metadata(),
-            [
-                {
-                    "id": "arduino",
-                    "name": "Arduino IDE",
-                    "capabilities": list(adapter.capabilities),
-                }
-            ],
-        )
+        self.assertEqual(metadata[0]["id"], "arduino")
+        self.assertEqual(metadata[0]["name"], "Arduino IDE")
+        self.assertEqual(metadata[0]["capabilities"], list(adapter.capabilities))
+        self.assertTrue(metadata[0]["implemented"])
+        self.assertEqual(metadata[0]["status"], "supported")
+        self.assertIn("verify", [item["id"] for item in metadata[0]["actions"]])
         self.assertIn("verify", adapter.capabilities)
         self.assertIn("workspace_map", adapter.capabilities)
+
+    def test_target_registry_blocks_placeholder_targets_by_default(self) -> None:
+        class PlaceholderTarget:
+            target_id = "matlab"
+            target_name = "MATLAB"
+            implemented = False
+            capabilities = ("detect_projects",)
+            actions = ()
+
+            def context(self, *_args: object, **_kwargs: object) -> object:
+                raise NotImplementedError
+
+        registry = TargetRegistry()
+
+        with self.assertRaises(ValueError):
+            registry.register(PlaceholderTarget())
+
+        registry.register(PlaceholderTarget(), allow_placeholder=True)
+        self.assertEqual(registry.metadata()[0]["status"], "placeholder")
 
     def test_arduino_target_adapter_represents_workspace_context(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -138,6 +184,11 @@ class TalosArduinoTests(unittest.TestCase):
             self.assertEqual(context["target_id"], "arduino")
             self.assertEqual(context["target_name"], "Arduino IDE")
             self.assertIn("read_file", context["capabilities"])
+            self.assertIn("workspace_identity", context["capabilities"])
+            self.assertIn("rollback", context["capabilities"])
+            self.assertIn("diagnostics", context["capabilities"])
+            self.assertIn("verify", [item["id"] for item in context["actions"]])
+            self.assertEqual(context["diagnostics"]["target"], "arduino")
             self.assertEqual(context["selected_workspace"]["main_file"], "Blink.ino")
             self.assertEqual(context["selected_workspace"]["metadata"]["fqbn"], "arduino:avr:uno")
             self.assertEqual(
@@ -145,6 +196,13 @@ class TalosArduinoTests(unittest.TestCase):
                 ["Blink.ino", "Driver.cpp"],
             )
             self.assertEqual(context["profile"]["fqbn"], "arduino:avr:uno")
+
+            workspace = adapter.workspace_identity({"arduino_workspace_path": str(root), "arduino_fqbn": "arduino:avr:uno"})
+            artifacts = adapter.artifact_identities({"arduino_workspace_path": str(root), "arduino_fqbn": "arduino:avr:uno"})
+            profile = adapter.profile_identity({"arduino_workspace_path": str(root), "arduino_fqbn": "arduino:avr:uno"})
+            self.assertEqual(workspace.name, "Blink.ino")
+            self.assertEqual([item.name for item in artifacts], ["Blink.ino", "Driver.cpp"])
+            self.assertEqual(profile.fqbn, "arduino:avr:uno")
 
     def test_state_payload_exposes_generic_target_context(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -997,18 +1055,20 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertNotIn("--native-window-width", script)
 
         server = (Path(__file__).parents[1] / "talos" / "server.py").read_text(encoding="utf-8")
+        runtime_core = (Path(__file__).parents[1] / "talos" / "runtime_core.py").read_text(encoding="utf-8")
+        runtime_flow = server + runtime_core
         self.assertIn("/api/codex_restore_reviews", server)
         self.assertIn("/api/codex_discard_reviews", server)
         self.assertIn("/api/codex_merge_draft", server)
         self.assertIn("/api/codex_apply_conflict", server)
-        self.assertIn("editor_override", server)
+        self.assertIn("editor_override", runtime_flow)
         self.assertIn("/api/release_evidence", server)
         self.assertIn("/api/support_bundle", server)
-        self.assertIn("support_bundle", server)
-        self.assertIn("filtered_run_history", server)
-        self.assertIn("record_codex_turn", server)
-        self.assertIn("conversation_loaded", server)
-        self.assertIn("context_replay_guard", server)
+        self.assertIn("support_bundle", runtime_flow)
+        self.assertIn("filtered_run_history", runtime_flow)
+        self.assertIn("record_codex_turn", runtime_flow)
+        self.assertIn("conversation_loaded", runtime_flow)
+        self.assertIn("context_replay_guard", runtime_flow)
 
         styles = (Path(__file__).parents[1] / "ui" / "web_frontend" / "styles.css").read_text(encoding="utf-8")
         self.assertNotIn("width: 100vw;", styles)
@@ -2070,13 +2130,69 @@ class TalosArduinoTests(unittest.TestCase):
     def test_stage_050_runtime_health_refresh_does_not_replay_prompt(self) -> None:
         root = Path(__file__).parents[1]
         source = (root / "talos" / "server.py").read_text(encoding="utf-8")
+        runtime_source = (root / "talos" / "runtime_core.py").read_text(encoding="utf-8")
         start = source.index('if self.path == "/api/codex_runtime_health":')
         end = source.index('if self.path == "/api/diagnostics_event":', start)
         block = source[start:end]
 
-        self.assertIn("runtime_status(config, force=True)", block)
+        self.assertIn("RUNTIME_CORE.runtime_health_payload()", block)
+        self.assertIn("self.codex_provider.status(config, force=True)", runtime_source)
         self.assertNotIn("send_message", block)
         self.assertNotIn("reconnect", block)
+
+    def test_stage_060_runtime_provider_sanitizes_sensitive_metadata(self) -> None:
+        from talos.runtime_provider import sanitize_runtime_metadata
+
+        raw = {
+            "path": "C:/Tools/codex.exe",
+            "version": "1.0.0",
+            "token": "secret-token",
+            "session_cookie": "secret-cookie",
+            "health": {"auth_ready": True, "refresh_token": "refresh-secret"},
+            "account": {"email": "user@example.com", "plan": "plus", "password": "hidden"},
+            "unknown_payload": "drop-me",
+        }
+
+        safe = sanitize_runtime_metadata(raw)
+        dumped = json.dumps(safe).lower()
+
+        self.assertEqual(safe["path"], "C:/Tools/codex.exe")
+        self.assertEqual(safe["version"], "1.0.0")
+        self.assertTrue(safe["health"]["auth_ready"])
+        self.assertEqual(safe["account"]["plan"], "plus")
+        self.assertNotIn("secret-token", dumped)
+        self.assertNotIn("secret-cookie", dumped)
+        self.assertNotIn("refresh-secret", dumped)
+        self.assertNotIn("password", dumped)
+        self.assertNotIn("unknown_payload", safe)
+
+    def test_stage_060_runtime_provider_registry_exposes_codex_and_placeholders(self) -> None:
+        from talos.runtime_provider import CodexRuntimeProvider, PlaceholderRuntimeProvider, RuntimeProviderRegistry
+
+        registry = RuntimeProviderRegistry()
+        registry.register(CodexRuntimeProvider())
+        registry.register(PlaceholderRuntimeProvider("claude", "Claude"))
+        metadata = registry.metadata()
+
+        self.assertTrue(metadata["codex"]["implemented"])
+        self.assertFalse(metadata["claude"]["implemented"])
+        self.assertEqual(metadata["codex"]["fallback_policy"], "extension_adjacent_candidate_only")
+        self.assertFalse(metadata["codex"]["credential_policy"]["stores_credentials"])
+        self.assertFalse(metadata["codex"]["credential_policy"]["stores_tokens"])
+        self.assertFalse(metadata["codex"]["credential_policy"]["stores_cookies"])
+
+    def test_stage_060_runtime_core_routes_codex_through_provider_boundary(self) -> None:
+        root = Path(__file__).parents[1]
+        source = (root / "talos" / "runtime_core.py").read_text(encoding="utf-8")
+
+        self.assertIn("codex_provider: CodexRuntimeProvider", source)
+        self.assertIn("runtime_registry: RuntimeProviderRegistry", source)
+        self.assertIn('PlaceholderRuntimeProvider("claude", "Claude")', source)
+        self.assertIn("self.codex_provider.status(config, force=True)", source)
+        self.assertIn("self.codex_provider.selected_payload(config", source)
+        self.assertIn("self.codex_provider.send_message", source)
+        self.assertNotIn("CODEX_BRIDGE", source)
+        self.assertNotIn("self.codex_bridge", source)
 
     def test_codex_status_starts_runtime_without_blocking_for_handshake(self) -> None:
         bridge = CodexBridge(persist_reviews=False)
@@ -2476,16 +2592,74 @@ class TalosArduinoTests(unittest.TestCase):
 
     def test_stage_060_server_routes_public_payloads_through_contracts(self) -> None:
         server_source = (Path(__file__).parents[1] / "talos" / "server.py").read_text(encoding="utf-8")
+        runtime_source = (Path(__file__).parents[1] / "talos" / "runtime_core.py").read_text(encoding="utf-8")
+        boundary_source = server_source + runtime_source
 
         for serializer in (
             "targets_contract(",
             "target_context_contract(",
+            "workspace_map_contract(",
+            "source_file_contract(",
             "diagnostics_contract(",
             "verify_result_contract(",
+            "runtime_status_contract(",
+            "command_palette_contract(",
+            "settings_contract(",
             "evidence_contract(",
-            "codex_context_contract(",
         ):
-            self.assertIn(serializer, server_source)
+            self.assertIn(serializer, boundary_source)
+
+        self.assertIn("codex_context_contract(", runtime_source)
+        self.assertIn("RUNTIME_CORE.command_palette_payload()", server_source)
+        self.assertIn("verify_result_contract(RUNTIME_CORE.verify_arduino(payload))", server_source)
+
+    def test_stage_060_server_routes_product_workflows_through_runtime_core(self) -> None:
+        server_source = (Path(__file__).parents[1] / "talos" / "server.py").read_text(encoding="utf-8")
+
+        for call in (
+            "RUNTIME_CORE.state_payload()",
+            "RUNTIME_CORE.update_settings(payload)",
+            "RUNTIME_CORE.update_arduino_workspace(payload)",
+            "RUNTIME_CORE.verify_arduino(payload)",
+            "RUNTIME_CORE.cancel_verify()",
+            "RUNTIME_CORE.codex_context_package(payload)",
+            "RUNTIME_CORE.codex_message(payload)",
+            "RUNTIME_CORE.codex_reconnect()",
+            "RUNTIME_CORE.cancel_codex_turn()",
+            "RUNTIME_CORE.codex_conversation(",
+            "RUNTIME_CORE.shutdown()",
+        ):
+            self.assertIn(call, server_source)
+
+    def test_stage_060_runtime_core_owns_settings_save_boundary(self) -> None:
+        from talos.runtime_core import TalosRuntimeCore
+
+        config = {
+            "theme": "light",
+            "arduino_workspace_path": "",
+            "arduino_fqbn": "arduino:avr:uno",
+        }
+        with patch("talos.runtime_core.load_config", return_value=config), patch(
+            "talos.runtime_core.save_config"
+        ) as save, patch("talos.runtime_core.log_event"):
+            result = TalosRuntimeCore().update_settings(
+                {"theme": "dark", "arduino_fqbn": "esp32:esp32:esp32"}
+            )
+
+        self.assertTrue(result["ok"])
+        saved = save.call_args.args[0]
+        self.assertEqual(saved["theme"], "dark")
+        self.assertEqual(saved["arduino_fqbn"], "esp32:esp32:esp32")
+        require_contract(result, SETTINGS_CONTRACT)
+
+    def test_stage_060_runtime_core_command_palette_payload_is_versioned(self) -> None:
+        from talos.runtime_core import TalosRuntimeCore
+
+        payload = TalosRuntimeCore().command_palette_payload()
+
+        self.assertTrue(payload["ok"])
+        require_contract(payload, COMMAND_PALETTE_CONTRACT)
+        self.assertGreaterEqual(len(payload["commands"]), 5)
 
     def test_performance_guardrails_document_runtime_and_process_policy(self) -> None:
         guardrails = performance_guardrails()

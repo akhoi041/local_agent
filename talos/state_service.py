@@ -20,8 +20,9 @@ from talos.run_history import latest_verify_for_workspace
 
 ARDUINO_TARGET = ArduinoTargetAdapter()
 
-def state_payload() -> dict[str, Any]:
-    config = load_config()
+def state_payload(runtime: Any | None = None) -> dict[str, Any]:
+    config = runtime.load_config() if runtime is not None else load_config()
+    arduino_target = runtime.arduino_target if runtime is not None else ARDUINO_TARGET
     app_identity = load_app_identity()
     build_metadata = load_build_metadata(app_identity)
     tool_processes = list_arduino_tool_processes()
@@ -35,7 +36,7 @@ def state_payload() -> dict[str, Any]:
         for row in window_rows
         if str(row.get("title") or "").strip()
     ]
-    arduino_projects = ARDUINO_TARGET.discover_projects(
+    arduino_projects = arduino_target.discover_projects(
         config,
         ide_processes=ide_processes,
         tool_processes=tool_processes,
@@ -43,12 +44,16 @@ def state_payload() -> dict[str, Any]:
         open_workspaces=list_arduino_open_workspaces(),
         workspace_boards=list_arduino_workspace_boards(),
     )
-    arduino_summary = ARDUINO_TARGET.workspace_summary(config)
-    latest_verify = latest_verify_for_workspace(str(arduino_summary.get("path") or ""))
-    arduino_profile = ARDUINO_TARGET.environment_profile(config, str(arduino_summary.get("path") or ""))
-    arduino_profile_readiness = ARDUINO_TARGET.profile_readiness(config)
-    arduino_map = ARDUINO_TARGET.workspace_map(config, latest_verify)
-    target_context = ARDUINO_TARGET.context(
+    arduino_summary = arduino_target.workspace_summary(config)
+    latest_verify = (
+        runtime.latest_verify_for_workspace(str(arduino_summary.get("path") or ""))
+        if runtime is not None
+        else latest_verify_for_workspace(str(arduino_summary.get("path") or ""))
+    )
+    arduino_profile = arduino_target.environment_profile(config, str(arduino_summary.get("path") or ""))
+    arduino_profile_readiness = arduino_target.profile_readiness(config)
+    arduino_map = arduino_target.workspace_map(config, latest_verify)
+    target_context = arduino_target.context(
         config,
         latest_verify,
         projects=arduino_projects,
@@ -57,7 +62,11 @@ def state_payload() -> dict[str, Any]:
         profile_readiness=arduino_profile_readiness,
         workspace_map=arduino_map,
     ).to_dict()
-    codex_runtime_status = runtime_status(config)
+    codex_runtime_status = (
+        runtime.codex_runtime_status(config)
+        if runtime is not None
+        else runtime_status(config)
+    )
     return state_contract({
         "name": app_identity["display_name"],
         "role": "Codex local control layer",
@@ -85,12 +94,12 @@ def state_payload() -> dict[str, Any]:
         "arduino_projects": arduino_projects,
         "arduino_events": arduino_event_status(),
         "targets": {
-            "active": ARDUINO_TARGET.target_id,
+            "active": arduino_target.target_id,
             "registered": [
                 {
-                    "id": ARDUINO_TARGET.target_id,
-                    "name": ARDUINO_TARGET.target_name,
-                    "capabilities": list(ARDUINO_TARGET.capabilities),
+                    "id": arduino_target.target_id,
+                    "name": arduino_target.target_name,
+                    "capabilities": list(arduino_target.capabilities),
                 }
             ],
             "contexts": [target_context],

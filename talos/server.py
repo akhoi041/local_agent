@@ -24,6 +24,7 @@ from talos.contracts import (
     codex_context_contract,
     diagnostics_contract,
     evidence_contract,
+    source_file_contract,
     target_context_contract,
     targets_contract,
     verify_result_contract,
@@ -67,24 +68,17 @@ from talos.runtime_service import (
     runtime_outcomes,
     selected_runtime_payload,
 )
+from talos.runtime_core import RUNTIME_CORE
 from talos.shell.profile import find_port, static_ui_root
 from talos.state_service import state_payload
 from talos.targets import TargetRegistry
 
 FRONTEND = static_ui_root()
-ARDUINO_TARGET = ArduinoTargetAdapter()
-TARGET_REGISTRY = TargetRegistry()
-TARGET_REGISTRY.register(ARDUINO_TARGET)
-
+ARDUINO_TARGET = RUNTIME_CORE.arduino_target
+TARGET_REGISTRY = RUNTIME_CORE.target_registry
 
 def target_state(config: dict[str, Any]) -> dict[str, Any]:
-    summary = ARDUINO_TARGET.workspace_summary(config)
-    latest_verify = latest_verify_for_workspace(str(summary.get("path") or ""))
-    return {
-        "active": ARDUINO_TARGET.target_id,
-        "registered": TARGET_REGISTRY.metadata(),
-        "contexts": [ARDUINO_TARGET.context(config, latest_verify).to_dict()],
-    }
+    return RUNTIME_CORE.target_state(config)
 
 class TalosWebHandler(BaseHTTPRequestHandler):
     server_version = "TalosWeb/1.0"
@@ -93,10 +87,13 @@ class TalosWebHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         query = parse_qs(parsed.query)
         if self.path == "/api/state":
-            self.send_json(state_payload())
+            self.send_json(RUNTIME_CORE.state_payload())
             return
         if parsed.path == "/api/targets":
-            self.send_json(targets_contract({"ok": True, "targets": target_state(load_config())}))
+            self.send_json(RUNTIME_CORE.targets_payload())
+            return
+        if parsed.path == "/api/command_palette":
+            self.send_json(RUNTIME_CORE.command_palette_payload())
             return
         if parsed.path == "/api/health":
             app_identity = load_app_identity()
@@ -110,96 +107,48 @@ class TalosWebHandler(BaseHTTPRequestHandler):
             })
             return
         if parsed.path == "/api/arduino_context":
-            config = load_config()
-            summary = ARDUINO_TARGET.workspace_summary(config)
-            workspace_path = str(summary.get("path") or "")
-            latest_verify = latest_verify_for_workspace(workspace_path)
-            workspace_map = ARDUINO_TARGET.workspace_map(config, latest_verify)
-            profile = ARDUINO_TARGET.environment_profile(config, workspace_path)
-            profile_readiness = ARDUINO_TARGET.profile_readiness(config)
-            self.send_json(target_context_contract({
-                "ok": True,
-                "context": ARDUINO_TARGET.workspace_context(config),
-                "arduino": summary,
-                "workspace_map": workspace_map,
-                "target": ARDUINO_TARGET.context(
-                    config,
-                    latest_verify,
-                    summary=summary,
-                    profile=profile,
-                    profile_readiness=profile_readiness,
-                    workspace_map=workspace_map,
-                ).to_dict(),
-            }))
+            self.send_json(RUNTIME_CORE.arduino_context_payload())
             return
         if parsed.path == "/api/arduino_events":
-            self.send_json({"ok": True, **arduino_event_status()})
+            self.send_json(RUNTIME_CORE.arduino_events_payload())
             return
         if parsed.path == "/api/arduino_profile":
-            config = load_config()
-            workspace_path = query.get("path", [str(config.get("arduino_workspace_path") or "")])[0]
-            self.send_json({"ok": True, "profile": ARDUINO_TARGET.environment_profile(config, workspace_path)})
+            self.send_json(RUNTIME_CORE.arduino_profile_payload(query.get("path", [""])[0]))
             return
         if parsed.path == "/api/arduino_projects":
-            config = load_config()
-            self.send_json({"ok": True, "projects": ARDUINO_TARGET.discover_projects(config)})
+            self.send_json(RUNTIME_CORE.arduino_projects_payload())
             return
         if parsed.path == "/api/arduino_file":
             result = ARDUINO_TARGET.read_file(load_config(), query.get("path", [""])[0])
-            self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
+            self.send_json(source_file_contract(result), HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
             return
         if parsed.path == "/api/arduino_checkpoint":
             result = latest_saved_checkpoint(load_config(), query.get("path", [""])[0])
             self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
             return
         if parsed.path == "/api/codex_status":
-            self.send_json(codex_status_payload())
+            self.send_json(RUNTIME_CORE.codex_status_payload())
             return
         if parsed.path == "/api/codex_runtime":
-            config = load_config()
             force = query.get("force", ["0"])[0] in {"1", "true", "True", "yes"}
-            self.send_json({"ok": True, "runtime": runtime_status(config, force=force)})
+            self.send_json(RUNTIME_CORE.codex_runtime_payload(force=force))
             return
         if parsed.path == "/api/run_history":
-            self.send_json({
-                "ok": True,
-                "events": filtered_run_history(
-                    workspace=query.get("workspace", [""])[0],
-                    sketch=query.get("sketch", [""])[0],
-                    kind=query.get("kind", ["all"])[0],
-                ),
-            })
+            self.send_json(RUNTIME_CORE.run_history_payload(
+                workspace=query.get("workspace", [""])[0],
+                sketch=query.get("sketch", [""])[0],
+                kind=query.get("kind", ["all"])[0],
+            ))
             return
         if parsed.path == "/api/support_bundle":
-            config = load_config()
-            app_identity = load_app_identity()
-            build_metadata = load_build_metadata(app_identity)
-            summary = ARDUINO_TARGET.workspace_summary(config)
-            workspace = str(summary.get("path") or "")
-            latest_verify = latest_verify_for_workspace(workspace)
             redacted = query.get("redact", ["1"])[0] not in {"0", "false", "False"}
-            bundle = support_bundle(
-                app=app_identity,
-                build=build_metadata,
-                workspace_summary=summary,
-                profile=ARDUINO_TARGET.environment_profile(config, workspace),
-                profile_readiness=ARDUINO_TARGET.profile_readiness(config),
-                latest_verify=latest_verify,
-                history=filtered_run_history(workspace=workspace),
-                redact=redacted,
-            )
-            bundle["performance"] = performance_guardrails()
-            bundle["codex_runtime"] = support_bundle_runtime_evidence(runtime_status(config))
-            self.send_json({"ok": True, "bundle": bundle})
+            self.send_json(RUNTIME_CORE.support_bundle_payload(redact=redacted))
             return
         if parsed.path == "/api/diagnostics_export":
-            config = load_config()
-            app_identity = load_app_identity()
-            build_metadata = load_build_metadata(app_identity)
-            self.send_json(diagnostics_contract({"ok": True, "diagnostics": diagnostics_export(config, app_identity, build_metadata)}))
+            self.send_json(RUNTIME_CORE.diagnostics_export_payload())
             return
         if parsed.path == "/api/performance_guardrails":
-            self.send_json({"ok": True, "performance": performance_guardrails()})
+            self.send_json(RUNTIME_CORE.performance_guardrails_payload())
             return
         path = parsed.path
         if path == "/":
@@ -209,153 +158,45 @@ class TalosWebHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         payload = self.read_json()
         if self.path == "/api/settings":
-            config = load_config()
-            for key in ("theme", "arduino_workspace_path", "arduino_fqbn"):
-                if key in payload:
-                    config[key] = str(payload[key]).strip()
-            if isinstance(payload.get("diagnostics"), dict):
-                diagnostics = payload["diagnostics"]
-                config["diagnostics"] = {
-                    "enabled": bool(diagnostics.get("enabled")),
-                    "allow_remote_upload": False,
-                }
-            save_config(config)
-            log_event(f"{now()} saved settings")
-            self.send_json({"ok": True, "config": load_config()})
+            self.send_json(RUNTIME_CORE.update_settings(payload))
             return
         if self.path == "/api/codex_runtime_pin":
-            config = load_config()
-            result = update_runtime_pin(
-                config,
-                path_text=str(payload.get("path") or ""),
-                clear=bool(payload.get("clear")),
-            )
-            if not result.get("ok"):
-                self.send_json(result, HTTPStatus.BAD_REQUEST)
-                return
-            save_config(result["config"])
-            status = runtime_status(load_config(), force=True)
-            action = str(result.get("action") or "updated")
-            log_event(f"{now()} codex runtime pin {action}")
-            record_runtime_status(result["config"], status, f"pin_{action}")
-            record_diagnostic(result["config"], "codex_runtime_pin_changed", runtime_event_detail(status))
-            self.send_json({"ok": True, "action": action, "runtime": status})
+            result, ok = RUNTIME_CORE.update_runtime_pin(payload)
+            self.send_json(result, HTTPStatus.OK if ok else HTTPStatus.BAD_REQUEST)
             return
         if self.path == "/api/codex_runtime_health":
-            config = load_config()
-            status = runtime_status(config, force=True)
-            log_event(f"{now()} codex runtime health: {status.get('health', {}).get('status', 'unknown')}")
-            record_runtime_status(config, status, "health_checked")
-            self.send_json({"ok": True, "runtime": status})
+            self.send_json(RUNTIME_CORE.runtime_health_payload())
             return
         if self.path == "/api/diagnostics_event":
-            config = load_config()
-            result = record_diagnostic(
-                config,
-                str(payload.get("event") or ""),
-                payload.get("payload") if isinstance(payload.get("payload"), dict) else {},
-            )
+            result = RUNTIME_CORE.record_diagnostics_event(payload)
             self.send_json(result, HTTPStatus.OK if result.get("ok") or not result.get("recorded") else HTTPStatus.BAD_REQUEST)
             return
         if self.path == "/api/arduino_workspace":
-            config = load_config()
-            config["arduino_workspace_path"] = str(payload.get("path", "")).strip()
-            config["arduino_fqbn"] = str(payload.get("fqbn", config.get("arduino_fqbn", ""))).strip()
-            save_config(config)
-            summary = ARDUINO_TARGET.workspace_summary(config)
-            log_event(f"{now()} configured Arduino workspace: {summary.get('path') or 'none'}")
-            self.send_json({"ok": summary["valid"], "arduino": summary})
+            self.send_json(RUNTIME_CORE.update_arduino_workspace(payload))
             return
         if self.path == "/api/arduino_profile":
-            config = load_config()
-            workspace_path = str(payload.get("path", config.get("arduino_workspace_path", ""))).strip()
-            result = ARDUINO_TARGET.save_environment_profile(config, workspace_path, payload)
-            if not result.get("ok"):
-                self.send_json(result, HTTPStatus.BAD_REQUEST)
-                return
-            if str(config.get("arduino_workspace_path") or "").strip() == workspace_path:
-                profile_fqbn = str(result["profile"].get("fqbn") or "")
-                if profile_fqbn:
-                    config["arduino_fqbn"] = profile_fqbn
-            save_config(config)
-            log_event(f"{now()} saved Arduino environment profile: {result.get('path')}")
-            self.send_json(verify_result_contract(result))
+            result = RUNTIME_CORE.update_arduino_profile(payload)
+            self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
             return
         if self.path == "/api/arduino_verify":
-            config = load_config()
-            if "path" in payload:
-                config["arduino_workspace_path"] = str(payload.get("path", "")).strip()
-            if "fqbn" in payload:
-                config["arduino_fqbn"] = str(payload.get("fqbn", "")).strip()
-            save_config(config)
-            source = str(payload.get("source") or "manual")
-            override = payload.get("editor_override") if isinstance(payload.get("editor_override"), dict) else {}
-            override_path = str(override.get("path") or "").replace("\\", "/") if override else ""
-            overrides = {override_path: str(override.get("content") or "")} if override_path else None
-            result = ARDUINO_TARGET.verify(config, overrides=overrides)
-            summary = ARDUINO_TARGET.workspace_summary(config)
-            result["verify_context"] = {
-                "source": source,
-                "workspace": str(summary.get("path") or ""),
-                "active_file": override_path or str(payload.get("active_file") or ""),
-                "fqbn": str(summary.get("fqbn") or ""),
-                "editor_override": bool(override_path),
-            }
-            record_verify(result, source)
-            if source == "codex_patch":
-                record_patch_verification(str(ARDUINO_TARGET.workspace_summary(config).get("path") or ""), result)
-            status = "passed" if result.get("ok") else result.get("status", "failed")
-            record_diagnostic(config, "verify_passed" if result.get("ok") else "verify_failed", {
-                "workspace": summary.get("path", ""),
-                "main_sketch": summary.get("main_sketch", ""),
-                "fqbn_family": ":".join(str(summary.get("fqbn") or "").split(":")[:3]),
-                "status": status,
-                "source": source,
-                "timings": result.get("timings") or {},
-                "cache": result.get("cache") or {},
-                "issue_count": len(result.get("issues") or []),
-                "profile_ready": bool((result.get("profile_readiness") or {}).get("ready")),
-            })
-            log_event(f"{now()} Arduino verify {status}")
-            self.send_json(result)
+            self.send_json(verify_result_contract(RUNTIME_CORE.verify_arduino(payload)))
             return
         if self.path == "/api/arduino_verify_cancel":
-            result = ARDUINO_TARGET.cancel_verify()
-            if result.get("ok"):
-                log_event(f"{now()} Arduino verify cancellation requested")
+            result = RUNTIME_CORE.cancel_verify()
             self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.CONFLICT)
             return
         if self.path == "/api/arduino_verify_cache_clear":
-            result = ARDUINO_TARGET.clear_verify_cache()
-            log_event(f"{now()} cleared Arduino compile cache ({result.get('cleared')} entries)")
-            self.send_json(result)
+            self.send_json(RUNTIME_CORE.clear_verify_cache())
             return
         if self.path == "/api/release_evidence":
-            config = load_config()
-            summary = ARDUINO_TARGET.workspace_summary(config)
-            workspace = str(summary.get("path") or "")
-            latest_verify = latest_verify_for_workspace(workspace)
-            verify_result = payload.get("verify_result") if isinstance(payload.get("verify_result"), dict) else latest_verify
-            if not isinstance(verify_result, dict):
-                self.send_json(evidence_contract({"ok": False, "error": "Run Verify Sandbox before recording release evidence."}), HTTPStatus.BAD_REQUEST)
-                return
-            readiness = ARDUINO_TARGET.profile_readiness(config)
-            arduino_map = ARDUINO_TARGET.workspace_map(config, latest_verify)
-            evidence = record_release_evidence(
-                arduino_map,
-                readiness,
-                verify_result,
-                payload.get("blocked_cases") if isinstance(payload.get("blocked_cases"), list) else [],
-                str(payload.get("release") or "0.4.0-pre-alpha"),
-            )
-            log_event(f"{now()} recorded Arduino release evidence: {evidence.get('status')}")
-            self.send_json(evidence_contract({"ok": True, "evidence": evidence}))
+            result = RUNTIME_CORE.record_release_evidence(payload)
+            self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
             return
         if self.path == "/api/arduino_file":
             config = load_config()
             checkpoint_result = create_before_save_checkpoint(config, str(payload.get("path", "")))
             if not checkpoint_result.get("ok"):
-                self.send_json(checkpoint_result, HTTPStatus.BAD_REQUEST)
+                self.send_json(source_file_contract(checkpoint_result), HTTPStatus.BAD_REQUEST)
                 return
             result = ARDUINO_TARGET.write_file(
                 config,
@@ -391,82 +232,11 @@ class TalosWebHandler(BaseHTTPRequestHandler):
             self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
             return
         if self.path == "/api/codex_context_package":
-            workspace = ARDUINO_TARGET.workspace_summary(load_config())
-            latest_verify = latest_verify_for_workspace(str(workspace.get("path") or ""))
-            package = ARDUINO_TARGET.context_package(
-                load_config(),
-                payload.get("active_file") if isinstance(payload.get("active_file"), dict) else {},
-                str(payload.get("verify_context", "")),
-                bool(payload.get("allow_edits", True)),
-                str(payload.get("message", "")),
-                latest_verify,
-            )
-            self.send_json(codex_context_contract({"ok": True, "package": package}))
+            self.send_json(RUNTIME_CORE.codex_context_package(payload))
             return
         if self.path == "/api/codex_message":
-            config = load_config()
-            _, runtime_summary, gate = selected_runtime_payload(config)
-            workspace = ARDUINO_TARGET.workspace_summary(config)
-            if gate["blocked"]:
-                result = {
-                    "ok": False,
-                    "error": gate["detail"],
-                    "runtime_blocked": True,
-                    "runtime_gate": gate,
-                    "codex_runtime": runtime_summary,
-                    "status": codex_status_payload(start=False),
-                }
-                record_codex_turn(
-                    str(workspace.get("path") or ""),
-                    str(payload.get("message", "")),
-                    "runtime_blocked",
-                    {
-                        "runtime_code": gate["code"],
-                        "runtime_detail": gate["detail"],
-                        "context_replay_guard": "manual_send_required",
-                    },
-                )
-                self.send_json(result, HTTPStatus.BAD_REQUEST)
-                return
-            workspace["map"] = ARDUINO_TARGET.workspace_map(
-                config,
-                latest_verify_for_workspace(str(workspace.get("path") or "")),
-            )
-            active_file = payload.get("active_file")
-            if not isinstance(active_file, dict):
-                active_file = {}
-            context_package = ARDUINO_TARGET.context_package(
-                config,
-                active_file,
-                str(payload.get("verify_context", "")),
-                bool(payload.get("allow_edits", True)),
-                str(payload.get("message", "")),
-                latest_verify_for_workspace(str(workspace.get("path") or "")),
-            )
-            active_file = context_package.get("active_file") if isinstance(context_package.get("active_file"), dict) else {}
-            result = CODEX_BRIDGE.send_message(
-                str(payload.get("message", "")),
-                workspace,
-                active_file,
-                str(payload.get("verify_context", "")),
-                bool(payload.get("allow_edits", True)),
-            )
-            record_codex_turn(
-                str(workspace.get("path") or ""),
-                str(payload.get("message", "")),
-                "started" if result.get("ok") else "blocked",
-                {
-                    "allow_edits": bool(payload.get("allow_edits", True)),
-                    "active_file": str(active_file.get("path") or ""),
-                    "context_active_file_included": bool(active_file.get("included")),
-                    "context_replay_guard": "manual_send_required",
-                    "profile_fqbn": str(workspace.get("fqbn") or ""),
-                    "error": str(result.get("error") or ""),
-                },
-            )
-            if result.get("ok"):
-                log_event(f"{now()} started Codex turn")
-            self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
+            result, ok = RUNTIME_CORE.codex_message(payload)
+            self.send_json(result, HTTPStatus.OK if ok else HTTPStatus.BAD_REQUEST)
             return
         if self.path == "/api/smoke/codex_patch":
             if os.environ.get("TALOS_SMOKE_HARNESS") != "1":
@@ -484,54 +254,15 @@ class TalosWebHandler(BaseHTTPRequestHandler):
             self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
             return
         if self.path == "/api/codex_reconnect":
-            config = load_config()
-            _, runtime_summary, gate = selected_runtime_payload(config, force=True)
-            workspace = ARDUINO_TARGET.workspace_summary(config)
-            if gate["blocked"]:
-                result = {
-                    "ok": False,
-                    "error": gate["detail"],
-                    "status": "runtime_blocked",
-                    "runtime_blocked": True,
-                    "runtime_gate": gate,
-                    "codex_runtime": runtime_summary,
-                }
-                record_codex_turn(
-                    str(workspace.get("path") or ""),
-                    "",
-                    "runtime_reconnect_blocked",
-                    {
-                        "runtime_code": gate["code"],
-                        "runtime_detail": gate["detail"],
-                        "replay_guard": "manual_send_required",
-                    },
-                )
-                self.send_json(result, HTTPStatus.BAD_REQUEST)
-                return
-            result = CODEX_BRIDGE.reconnect()
-            if result.get("ok"):
-                record_codex_turn(
-                    str(workspace.get("path") or ""),
-                    "",
-                    "reconnect",
-                    {
-                        "status": str(result.get("status") or ""),
-                        "replay_guard": "manual_send_required",
-                    },
-                )
-                log_event(f"{now()} Codex reconnect requested")
-            self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
+            result, ok = RUNTIME_CORE.codex_reconnect()
+            self.send_json(result, HTTPStatus.OK if ok else HTTPStatus.BAD_REQUEST)
             return
         if self.path == "/api/codex_restore_reviews":
-            result = CODEX_BRIDGE.restore_reviews()
-            if result.get("ok"):
-                log_event(f"{now()} restored unfinished Codex reviews")
-            self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
+            result = RUNTIME_CORE.restore_codex_reviews()
+            self.send_json(source_file_contract(result), HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
             return
         if self.path == "/api/codex_discard_reviews":
-            result = CODEX_BRIDGE.discard_reviews()
-            if result.get("ok"):
-                log_event(f"{now()} discarded unfinished Codex reviews")
+            result = RUNTIME_CORE.discard_codex_reviews()
             self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
             return
         if self.path == "/api/codex_apply_patch":
@@ -603,7 +334,7 @@ class TalosWebHandler(BaseHTTPRequestHandler):
                 detail={"status": str(result.get("status") or "failed"), "ok": bool(result.get("ok"))},
             )
             log_event(f"{now()} staged Codex patch verify {result.get('status', 'failed')}")
-            self.send_json(result)
+            self.send_json(verify_result_contract(result))
             return
         if self.path == "/api/codex_review_patch":
             workspace = ARDUINO_TARGET.workspace_summary(load_config())
@@ -674,28 +405,12 @@ class TalosWebHandler(BaseHTTPRequestHandler):
             self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
             return
         if self.path == "/api/codex_cancel":
-            workspace = ARDUINO_TARGET.workspace_summary(load_config())
-            result = CODEX_BRIDGE.cancel_turn()
-            if result.get("ok"):
-                record_codex_turn(
-                    str(workspace.get("path") or ""),
-                    "",
-                    "cancelled",
-                    {"replay_guard": "manual_send_required"},
-                )
-            self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
+            result, ok = RUNTIME_CORE.cancel_codex_turn()
+            self.send_json(result, HTTPStatus.OK if ok else HTTPStatus.BAD_REQUEST)
             return
         if self.path == "/api/codex_conversation":
-            result = CODEX_BRIDGE.select_conversation(str(payload.get("id", "")))
-            if result.get("ok"):
-                workspace = ARDUINO_TARGET.workspace_summary(load_config())
-                record_codex_turn(
-                    str(workspace.get("path") or ""),
-                    "",
-                    "conversation_loaded",
-                    {"conversation_id": str(payload.get("id", ""))},
-                )
-            self.send_json(result, HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST)
+            result, ok = RUNTIME_CORE.codex_conversation(str(payload.get("id", "")))
+            self.send_json(result, HTTPStatus.OK if ok else HTTPStatus.BAD_REQUEST)
             return
         self.send_json({"error": "Not found."}, HTTPStatus.NOT_FOUND)
 
@@ -760,7 +475,7 @@ def main() -> None:
         pass
     finally:
         stop_arduino_event_watcher()
-        CODEX_BRIDGE.shutdown()
+        RUNTIME_CORE.shutdown()
         server.server_close()
 
 if __name__ == "__main__":

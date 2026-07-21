@@ -4,17 +4,22 @@ from pathlib import Path
 from typing import Any
 
 from talos import arduino
-from talos.targets import TargetContext, TargetFile, TargetProfile, TargetWorkspace
+from talos.checkpoints import rollback_last_checkpoint
+from talos.targets import TargetAction, TargetContext, TargetFile, TargetProfile, TargetWorkspace
 
 class ArduinoTargetAdapter:
     target_id = "arduino"
     target_name = "Arduino IDE"
+    implemented = True
     capabilities = (
         "detect_projects",
+        "workspace_identity",
         "workspace_map",
+        "artifact_identity",
         "source_inventory",
         "read_file",
         "write_file",
+        "rollback",
         "delete_file",
         "verify",
         "cancel_verify",
@@ -22,6 +27,14 @@ class ArduinoTargetAdapter:
         "context_package",
         "environment_profile",
         "release_evidence",
+        "diagnostics",
+    )
+    actions = (
+        TargetAction("context", "Build context package", "context"),
+        TargetAction("verify", "Verify sketch", "verify"),
+        TargetAction("write", "Write source file", "write"),
+        TargetAction("rollback", "Rollback saved file", "rollback"),
+        TargetAction("diagnostics", "Collect diagnostics", "diagnostics"),
     )
 
     def discover_projects(self, config: dict[str, Any], **kwargs: Any) -> list[dict[str, Any]]:
@@ -32,6 +45,20 @@ class ArduinoTargetAdapter:
 
     def workspace_context(self, config: dict[str, Any]) -> str:
         return arduino.workspace_context(config)
+
+    def workspace_identity(self, config: dict[str, Any]) -> TargetWorkspace | None:
+        summary = self.workspace_summary(config)
+        if not summary.get("path"):
+            return None
+        return self._workspace_from_summary(summary)
+
+    def artifact_identities(self, config: dict[str, Any]) -> tuple[TargetFile, ...]:
+        workspace = self.workspace_identity(config)
+        return workspace.files if workspace else ()
+
+    def profile_identity(self, config: dict[str, Any]) -> TargetProfile:
+        summary = self.workspace_summary(config)
+        return self._profile_from_config(config, str(summary.get("path") or ""))
 
     def workspace_map(
         self,
@@ -52,11 +79,30 @@ class ArduinoTargetAdapter:
     def write_file(self, config: dict[str, Any], path: str, content: str) -> dict[str, Any]:
         return arduino.write_workspace_file(config, path, content)
 
+    def rollback_file(self, config: dict[str, Any], path: str) -> dict[str, Any]:
+        return rollback_last_checkpoint(config, path)
+
     def delete_file(self, config: dict[str, Any], path: str) -> dict[str, Any]:
         return arduino.delete_workspace_file(config, path)
 
     def verify(self, config: dict[str, Any], overrides: dict[str, str] | None = None) -> dict[str, Any]:
         return arduino.run_arduino_compile(config, overrides=overrides)
+
+    def diagnostics_hook(
+        self,
+        config: dict[str, Any],
+        latest_verify: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        summary = self.workspace_summary(config)
+        readiness = self.profile_readiness(config)
+        return {
+            "target": self.target_id,
+            "workspace_ready": bool(summary.get("valid")),
+            "workspace": str(summary.get("path") or ""),
+            "main_file": str(summary.get("main_sketch") or ""),
+            "profile_ready": bool(readiness.get("ready")),
+            "latest_verify_status": str((latest_verify or {}).get("status") or ""),
+        }
 
     def cancel_verify(self) -> dict[str, Any]:
         return arduino.cancel_arduino_compile()
@@ -114,9 +160,11 @@ class ArduinoTargetAdapter:
             target_id=self.target_id,
             target_name=self.target_name,
             capabilities=self.capabilities,
+            actions=self.actions,
             workspaces=tuple(self._workspace_from_project(item) for item in (projects if projects is not None else self.discover_projects(config))),
             selected_workspace=selected,
             profile=profile_data,
+            diagnostics=self.diagnostics_hook(config, latest_verify),
             raw={
                 "workspace_summary": summary_data,
                 "workspace_map": workspace_map_data,
