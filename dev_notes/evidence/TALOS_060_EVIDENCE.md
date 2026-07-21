@@ -21,14 +21,70 @@ Stage completion rule:
 
 Required evidence for completion:
 
-- Target-adapter contract implemented and covered by tests.
+- Desktop shell boundary and migration decision recorded with parity checks.
+- Core runtime boundary implemented and covered by state/orchestration tests.
 - Local API/IPC contract implemented, versioned, and covered by compatibility tests.
+- Target-adapter contract implemented and covered by tests.
+- Runtime provider contract implemented with credential-safe metadata checks.
 - Python responsibilities classified into bridge, fallback, or legacy-removal paths, with at least one boundary cleanup landed.
 - Native-helper boundary exposed through code with benchmark/timing gates recorded.
-- Desktop shell boundary and migration decision recorded with parity checks.
 - Existing Arduino workflow passes smoke/regression checks after boundary work.
 
-## Stage 1 - Target Adapter Foundation
+## Stage 0 - Baseline And Version Open
+
+Status: complete.
+
+Baseline:
+
+- Source branch: `develop/0.6.0`
+- Starting commit checked during Stage 0: `d495677`
+- Worktree state at Stage 0 validation: clean before the Stage 0 pipeline/evidence update.
+- App identity: `Talos 0.6.0 Beta`
+- Release notes: `docs/RELEASE_NOTES.md` contains `0.6.0 Beta (In Development)`.
+- Source/debug launcher: `desktop_app.py`
+
+Validation:
+
+- `git branch --show-current`
+- `git status --short`
+- `git rev-parse --short HEAD`
+- `python -B -m py_compile desktop_app.py`
+- `python -B -c "from talos.core import load_app_identity; i=load_app_identity(); print(i['version'], i['channel'], i['display_name'])"`
+
+Controls:
+
+- No commit, tag, merge, or push was performed during this stage.
+- Non-Arduino targets remain blocked until the 0.6.0 architecture boundaries are real.
+- 0.6.0 is a rebuild-foundation release, not a target-expansion release.
+
+Conclusion: 0.6.0 is open from a known baseline with the correct version identity, a working source/debug launcher, and an explicit no-silent-push/no-new-target rule.
+
+## Earlier Architecture Draft Notes
+
+The target-adapter and local API notes below came from the earlier 0.6.0 draft order. They remain useful as historical implementation notes, but the active `TALOS_PIPELINE_060.md` now starts with the shell boundary so the rebuild can remove pywebview coupling before widening core/runtime/target contracts.
+
+## Stage 1 - Shell Boundary Scaffold
+
+Status: complete.
+
+Implementation:
+
+- Added `talos/shell/profile.py` for launch profile ownership: app identity, icon lookup, static UI root, webview storage path, window size limits, and port selection.
+- Added `talos/shell/pywebview_provider.py` as the active source/debug shell provider, containing pywebview startup, window API behavior, close handling, event watcher lifecycle, and server lifecycle.
+- Added `talos/shell/__init__.py` as a clean shell package export without importing the provider, avoiding circular imports between server and shell startup.
+- Reduced `desktop_app.py` to a thin debug launcher that delegates shell behavior to `run_pywebview_shell()`.
+- Moved static frontend root and port selection out of `talos/server.py` into the shell profile boundary.
+- Defined future provider slots for `tauri-rust` and `electron` as explicit future options, without pretending either production shell exists in 0.6.0.
+
+Validation:
+
+- `python -B -m py_compile desktop_app.py talos\server.py talos\shell\__init__.py talos\shell\profile.py talos\shell\pywebview_provider.py`
+- `python -B -m unittest tests.test_desktop_app`
+- Result: 125 tests passed.
+
+Conclusion: Stage 1 is implemented in code. Talos still launches from `desktop_app.py`, while app identity, icon lookup, port selection, frontend hosting, pywebview startup, and window behavior now sit behind a shell provider boundary.
+
+## Previous Draft - Target Adapter Foundation
 
 Status: complete.
 
@@ -48,7 +104,7 @@ Validation:
 
 Conclusion: Stage 1 is implemented in code, not only documented. Future targets can now begin from the `TargetAdapter` boundary instead of copying Arduino-specific server logic.
 
-## Stage 2 - Local API And IPC Contract
+## Previous Draft - Local API And IPC Contract
 
 Status: complete.
 
