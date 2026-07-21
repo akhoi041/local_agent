@@ -1054,11 +1054,13 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertNotIn("applyRailPinned", script)
         self.assertNotIn("RAIL_PIN_KEY", script)
 
-        desktop = (Path(__file__).parents[1] / "desktop_app.py").read_text(encoding="utf-8")
-        self.assertIn("frameless=True", desktop)
-        self.assertIn("def get_window_bounds", desktop)
-        self.assertIn("def set_window_bounds", desktop)
-        self.assertIn("def restore", desktop)
+        shell_provider = (Path(__file__).parents[1] / "talos" / "shell" / "pywebview_provider.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("frameless=True", shell_provider)
+        self.assertIn("def get_window_bounds", shell_provider)
+        self.assertIn("def set_window_bounds", shell_provider)
+        self.assertIn("def restore", shell_provider)
         self.assertIn("bindWindowResizeHandles", script)
         self.assertIn("resizeBoundsFromEdge", script)
         self.assertNotIn("bindTitlebarDragRestore", script)
@@ -1136,9 +1138,11 @@ class TalosArduinoTests(unittest.TestCase):
     def test_desktop_entrypoint_remains_source_debuggable(self) -> None:
         root = Path(__file__).parents[1]
         desktop_shell = (root / "desktop_app.py").read_text(encoding="utf-8")
+        shell_provider = (root / "talos" / "shell" / "pywebview_provider.py").read_text(encoding="utf-8")
         launcher = (root / "scripts" / "launch_desktop.ps1").read_text(encoding="utf-8")
 
-        self.assertIn('import webview  # type: ignore[import-not-found]', desktop_shell)
+        self.assertIn("run_pywebview_shell", desktop_shell)
+        self.assertIn('import webview  # type: ignore[import-not-found]', shell_provider)
         self.assertIn('Join-Path $root "desktop_app.py"', launcher)
         self.assertIn(".venv\\Scripts\\python.exe", launcher)
         self.assertIn("import webview", launcher)
@@ -1148,14 +1152,17 @@ class TalosArduinoTests(unittest.TestCase):
     def test_stage_10_icon_is_wired_into_desktop_build_and_shortcut(self) -> None:
         root = Path(__file__).parents[1]
         desktop_shell = (root / "desktop_app.py").read_text(encoding="utf-8")
+        shell_profile = (root / "talos" / "shell" / "profile.py").read_text(encoding="utf-8")
+        shell_provider = (root / "talos" / "shell" / "pywebview_provider.py").read_text(encoding="utf-8")
         build_script = (root / "scripts" / "build_app.ps1").read_text(encoding="utf-8")
         install_script = (root / "scripts" / "install_app.ps1").read_text(encoding="utf-8")
 
-        self.assertIn("_set_windows_app_id(app_identity)", desktop_shell)
-        self.assertIn('webview_data_dir = APP_DATA_ROOT / "webview"', desktop_shell)
-        self.assertIn("webview_data_dir.mkdir(parents=True, exist_ok=True)", desktop_shell)
-        self.assertIn("private_mode=False", desktop_shell)
-        self.assertIn("storage_path=str(webview_data_dir)", desktop_shell)
+        self.assertIn("show_desktop_shell_error", desktop_shell)
+        self.assertIn("set_windows_app_id(profile.identity)", shell_provider)
+        self.assertIn('storage_path = APP_DATA_ROOT / "webview"', shell_profile)
+        self.assertIn("profile.storage_path.mkdir(parents=True, exist_ok=True)", shell_provider)
+        self.assertIn("private_mode=False", shell_provider)
+        self.assertIn("storage_path=str(profile.storage_path)", shell_provider)
         self.assertIn("--icon", build_script)
         self.assertIn("assets\\icons;assets\\icons", build_script)
         self.assertIn("config\\app_identity.json;config", build_script)
@@ -3223,6 +3230,77 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertFalse(report["shell_runtime_migration"]["replacement_shell_allowed"])
         self.assertIn("desktop_app.py", module.MODULE_LIMITS)
         self.assertIn("state_refresh", report["timing"]["timings"])
+
+    def test_stage_060_shell_profile_owns_launch_boundary(self) -> None:
+        from talos.shell.profile import SHELL_PROVIDER_SLOTS, build_launch_profile, static_ui_root
+
+        with patch("talos.shell.profile.find_port", return_value=8899):
+            profile = build_launch_profile()
+
+        slots = {slot.provider_id: slot for slot in SHELL_PROVIDER_SLOTS}
+        self.assertEqual(profile.url, "http://127.0.0.1:8899")
+        self.assertEqual(profile.static_root, static_ui_root())
+        self.assertEqual(profile.storage_path.name, "webview")
+        self.assertEqual(slots["pywebview-debug"].status, "active")
+        self.assertEqual(slots["tauri-rust"].status, "future")
+        self.assertEqual(slots["electron"].status, "future")
+
+    def test_stage_060_window_api_preserves_window_behavior(self) -> None:
+        from talos.shell.profile import LaunchProfile
+        from talos.shell.pywebview_provider import WindowApi
+
+        class FakeWindow:
+            def __init__(self) -> None:
+                self.x = 1
+                self.y = 2
+                self.width = 900
+                self.height = 700
+                self.state = ""
+                self.destroyed = False
+
+            def minimize(self) -> None:
+                self.state = "minimized"
+
+            def maximize(self) -> None:
+                self.state = "maximized"
+
+            def restore(self) -> None:
+                self.state = "normal"
+
+            def move(self, x: int, y: int) -> None:
+                self.x = x
+                self.y = y
+
+            def resize(self, width: int, height: int) -> None:
+                self.width = width
+                self.height = height
+
+            def destroy(self) -> None:
+                self.destroyed = True
+
+        profile = LaunchProfile(
+            host="127.0.0.1",
+            port=8787,
+            url="http://127.0.0.1:8787",
+            app_name="Talos",
+            identity={},
+            icon_path=None,
+            storage_path=Path("webview"),
+            static_root=Path("ui/web_frontend"),
+            min_width=520,
+            min_height=420,
+        )
+        window = FakeWindow()
+        api = WindowApi({"window": window, "maximized": False}, profile)
+
+        self.assertTrue(api.toggle_maximize())
+        bounds = api.set_window_bounds(10, 20, 100, 200)
+        self.assertEqual(bounds, {"x": 10, "y": 20, "width": 520, "height": 420, "maximized": False})
+        self.assertEqual((window.x, window.y, window.width, window.height, window.state), (10, 20, 520, 420, "normal"))
+        api.minimize()
+        self.assertEqual(window.state, "minimized")
+        api.close()
+        self.assertTrue(window.destroyed)
 
 if __name__ == "__main__":
     unittest.main()

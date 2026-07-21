@@ -4,7 +4,6 @@ import argparse
 import json
 import mimetypes
 import os
-import sys
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -68,11 +67,11 @@ from talos.runtime_service import (
     runtime_outcomes,
     selected_runtime_payload,
 )
+from talos.shell.profile import find_port, static_ui_root
 from talos.state_service import state_payload
 from talos.targets import TargetRegistry
 
-ASSET_ROOT = Path(getattr(sys, "_MEIPASS", ROOT))
-FRONTEND = ASSET_ROOT / "web_frontend" if getattr(sys, "frozen", False) else ROOT / "ui" / "web_frontend"
+FRONTEND = static_ui_root()
 ARDUINO_TARGET = ArduinoTargetAdapter()
 TARGET_REGISTRY = TargetRegistry()
 TARGET_REGISTRY.register(ARDUINO_TARGET)
@@ -744,16 +743,6 @@ class TalosWebHandler(BaseHTTPRequestHandler):
 
     def log_message(self, _format: str, *_args: Any) -> None:
         return
-
-def find_port(host: str, start_port: int) -> int:
-    for port in range(start_port, start_port + 20):
-        try:
-            server = ThreadingHTTPServer((host, port), TalosWebHandler)
-        except OSError:
-            continue
-        server.server_close()
-        return port
-    raise RuntimeError(f"No available port found from {start_port}.")
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run the Talos web UI.")

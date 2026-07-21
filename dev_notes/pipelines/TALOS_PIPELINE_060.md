@@ -18,11 +18,11 @@ Stage completion rule: documentation alone cannot complete a stage unless the st
 
 Purpose: open the rebuild safely from the 0.5.5 architecture-pivot baseline.
 
-- [ ] Confirm the 0.5.5 compatibility baseline, current branch, and dirty worktree state.
-- [ ] Set app identity, release notes, and evidence references to 0.6.0 Beta only when work on this version actually starts.
-- [ ] Keep `desktop_app.py` as the source/debug launcher.
-- [ ] Confirm no commit/tag/push happens unless explicitly requested by the user.
-- [ ] Record starting risk: this is a rebuild foundation, so later target work is blocked until this architecture is real.
+- [x] Confirm the 0.5.5 compatibility baseline, current branch, and dirty worktree state.
+- [x] Set app identity, release notes, and evidence references to 0.6.0 Beta only when work on this version actually starts.
+- [x] Keep `desktop_app.py` as the source/debug launcher.
+- [x] Confirm no commit/tag/push happens unless explicitly requested by the user.
+- [x] Record starting risk: this is a rebuild foundation, so later target work is blocked until this architecture is real.
 
 Exit condition: 0.6.0 starts from a known baseline and has a clear no-silent-push/no-new-target rule.
 
@@ -30,11 +30,11 @@ Exit condition: 0.6.0 starts from a known baseline and has a clear no-silent-pus
 
 Purpose: stop binding the app directly to pywebview details.
 
-- [ ] Add a shell boundary module or package that owns launch profile, window creation, app identity, icon lookup, port selection, close handling, and static UI hosting.
-- [ ] Keep pywebview as the debug/source shell provider.
-- [ ] Define future provider slots for Tauri/Rust and Electron without implementing a fake production shell.
-- [ ] Move shell-specific constants out of mixed server/UI logic.
-- [ ] Add launch-parity tests or a validation script for source/debug startup, shutdown, resize/minimize/maximize behavior where practical.
+- [x] Add a shell boundary module or package that owns launch profile, window creation, app identity, icon lookup, port selection, close handling, and static UI hosting.
+- [x] Keep pywebview as the debug/source shell provider.
+- [x] Define future provider slots for Tauri/Rust and Electron without implementing a fake production shell.
+- [x] Move shell-specific constants out of mixed server/UI logic.
+- [x] Add launch-parity tests or a validation script for source/debug startup, shutdown, resize/minimize/maximize behavior where practical.
 
 Exit condition: the current app still runs, but shell concerns are isolated behind a provider boundary.
 
