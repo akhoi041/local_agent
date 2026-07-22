@@ -64,12 +64,10 @@ SHELL_RUNTIME_PARITY_GATES = [
     "diagnostics_and_support_bundle",
 ]
 
-
 def _line_count(path: Path) -> int:
     if not path.exists():
         return -1
     return len(path.read_text(encoding="utf-8").splitlines())
-
 
 def check_module_size() -> dict[str, Any]:
     modules: list[dict[str, Any]] = []
@@ -95,7 +93,6 @@ def check_module_size() -> dict[str, Any]:
         "policy": "Large modules must justify ownership or be split before release.",
     }
 
-
 def _measure_ms(fn: Callable[[], Any], iterations: int) -> dict[str, Any]:
     timings: list[float] = []
     result_preview = ""
@@ -113,18 +110,15 @@ def _measure_ms(fn: Callable[[], Any], iterations: int) -> dict[str, Any]:
         "result": result_preview,
     }
 
-
 def _startup_imports() -> str:
     for name in ("talos.server", "talos.arduino", "talos.codex_bridge", "talos.state_service"):
         importlib.import_module(name)
     return "imports_ok"
 
-
 def _arduino_detection() -> dict[str, int]:
     windows = native_bridge.list_window_rows()
     processes = native_bridge.list_arduino_process_rows_native()
     return {"windows": len(windows), "processes": len(processes)}
-
 
 def _verify_cache_lookup() -> dict[str, Any] | None:
     clear_arduino_compile_cache()
@@ -133,7 +127,6 @@ def _verify_cache_lookup() -> dict[str, Any] | None:
     cached = cached_compile_result(key, lookup_seconds=0.0)
     clear_arduino_compile_cache()
     return cached
-
 
 def _support_bundle_generation() -> dict[str, Any]:
     config = load_config()
@@ -153,13 +146,11 @@ def _support_bundle_generation() -> dict[str, Any]:
         redact=True,
     )
 
-
 def _diagnostics_export() -> dict[str, Any]:
     config = load_config()
     app = load_app_identity()
     build = load_build_metadata(app)
     return diagnostics_export(config, app, build)
-
 
 def check_timing(iterations: int = 3) -> dict[str, Any]:
     probes: dict[str, Callable[[], Any]] = {
@@ -187,7 +178,6 @@ def check_timing(iterations: int = 3) -> dict[str, Any]:
         "policy": "Timings are compared with 0.5.5 baseline guardrails, not hard-coded release promises.",
     }
 
-
 def check_shell_runtime_guardrails() -> dict[str, Any]:
     return {
         "ok": True,
@@ -198,7 +188,6 @@ def check_shell_runtime_guardrails() -> dict[str, Any]:
             "packaged-app, and Arduino reference-target evidence."
         ),
     }
-
 
 def architecture_health_report(iterations: int = 3) -> dict[str, Any]:
     sections = {
@@ -214,7 +203,6 @@ def architecture_health_report(iterations: int = 3) -> dict[str, Any]:
         "failures": failures,
         **sections,
     }
-
 
 def _print_text(report: dict[str, Any]) -> None:
     print("Talos architecture health")
@@ -235,7 +223,6 @@ def _print_text(report: dict[str, Any]) -> None:
     print(f"- replacement_shell_allowed: {report['shell_runtime_migration']['replacement_shell_allowed']}")
     print(f"- parity gates: {len(report['shell_runtime_migration']['parity_gates'])}")
 
-
 def main() -> int:
     parser = argparse.ArgumentParser(description="Report Talos architecture health guardrails.")
     parser.add_argument("--json", action="store_true", help="Print JSON instead of text.")
@@ -248,7 +235,6 @@ def main() -> int:
     else:
         _print_text(report)
     return 0 if report["ok"] else 1
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

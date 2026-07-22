@@ -41,12 +41,18 @@ Stage 0 implementation note: added `talos/stage_baseline.py` to capture a repeat
 
 Purpose: reduce Python cost and fragility in external-app detection.
 
-- [ ] Route Arduino process/window detection through the native helper boundary when available.
-- [ ] Keep Python fallback detection for unsupported environments.
-- [ ] Add timing and fallback labels to state/diagnostics.
-- [ ] Test detection with native available and native missing.
+- [x] Route Arduino process/window detection through the native helper boundary when available.
+- [x] Keep Python fallback detection for unsupported environments.
+- [x] Add timing and fallback labels to state/diagnostics.
+- [x] Test detection with native available and native missing.
 
 Exit condition: detection is native-backed when possible and remains safe when native support is absent.
+
+Stage 1 implementation:
+
+- Added `talos.detection` as the state-facing detection contract for Arduino process/window rows.
+- `/api/state` now reports detection backend labels, fallback status, row counts, and timing without performing a second scan.
+- Native and fallback behavior are covered by targeted tests.
 
 ## Stage 2 - Workspace Scan And File Metadata Extraction
 

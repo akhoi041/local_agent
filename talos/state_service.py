@@ -7,6 +7,7 @@ from talos.arduino_adapter import ArduinoTargetAdapter
 from talos.codex_runtime import runtime_state_summary, runtime_status
 from talos.contracts import state_contract
 from talos.core import APP_DATA_ROOT, ROOT, load_app_identity, load_build_metadata, load_config
+from talos.detection import detection_state_from_report
 from talos.diagnostics import diagnostics_settings
 from talos.event_bus import EVENTS, arduino_event_status
 from talos.native_boundary import (
@@ -68,6 +69,7 @@ def state_payload(runtime: Any | None = None) -> dict[str, Any]:
         if runtime is not None
         else runtime_status(config)
     )
+    native_report = native_boundary_report()
     return state_contract({
         "name": app_identity["display_name"],
         "role": "Codex local control layer",
@@ -76,7 +78,12 @@ def state_payload(runtime: Any | None = None) -> dict[str, Any]:
         "app": app_identity,
         "build": build_metadata,
         "native_available": native_available(),
-        "native_boundary": native_boundary_report(),
+        "native_boundary": native_report,
+        "detection": detection_state_from_report(
+            native_report,
+            process_rows=tool_processes,
+            window_rows=window_rows,
+        ),
         "config": {
             "theme": config.get("theme", "light"),
             "arduino_workspace_path": config.get("arduino_workspace_path", ""),
