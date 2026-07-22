@@ -99,6 +99,7 @@ from talos.run_history import (
 from talos.diagnostics import diagnostics_export, diagnostics_settings, record_diagnostic, sanitize_payload
 from talos.performance import performance_guardrails
 from talos.python_ownership import HOT_PATH_MIGRATION_TARGETS, boundary_check, ownership_by_module, ownership_report
+from talos.stage_baseline import STAGE_065_BASELINE_OPERATIONS, run_stage_065_baseline
 from talos.runtime_service import codex_status_payload, runtime_event_detail, runtime_gate, runtime_outcomes
 from talos.state_service import state_payload
 from talos.targets import TargetRegistry
@@ -2293,6 +2294,25 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertEqual(result, "ok")
         self.assertIsNotNone(report["operations"]["diff.hunks"]["last_ms"])
         self.assertGreaterEqual(report["operations"]["diff.hunks"]["last_ms"], 0)
+
+    def test_stage_065_baseline_records_measurements_before_python_reduction(self) -> None:
+        baseline = run_stage_065_baseline(Path(__file__).parents[1])
+
+        self.assertEqual(baseline["release"], "0.6.5")
+        self.assertEqual(baseline["targets"], ["arduino"])
+        self.assertTrue(baseline["no_new_targets"])
+        self.assertEqual(baseline["desktop_launcher"], "desktop_app.py")
+        self.assertTrue(baseline["boundary_complete"], baseline["boundary"])
+        for operation in STAGE_065_BASELINE_OPERATIONS:
+            self.assertIn(operation, baseline["timings_ms"])
+            self.assertGreaterEqual(baseline["timings_ms"][operation], 0)
+        self.assertEqual(baseline["sample"]["main_sketch"], "talos_test.ino")
+        self.assertGreaterEqual(baseline["sample"]["file_count"], 4)
+        self.assertGreater(baseline["sample"]["context_package_bytes"], 0)
+        self.assertIn("hot_paths", baseline["python_ownership"])
+        self.assertTrue(
+            any(entry["module"] == "talos.arduino" for entry in baseline["python_ownership"]["hot_paths"])
+        )
 
     def test_state_payload_includes_native_boundary_report(self) -> None:
         with patch("talos.state_service.list_arduino_tool_processes", return_value=[]), \

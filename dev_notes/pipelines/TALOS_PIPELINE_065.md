@@ -27,13 +27,15 @@ Stage completion rule: every migration stage must include a before/after measure
 
 Purpose: measure before changing implementation ownership.
 
-- [ ] Confirm 0.6.0 boundary implementation is complete.
-- [ ] Record current timings for Arduino detection, workspace scan, file list generation, hash/cache key generation, verify preparation, diff/hunk parsing, and Codex context packaging.
-- [ ] Record current Python module ownership from the 0.6.0 map.
-- [ ] Confirm no new target work starts in this release.
-- [ ] Keep `desktop_app.py` as the debug/source launcher.
+- [x] Confirm 0.6.0 boundary implementation is complete.
+- [x] Record current timings for Arduino detection, workspace scan, file list generation, hash/cache key generation, verify preparation, diff/hunk parsing, and Codex context packaging.
+- [x] Record current Python module ownership from the 0.6.0 map.
+- [x] Confirm no new target work starts in this release.
+- [x] Keep `desktop_app.py` as the debug/source launcher.
 
 Exit condition: Python reduction starts from measured behavior, not guesswork.
+
+Stage 0 implementation note: added `talos/stage_baseline.py` to capture a repeatable synthetic Arduino baseline without touching user sketches. Evidence is recorded in `dev_notes/evidence/TALOS_065_EVIDENCE.md`.
 
 ## Stage 1 - Process And Window Detection Extraction
 
