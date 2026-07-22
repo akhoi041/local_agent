@@ -97,6 +97,7 @@ from talos.run_history import (
     support_bundle,
 )
 from talos.diagnostics import diagnostics_export, diagnostics_settings, record_diagnostic, sanitize_payload
+from talos.detection import arduino_detection_snapshot, detection_state_from_report
 from talos.performance import performance_guardrails
 from talos.python_ownership import HOT_PATH_MIGRATION_TARGETS, boundary_check, ownership_by_module, ownership_report
 from talos.stage_baseline import STAGE_065_BASELINE_OPERATIONS, run_stage_065_baseline
@@ -2314,6 +2315,73 @@ class TalosArduinoTests(unittest.TestCase):
             any(entry["module"] == "talos.arduino" for entry in baseline["python_ownership"]["hot_paths"])
         )
 
+    def test_stage_065_detection_snapshot_uses_native_boundary_when_available(self) -> None:
+        class FakeBoundary:
+            def list_arduino_tool_processes(self) -> list[dict[str, object]]:
+                return [{"pid": 42, "name": "Arduino IDE.exe"}]
+
+            def list_window_rows(self) -> list[dict[str, object]]:
+                return [{"pid": 42, "title": "Blink | Arduino IDE 2.3.4"}]
+
+            def report(self) -> dict[str, object]:
+                return {
+                    "available": True,
+                    "operations": {
+                        "detection.arduino_processes": {
+                            "backend": "native",
+                            "native_backed": True,
+                            "fallback_backed": True,
+                            "last_ms": 1.25,
+                        },
+                        "detection.window_rows": {
+                            "backend": "native",
+                            "native_backed": True,
+                            "fallback_backed": True,
+                            "last_ms": 2.5,
+                        },
+                    },
+                }
+
+        snapshot = arduino_detection_snapshot(FakeBoundary())  # type: ignore[arg-type]
+
+        self.assertEqual(snapshot["state"]["backend"], "native")
+        self.assertFalse(snapshot["state"]["fallback_used"])
+        self.assertEqual(snapshot["state"]["counts"]["arduino_processes"], 1)
+        self.assertEqual(snapshot["state"]["counts"]["window_rows"], 1)
+        self.assertIn("arduino_processes:native", snapshot["state"]["labels"])
+        self.assertEqual(snapshot["state"]["timings_ms"]["window_rows"], 2.5)
+
+    def test_stage_065_detection_snapshot_keeps_fallback_when_native_missing(self) -> None:
+        report = {
+            "available": False,
+            "operations": {
+                "detection.arduino_processes": {
+                    "backend": "fallback",
+                    "native_backed": False,
+                    "fallback_backed": True,
+                    "last_ms": 3.0,
+                },
+                "detection.window_rows": {
+                    "backend": "fallback",
+                    "native_backed": False,
+                    "fallback_backed": True,
+                    "last_ms": 4.0,
+                },
+            },
+        }
+
+        state = detection_state_from_report(
+            report,
+            process_rows=[],
+            window_rows=[{"title": "Blink | Arduino IDE"}],
+        )
+
+        self.assertEqual(state["backend"], "fallback")
+        self.assertTrue(state["fallback_used"])
+        self.assertFalse(state["native_backed"])
+        self.assertIn("arduino_processes:fallback", state["labels"])
+        self.assertEqual(state["counts"]["window_rows"], 1)
+
     def test_state_payload_includes_native_boundary_report(self) -> None:
         with patch("talos.state_service.list_arduino_tool_processes", return_value=[]), \
             patch("talos.state_service.list_window_rows", return_value=[]), \
@@ -2324,6 +2392,10 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("native_boundary", payload)
         self.assertIn("operations", payload["native_boundary"])
         self.assertIn("verify.preparation", payload["native_boundary"]["operations"])
+        self.assertIn("detection", payload)
+        self.assertIn("labels", payload["detection"])
+        self.assertIn("timings_ms", payload["detection"])
+        self.assertEqual(payload["detection"]["counts"]["arduino_processes"], 0)
 
     def test_codex_status_starts_runtime_without_blocking_for_handshake(self) -> None:
         bridge = CodexBridge(persist_reviews=False)

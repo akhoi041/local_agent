@@ -55,3 +55,30 @@ Current hot paths recorded from the 0.6.0 ownership map:
 - `python -B -c "from talos.stage_baseline import run_stage_065_baseline; ..."`: passed.
 
 Conclusion: Python reduction starts from measured behavior, not guesswork.
+
+## Stage 1 - Process And Window Detection Extraction
+
+Status: complete.
+
+Stage 1 moves Arduino process/window detection reporting behind a small detection contract while preserving the native helper boundary and safe Python fallback. The app still scans process/window rows only once per state payload; the new state block summarizes which backend was used, whether fallback is active, row counts, and measured timings.
+
+### Implementation
+
+- Added `talos/detection.py` for detection summaries and native/fallback labels.
+- Added `/api/state` field `detection` with:
+  - `backend`
+  - `native_backed`
+  - `fallback_used`
+  - `labels`
+  - `timings_ms`
+  - `counts`
+- Kept existing `native_boundary` report intact for diagnostics compatibility.
+
+### Validation
+
+- Native-backed detection snapshot test: passed.
+- Fallback detection snapshot test: passed.
+- State payload detection summary test: passed.
+- Single-scan state payload behavior remains covered.
+
+Conclusion: detection is native-backed when possible, explicit about fallback when native support is absent, and ready for later native extraction work.

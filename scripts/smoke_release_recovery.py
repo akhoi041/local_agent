@@ -12,7 +12,6 @@ if str(ROOT) not in sys.path:
 from talos import codex_bridge as codex_bridge_module
 from talos.codex_bridge import CodexBridge, staged_patch_files
 
-
 def main() -> int:
     with TemporaryDirectory() as tmp:
         root = Path(tmp)
@@ -75,7 +74,6 @@ def main() -> int:
             return 0
         finally:
             codex_bridge_module.REVIEW_STATE_PATH = original_review_path
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

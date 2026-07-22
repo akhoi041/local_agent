@@ -20,7 +20,6 @@ WORKSPACE_SAMPLE_ROOTS = (ROOT / "talos", ROOT / "ui" / "web_frontend")
 SAMPLE_SUFFIXES = {".py", ".js", ".css", ".html", ".c", ".h", ".md"}
 NATIVE_THRESHOLD_RESULTS = {"native_window_rows", "native_arduino_process_rows", "detection_refresh"}
 
-
 def sample_workspace_paths() -> list[Path]:
     paths: list[Path] = []
     for sample_root in WORKSPACE_SAMPLE_ROOTS:
@@ -31,14 +30,11 @@ def sample_workspace_paths() -> list[Path]:
                 paths.append(path)
     return sorted(paths)
 
-
 def benchmark_detection_refresh() -> list[object]:
     return [nb.list_window_rows(), nb.list_arduino_process_rows_native()]
 
-
 def benchmark_workspace_scan() -> list[str]:
     return [str(path.relative_to(ROOT)) for path in sample_workspace_paths()]
-
 
 def benchmark_cache_key_hashing() -> list[str]:
     digest = hashlib.sha256()
@@ -49,7 +45,6 @@ def benchmark_cache_key_hashing() -> list[str]:
         digest.update(str(stat.st_size).encode("ascii"))
     return [digest.hexdigest()]
 
-
 def benchmark_diff_hunk_parse() -> list[str]:
     before = [f"line {index}\n" for index in range(240)]
     after = before.copy()
@@ -57,7 +52,6 @@ def benchmark_diff_hunk_parse() -> list[str]:
         after[index] = f"line {index} changed\n"
     diff = difflib.unified_diff(before, after, fromfile="before.ino", tofile="after.ino", n=3)
     return [line for line in diff if line.startswith("@@")]
-
 
 def measure(name: str, loader: Callable[[], Any], iterations: int) -> dict[str, Any]:
     durations: list[float] = []
