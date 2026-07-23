@@ -23,6 +23,7 @@ from talos.native_bridge import (
     list_window_titles,
     native_available,
 )
+from talos.workspace_scanner import scan_workspace
 
 ARDUINO_EXTENSIONS = {".ino", ".h", ".hpp", ".c", ".cpp", ".s", ".txt", ".md"}
 IGNORED_DIRS = {
@@ -795,18 +796,12 @@ def delete_workspace_file(config: dict[str, Any], relative_path: str) -> dict[st
     return {"ok": True, "path": path.relative_to(workspace).as_posix()}
 
 def iter_source_files(workspace: Path) -> list[Path]:
-    files: list[Path] = []
-    if not workspace.exists() or not workspace.is_dir():
-        return files
-    for path in workspace.rglob("*"):
-        if not path.is_file():
-            continue
-        rel_parts = path.relative_to(workspace).parts
-        if any(part in IGNORED_DIRS or part.startswith(".talos_") for part in rel_parts[:-1]):
-            continue
-        if is_source_file(path):
-            files.append(path)
-    return sorted(files, key=lambda item: item.relative_to(workspace).as_posix().lower())
+    scan = scan_workspace(workspace, source_extensions=ARDUINO_EXTENSIONS, ignored_dirs=IGNORED_DIRS)
+    paths: list[Path] = []
+    for row in scan.get("files") if isinstance(scan.get("files"), list) else []:
+        if isinstance(row, dict) and row.get("path"):
+            paths.append(workspace / str(row["path"]))
+    return paths
 
 def context_file_category(path: str, main_sketch: str = "") -> str:
     suffix = Path(path).suffix.lower()
@@ -868,15 +863,21 @@ def find_main_sketch(workspace: Path, files: list[Path] | None = None) -> Path |
     return ino_files[0]
 
 def file_row(workspace: Path, path: Path) -> dict[str, Any]:
-    try:
-        content = path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        content = ""
+    scan = scan_workspace(workspace, source_extensions=ARDUINO_EXTENSIONS, ignored_dirs=IGNORED_DIRS)
+    relative = path.relative_to(workspace).as_posix()
+    for row in scan.get("files") if isinstance(scan.get("files"), list) else []:
+        if isinstance(row, dict) and row.get("path") == relative:
+            return {
+                "path": str(row.get("path") or ""),
+                "bytes": int(row.get("bytes") or 0),
+                "lines": int(row.get("lines") or 0),
+                "mtime_ns": int(row.get("mtime_ns") or 0),
+            }
     stat = path.stat()
     return {
-        "path": path.relative_to(workspace).as_posix(),
+        "path": relative,
         "bytes": stat.st_size,
-        "lines": content.count("\n") + (1 if content else 0),
+        "lines": 0,
     }
 
 def workspace_summary(config: dict[str, Any]) -> dict[str, Any]:
@@ -902,15 +903,30 @@ def workspace_summary(config: dict[str, Any]) -> dict[str, Any]:
             "files": [],
             "message": "Configured Arduino sketch folder was not found.",
         }
-    files = iter_source_files(workspace)
-    main_sketch = find_main_sketch(workspace, files)
+    scan = scan_workspace(workspace, source_extensions=ARDUINO_EXTENSIONS, ignored_dirs=IGNORED_DIRS)
+    files = scan.get("files") if isinstance(scan.get("files"), list) else []
+    main_sketch = str(scan.get("main_sketch") or "")
     return {
         "configured": True,
-        "valid": main_sketch is not None,
+        "valid": bool(main_sketch),
         "path": str(workspace),
         "fqbn": arduino["fqbn"],
-        "main_sketch": main_sketch.relative_to(workspace).as_posix() if main_sketch else "",
-        "files": [file_row(workspace, path) for path in files],
+        "main_sketch": main_sketch,
+        "files": [
+            {
+                "path": str(row.get("path") or ""),
+                "bytes": int(row.get("bytes") or 0),
+                "lines": int(row.get("lines") or 0),
+                "mtime_ns": int(row.get("mtime_ns") or 0),
+            }
+            for row in files
+            if isinstance(row, dict)
+        ],
+        "scan": {
+            "timing_ms": float(scan.get("timing_ms") or 0.0),
+            "cache": dict(scan.get("cache") or {}) if isinstance(scan.get("cache"), dict) else {},
+            "source_count": int(scan.get("source_count") or 0),
+        },
         "message": "Arduino sketch folder ready." if main_sketch else "No .ino file found in this folder.",
     }
 

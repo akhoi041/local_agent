@@ -58,13 +58,20 @@ Stage 1 implementation:
 
 Purpose: move repeated file enumeration and metadata collection away from ad hoc Python loops.
 
-- [ ] Add a core/native-backed workspace scanner interface.
-- [ ] Preserve source file ordering and Arduino tab behavior.
-- [ ] Add debounce/cache invalidation rules for file changes.
-- [ ] Test `.ino`, `.h`, `.cpp`, and mixed sketch-folder cases.
-- [ ] Record scan timing before and after.
+- [x] Add a core/native-backed workspace scanner interface.
+- [x] Preserve source file ordering and Arduino tab behavior.
+- [x] Add debounce/cache invalidation rules for file changes.
+- [x] Test `.ino`, `.h`, `.cpp`, and mixed sketch-folder cases.
+- [x] Record scan timing before and after.
 
 Exit condition: file metadata is collected through a reusable scanner boundary with fallback behavior.
+
+Stage 2 implementation note:
+
+- Added `talos.workspace_scanner` as the single source metadata scanner boundary.
+- Kept the existing public file ordering stable for UI/API compatibility while still identifying the main sketch.
+- Added scan cache hit/debounce metadata and cache invalidation by file path, size, and mtime.
+- Routed Arduino workspace summary and source-file iteration through the scanner.
 
 ## Stage 3 - Hashing And Cache-Key Extraction
 

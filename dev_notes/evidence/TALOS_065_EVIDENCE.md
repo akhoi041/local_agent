@@ -82,3 +82,27 @@ Stage 1 moves Arduino process/window detection reporting behind a small detectio
 - Single-scan state payload behavior remains covered.
 
 Conclusion: detection is native-backed when possible, explicit about fallback when native support is absent, and ready for later native extraction work.
+
+## Stage 2 - Workspace Scan And File Metadata Extraction
+
+Status: complete.
+
+Stage 2 centralizes Arduino workspace source metadata behind `talos.workspace_scanner`. The scanner reports file rows, main sketch identity, source count, timing, and cache/debounce state while keeping the existing public file ordering stable for UI and compatibility tests.
+
+### Implementation
+
+- Added `talos/workspace_scanner.py`.
+- Routed `iter_source_files()` and `workspace_summary()` through the scanner boundary.
+- Preserved existing alphabetic source-file ordering while identifying the Arduino main sketch separately.
+- Added cache invalidation by workspace path, source extension set, ignored directory set, relative path, file size, and mtime.
+- Exposed scan timing and cache metadata in `workspace_summary()["scan"]`.
+
+### Validation
+
+- Scanner ordering and main-sketch identity test: passed.
+- Scanner cache hit and invalidation test: passed.
+- Mixed `.ino`, `.h`, and `.cpp` workspace summary/map test: passed.
+- `python -B -m py_compile talos\workspace_scanner.py talos\arduino.py tests\test_desktop_app.py`: passed.
+- `python -B -m unittest -q tests.test_desktop_app`: passed, 145 tests.
+
+Conclusion: Arduino source metadata now crosses a reusable scanner boundary and records measurable timing without changing the existing UI/API file order.
