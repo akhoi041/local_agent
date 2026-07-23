@@ -3679,5 +3679,69 @@ class TalosArduinoTests(unittest.TestCase):
         api.close()
         self.assertTrue(window.destroyed)
 
+    def test_stage_065_workspace_scanner_orders_arduino_tabs(self) -> None:
+        from talos.workspace_scanner import clear_workspace_scan_cache, scan_workspace
+
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "RobotArm"
+            workspace.mkdir()
+            (workspace / "driver.cpp").write_text("void driver() {}\n", encoding="utf-8")
+            (workspace / "RobotArm.ino").write_text("void setup() {}\n", encoding="utf-8")
+            (workspace / "config.h").write_text("#pragma once\n", encoding="utf-8")
+            (workspace / "extra.ino").write_text("void extra() {}\n", encoding="utf-8")
+
+            clear_workspace_scan_cache()
+            scan = scan_workspace(workspace)
+
+        self.assertEqual(scan["main_sketch"], "RobotArm.ino")
+        self.assertEqual(
+            [row["path"] for row in scan["files"]],
+            ["config.h", "driver.cpp", "extra.ino", "RobotArm.ino"],
+        )
+        self.assertEqual(scan["source_count"], 4)
+        self.assertGreaterEqual(scan["timing_ms"], 0)
+
+    def test_stage_065_workspace_scanner_cache_invalidates_on_file_change(self) -> None:
+        from talos.workspace_scanner import clear_workspace_scan_cache, scan_workspace
+
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "Blink"
+            workspace.mkdir()
+            sketch = workspace / "Blink.ino"
+            sketch.write_text("void setup() {}\n", encoding="utf-8")
+
+            clear_workspace_scan_cache()
+            first = scan_workspace(workspace)
+            second = scan_workspace(workspace)
+            sketch.write_text("void setup() {}\nvoid loop() {}\n", encoding="utf-8")
+            third = scan_workspace(workspace)
+
+        self.assertFalse(first["cache"]["hit"])
+        self.assertTrue(second["cache"]["hit"])
+        self.assertFalse(third["cache"]["hit"])
+        self.assertEqual(third["files"][0]["lines"], 3)
+
+    def test_stage_065_workspace_summary_uses_scanner_metadata(self) -> None:
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "Mixed"
+            workspace.mkdir()
+            (workspace / "Mixed.ino").write_text("void setup() {}\n", encoding="utf-8")
+            (workspace / "module.cpp").write_text("int value = 1;\n", encoding="utf-8")
+            (workspace / "module.h").write_text("#pragma once\n", encoding="utf-8")
+            config = {
+                "arduino_workspace_path": str(workspace),
+                "arduino_fqbn": "arduino:avr:uno",
+            }
+
+            summary = workspace_summary(config)
+            workspace_payload = workspace_map(config)
+
+        self.assertTrue(summary["valid"])
+        self.assertEqual(summary["main_sketch"], "Mixed.ino")
+        self.assertEqual([row["path"] for row in summary["files"]], ["Mixed.ino", "module.cpp", "module.h"])
+        self.assertIn("scan", summary)
+        self.assertGreaterEqual(summary["scan"]["timing_ms"], 0)
+        self.assertEqual(workspace_payload["source_tab_count"], 3)
+
 if __name__ == "__main__":
     unittest.main()
