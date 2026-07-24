@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import copy
-import hashlib
 import os
 import shutil
 import subprocess
@@ -13,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from talos.core import APP_DATA_ROOT
+from talos.cache_keys import compile_cache_key as build_compile_cache_key
 from talos.native_bridge import (
     extract_ino_names,
     list_arduino_ide_processes,
@@ -1221,28 +1221,7 @@ def compile_cache_key(
     cli: str,
     overrides: dict[str, str | None] | None,
 ) -> str:
-    digest = hashlib.sha256()
-    digest.update(str(summary.get("fqbn") or "").encode("utf-8"))
-    digest.update(repr(profile.get("build_flags") or []).encode("utf-8"))
-    digest.update(repr(profile.get("build_properties") or []).encode("utf-8"))
-    digest.update(str(profile.get("serial_port") or "").encode("utf-8"))
-    digest.update(str(profile.get("baud_rate") or "").encode("utf-8"))
-    digest.update(repr(profile.get("libraries") or []).encode("utf-8"))
-    try:
-        digest.update(f"{cli}:{Path(cli).stat().st_mtime_ns}".encode("utf-8"))
-    except OSError:
-        digest.update(cli.encode("utf-8"))
-    for path in iter_source_files(workspace):
-        relative = path.relative_to(workspace).as_posix()
-        digest.update(relative.encode("utf-8"))
-        try:
-            digest.update(path.read_bytes())
-        except OSError:
-            digest.update(b"<unreadable>")
-    for path, content in sorted((overrides or {}).items()):
-        digest.update(f"override:{path}".encode("utf-8"))
-        digest.update(b"<deleted>" if content is None else content.encode("utf-8"))
-    return digest.hexdigest()
+    return build_compile_cache_key(workspace, summary, profile, cli, overrides)
 
 def verify_runtime_status(timings: dict[str, float]) -> dict[str, Any]:
     total = float(timings.get("total") or 0.0)

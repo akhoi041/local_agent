@@ -38,6 +38,7 @@ from talos.run_history import (
 from talos.runtime_provider import CodexRuntimeProvider, PlaceholderRuntimeProvider, RuntimeProviderRegistry
 from talos.runtime_service import record_runtime_status as record_runtime_status_service, runtime_event_detail
 from talos.state_service import state_payload as build_state_payload
+from talos.task_orchestrator import TASK_ORCHESTRATOR, TaskOrchestrator
 from talos.targets import TargetRegistry
 
 COMMAND_PALETTE_COMMANDS: tuple[dict[str, str], ...] = (
@@ -66,6 +67,7 @@ class TalosRuntimeCore:
     arduino_target: ArduinoTargetAdapter = field(default_factory=ArduinoTargetAdapter)
     target_registry: TargetRegistry = field(default_factory=TargetRegistry)
     runtime_registry: RuntimeProviderRegistry = field(default_factory=RuntimeProviderRegistry)
+    task_orchestrator: TaskOrchestrator = field(default_factory=lambda: TASK_ORCHESTRATOR)
 
     def __post_init__(self) -> None:
         self.target_registry.register(self.arduino_target)
@@ -89,6 +91,9 @@ class TalosRuntimeCore:
 
     def state_payload(self) -> dict[str, Any]:
         return build_state_payload(self)
+
+    def task_snapshot(self) -> dict[str, Any]:
+        return self.task_orchestrator.snapshot()
 
     def target_state(self, config: dict[str, Any] | None = None) -> dict[str, Any]:
         config = config or self.load_config()
@@ -269,41 +274,81 @@ class TalosRuntimeCore:
         override = payload.get("editor_override") if isinstance(payload.get("editor_override"), dict) else {}
         override_path = str(override.get("path") or "").replace("\\", "/") if override else ""
         overrides = {override_path: str(override.get("content") or "")} if override_path else None
-        result = self.arduino_target.verify(config, overrides=overrides)
-        summary = self.arduino_target.workspace_summary(config)
-        result["verify_context"] = {
-            "source": source,
-            "workspace": str(summary.get("path") or ""),
-            "active_file": override_path or str(payload.get("active_file") or ""),
-            "fqbn": str(summary.get("fqbn") or ""),
-            "editor_override": bool(override_path),
-        }
-        record_verify(result, source)
-        if source == "codex_patch":
-            record_patch_verification(str(summary.get("path") or ""), result)
-        status = "passed" if result.get("ok") else result.get("status", "failed")
-        record_diagnostic(config, "verify_passed" if result.get("ok") else "verify_failed", {
-            "workspace": summary.get("path", ""),
-            "main_sketch": summary.get("main_sketch", ""),
-            "fqbn_family": ":".join(str(summary.get("fqbn") or "").split(":")[:3]),
-            "status": status,
-            "source": source,
-            "timings": result.get("timings") or {},
-            "cache": result.get("cache") or {},
-            "issue_count": len(result.get("issues") or []),
-            "profile_ready": bool((result.get("profile_readiness") or {}).get("ready")),
-        })
-        log_event(f"{now()} Arduino verify {status}")
-        return result
+        task = self.task_orchestrator.start(
+            "arduino.verify",
+            "Verify Arduino sketch",
+            {
+                "source": source,
+                "workspace": str(config.get("arduino_workspace_path") or ""),
+                "fqbn": str(config.get("arduino_fqbn") or ""),
+                "editor_override": bool(override_path),
+            },
+        )
+        try:
+            result = self.arduino_target.verify(config, overrides=overrides)
+            summary = self.arduino_target.workspace_summary(config)
+            result["verify_context"] = {
+                "source": source,
+                "workspace": str(summary.get("path") or ""),
+                "active_file": override_path or str(payload.get("active_file") or ""),
+                "fqbn": str(summary.get("fqbn") or ""),
+                "editor_override": bool(override_path),
+            }
+            record_verify(result, source)
+            if source == "codex_patch":
+                record_patch_verification(str(summary.get("path") or ""), result)
+            status = "passed" if result.get("ok") else result.get("status", "failed")
+            record_diagnostic(config, "verify_passed" if result.get("ok") else "verify_failed", {
+                "workspace": summary.get("path", ""),
+                "main_sketch": summary.get("main_sketch", ""),
+                "fqbn_family": ":".join(str(summary.get("fqbn") or "").split(":")[:3]),
+                "status": status,
+                "source": source,
+                "timings": result.get("timings") or {},
+                "cache": result.get("cache") or {},
+                "issue_count": len(result.get("issues") or []),
+                "profile_ready": bool((result.get("profile_readiness") or {}).get("ready")),
+            })
+            self.task_orchestrator.finish(
+                task["id"],
+                str(status),
+                "Arduino verify finished",
+                {
+                    "ok": bool(result.get("ok")),
+                    "workspace": str(summary.get("path") or ""),
+                    "main_sketch": str(summary.get("main_sketch") or ""),
+                    "fqbn": str(summary.get("fqbn") or ""),
+                    "timings": result.get("timings") or {},
+                    "cache": result.get("cache") or {},
+                    "issue_count": len(result.get("issues") or []),
+                },
+            )
+            log_event(f"{now()} Arduino verify {status}")
+            return result
+        except Exception as exc:
+            self.task_orchestrator.finish(task["id"], "failed", str(exc))
+            raise
 
     def cancel_verify(self) -> dict[str, Any]:
         result = self.arduino_target.cancel_verify()
+        self.task_orchestrator.request_cancel(
+            "arduino.verify",
+            "Arduino verify cancellation requested",
+            {"ok": bool(result.get("ok")), "status": str(result.get("status") or "")},
+        )
         if result.get("ok"):
             log_event(f"{now()} Arduino verify cancellation requested")
         return result
 
     def clear_verify_cache(self) -> dict[str, Any]:
         result = self.arduino_target.clear_verify_cache()
+        self.task_orchestrator.event(
+            "arduino.verify.cache_clear",
+            "cleared",
+            "Clear Arduino verify cache",
+            f"{result.get('cleared')} entries",
+            {"ok": bool(result.get("ok")), "cleared": result.get("cleared")},
+        )
         log_event(f"{now()} cleared Arduino compile cache ({result.get('cleared')} entries)")
         return result
 
@@ -345,6 +390,14 @@ class TalosRuntimeCore:
         config = self.load_config()
         _, runtime_summary, gate = self.codex_provider.selected_payload(config)
         workspace = self.arduino_target.workspace_summary(config)
+        task = self.task_orchestrator.start(
+            "codex.turn",
+            "Codex turn",
+            {
+                "workspace": str(workspace.get("path") or ""),
+                "allow_edits": bool(payload.get("allow_edits", True)),
+            },
+        )
         if gate["blocked"]:
             result = {
                 "ok": False,
@@ -364,6 +417,12 @@ class TalosRuntimeCore:
                     "context_replay_guard": "manual_send_required",
                 },
             )
+            self.task_orchestrator.finish(
+                task["id"],
+                "runtime_blocked",
+                gate["detail"],
+                {"runtime_code": gate["code"], "replay_guard": "manual_send_required"},
+            )
             return result, False
         workspace["map"] = self.arduino_target.workspace_map(
             config,
@@ -379,13 +438,41 @@ class TalosRuntimeCore:
             self.latest_verify_for_workspace(str(workspace.get("path") or "")),
         )
         active_context = context_package.get("active_file") if isinstance(context_package.get("active_file"), dict) else {}
-        result = self.codex_provider.send_message(
-            str(payload.get("message", "")),
-            workspace,
-            active_context,
-            str(payload.get("verify_context", "")),
-            bool(payload.get("allow_edits", True)),
-        )
+        try:
+            result = self.codex_provider.send_message(
+                str(payload.get("message", "")),
+                workspace,
+                active_context,
+                str(payload.get("verify_context", "")),
+                bool(payload.get("allow_edits", True)),
+            )
+        except Exception as exc:
+            result = {"ok": False, "status": "failed", "error": str(exc)}
+            record_codex_turn(
+                str(workspace.get("path") or ""),
+                str(payload.get("message", "")),
+                "failed",
+                {
+                    "allow_edits": bool(payload.get("allow_edits", True)),
+                    "active_file": str(active_context.get("path") or ""),
+                    "context_active_file_included": bool(active_context.get("included")),
+                    "context_replay_guard": "manual_send_required",
+                    "profile_fqbn": str(workspace.get("fqbn") or ""),
+                    "error": str(exc),
+                },
+            )
+            self.task_orchestrator.finish(
+                task["id"],
+                "failed",
+                str(exc),
+                {
+                    "ok": False,
+                    "active_file": str(active_context.get("path") or ""),
+                    "context_active_file_included": bool(active_context.get("included")),
+                    "replay_guard": "manual_send_required",
+                },
+            )
+            return result, False
         record_codex_turn(
             str(workspace.get("path") or ""),
             str(payload.get("message", "")),
@@ -401,12 +488,28 @@ class TalosRuntimeCore:
         )
         if result.get("ok"):
             log_event(f"{now()} started Codex turn")
+        self.task_orchestrator.finish(
+            task["id"],
+            "started" if result.get("ok") else "blocked",
+            str(result.get("error") or result.get("status") or ""),
+            {
+                "ok": bool(result.get("ok")),
+                "active_file": str(active_context.get("path") or ""),
+                "context_active_file_included": bool(active_context.get("included")),
+                "replay_guard": "manual_send_required",
+            },
+        )
         return result, bool(result.get("ok"))
 
     def codex_reconnect(self) -> tuple[dict[str, Any], bool]:
         config = self.load_config()
         _, runtime_summary, gate = self.codex_provider.selected_payload(config, force=True)
         workspace = self.arduino_target.workspace_summary(config)
+        task = self.task_orchestrator.start(
+            "codex.reconnect",
+            "Reconnect Codex runtime",
+            {"workspace": str(workspace.get("path") or "")},
+        )
         if gate["blocked"]:
             result = {
                 "ok": False,
@@ -426,8 +529,30 @@ class TalosRuntimeCore:
                     "replay_guard": "manual_send_required",
                 },
             )
+            self.task_orchestrator.finish(
+                task["id"],
+                "runtime_blocked",
+                gate["detail"],
+                {"runtime_code": gate["code"], "replay_guard": "manual_send_required"},
+            )
             return result, False
-        result = self.codex_provider.reconnect()
+        try:
+            result = self.codex_provider.reconnect()
+        except Exception as exc:
+            result = {"ok": False, "status": "failed", "error": str(exc)}
+            record_codex_turn(
+                str(workspace.get("path") or ""),
+                "",
+                "reconnect_failed",
+                {"error": str(exc), "replay_guard": "manual_send_required"},
+            )
+            self.task_orchestrator.finish(
+                task["id"],
+                "failed",
+                str(exc),
+                {"ok": False, "replay_guard": "manual_send_required"},
+            )
+            return result, False
         if result.get("ok"):
             record_codex_turn(
                 str(workspace.get("path") or ""),
@@ -436,11 +561,22 @@ class TalosRuntimeCore:
                 {"status": str(result.get("status") or ""), "replay_guard": "manual_send_required"},
             )
             log_event(f"{now()} Codex reconnect requested")
+        self.task_orchestrator.finish(
+            task["id"],
+            "reconnect" if result.get("ok") else "failed",
+            str(result.get("error") or result.get("status") or ""),
+            {"ok": bool(result.get("ok")), "replay_guard": "manual_send_required"},
+        )
         return result, bool(result.get("ok"))
 
     def cancel_codex_turn(self) -> tuple[dict[str, Any], bool]:
         workspace = self.arduino_target.workspace_summary(self.load_config())
         result = self.codex_provider.cancel_turn()
+        self.task_orchestrator.request_cancel(
+            "codex.turn",
+            "Codex turn cancellation requested",
+            {"ok": bool(result.get("ok")), "workspace": str(workspace.get("path") or "")},
+        )
         if result.get("ok"):
             record_codex_turn(str(workspace.get("path") or ""), "", "cancelled", {"replay_guard": "manual_send_required"})
         return result, bool(result.get("ok"))

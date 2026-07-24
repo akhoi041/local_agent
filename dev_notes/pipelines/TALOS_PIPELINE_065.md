@@ -77,36 +77,53 @@ Stage 2 implementation note:
 
 Purpose: make verify/context caching fast and deterministic.
 
-- [ ] Route workspace hash and cache-key generation through one helper boundary.
-- [ ] Include board/profile/build flags/source file state in cache keys.
-- [ ] Keep clear cache behavior explicit.
-- [ ] Add tests for cache hit, cache miss, source change, board change, and profile change.
+- [x] Route workspace hash and cache-key generation through one helper boundary.
+- [x] Include board/profile/build flags/source file state in cache keys.
+- [x] Keep clear cache behavior explicit.
+- [x] Add tests for cache hit, cache miss, source change, board change, and profile change.
 
 Exit condition: cache keys are stable, fast, and no longer scattered across Python helpers.
+
+Stage 3 implementation note:
+
+- Added `talos.cache_keys` as the single hash/cache-key boundary.
+- Compile cache keys now include workspace identity, board/FQBN properties, profile/build flags/properties, CLI identity, source metadata/content hashes, and staged override hashes.
+- Diagnostics workspace hashes now use the same sanitized workspace identity helper.
+- Clear-cache behavior remains explicit through the existing Arduino cache clear functions.
 
 ## Stage 4 - Diff And Hunk Helper Extraction
 
 Purpose: make review/apply behavior reusable for future code and design targets.
 
-- [ ] Move diff/hunk parsing behind a helper interface.
-- [ ] Preserve current apply/reject/all hunk semantics.
-- [ ] Keep editor-visible review behavior unchanged.
-- [ ] Add tests for add/update/delete hunks, rejected hunks, partial apply, and save-after-apply.
-- [ ] Record timing for large files.
+- [x] Move diff/hunk parsing behind a helper interface.
+- [x] Preserve current apply/reject/all hunk semantics.
+- [x] Keep editor-visible review behavior unchanged.
+- [x] Add tests for add/update/delete hunks, rejected hunks, partial apply, and save-after-apply.
+- [x] Record timing for large files.
 
 Exit condition: diff/hunk behavior is target-neutral and ready for future adapters.
+
+Stage 4 implementation note: diff, hunk construction, staged patch files, review summaries, partial apply/reject, and large-file hunk timing now live in `talos.diff_hunks`; `talos.codex_bridge` keeps the Codex workflow and reuses the helper boundary.
 
 ## Stage 5 - Task Orchestration Cleanup
 
 Purpose: reduce Python global-state coupling in verify, Codex, and file operations.
 
-- [ ] Move long-running operation state into the core runtime boundary.
-- [ ] Keep cancellation, status, and event history consistent.
-- [ ] Prevent repeated PowerShell/CMD window churn during checks.
-- [ ] Add tests for verify start/cancel/cache-clear and Codex reconnect/retry status.
-- [ ] Record before/after UI responsiveness notes.
+- [x] Move long-running operation state into the core runtime boundary.
+- [x] Keep cancellation, status, and event history consistent.
+- [x] Prevent repeated PowerShell/CMD window churn during checks.
+- [x] Add tests for verify start/cancel/cache-clear and Codex reconnect/retry status.
+- [x] Record before/after UI responsiveness notes.
 
 Exit condition: task orchestration is centralized and does not leak transient process behavior into the user experience.
+
+Stage 5 implementation note:
+
+- Added `talos.task_orchestrator` as the in-process lifecycle boundary for verify, cache, cancel, and Codex turn/reconnect state.
+- `TalosRuntimeCore` now starts/finishes long-running operation tasks and exposes `/api/state.tasks`.
+- Codex runtime-blocked/retry/exception paths record manual replay guards so reconnect/retry cannot replay a user turn automatically.
+- The orchestrator records state only and does not spawn PowerShell/CMD; UI can poll one snapshot for active/recent tasks.
+- Responsiveness before/after: before, verify/Codex transient state was split across helpers; after, task status, cancellation, cache clear, and retry status are centralized and visible without shell churn.
 
 ## Stage 6 - Runtime Provider Cleanup
 

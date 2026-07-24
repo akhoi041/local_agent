@@ -19,6 +19,7 @@ from talos.native_boundary import (
     native_available,
 )
 from talos.run_history import latest_verify_for_workspace
+from talos.task_orchestrator import TASK_ORCHESTRATOR
 
 ARDUINO_TARGET = ArduinoTargetAdapter()
 
@@ -114,6 +115,7 @@ def state_payload(runtime: Any | None = None) -> dict[str, Any]:
             "contexts": [target_context],
         },
         "codex_runtime": runtime_state_summary(codex_runtime_status),
+        "tasks": runtime.task_snapshot() if runtime is not None else TASK_ORCHESTRATOR.snapshot(),
         "tools": [
             "GET /api/state",
             "GET /api/targets",

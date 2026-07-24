@@ -106,3 +106,64 @@ Stage 2 centralizes Arduino workspace source metadata behind `talos.workspace_sc
 - `python -B -m unittest -q tests.test_desktop_app`: passed, 145 tests.
 
 Conclusion: Arduino source metadata now crosses a reusable scanner boundary and records measurable timing without changing the existing UI/API file order.
+
+## Stage 3 - Hashing And Cache-Key Extraction
+
+Status: complete.
+
+Stage 3 centralizes workspace identity hashing and Arduino compile cache-key construction behind `talos.cache_keys`. The cache payload is deterministic and now records all inputs that should invalidate a verify result: workspace identity, board/FQBN properties, environment profile/build flags/build properties, CLI identity, source file metadata/content hashes, and staged file overrides.
+
+### Implementation
+
+- Added `talos/cache_keys.py`.
+- Routed `talos.arduino.compile_cache_key()` through the new helper boundary.
+- Routed diagnostics workspace hashing through `workspace_identity_hash()` so support/debug payloads keep local paths sanitized.
+- Kept clear-cache behavior explicit through the existing Arduino cache clear functions.
+- Added fallback source scanning inside the cache-key boundary for legacy callers that pass a minimal summary without `files`.
+
+### Validation
+
+- `python -B -m py_compile talos\cache_keys.py talos\arduino.py talos\diagnostics.py tests\test_desktop_app.py`: passed.
+- `python -B -m unittest -q tests.test_desktop_app`: passed, 148 tests.
+
+Conclusion: cache keys are stable, source-sensitive, profile-sensitive, board-sensitive, and no longer scattered across Python helpers.
+
+## Stage 4 - Diff And Hunk Helper Extraction
+
+Status: complete.
+
+Stage 4 extracts review diff/hunk behavior into `talos.diff_hunks` so future adapters can reuse the same change-review primitives without depending on Codex bridge internals.
+
+### Implementation
+
+- Added `talos/diff_hunks.py`.
+- Moved workspace snapshot diffing, patch hunk construction, staged patch file generation, applied-hunk materialization, review summaries, and large-file hunk timing into the helper boundary.
+- Kept `talos.codex_bridge` as the workflow owner for Codex turns, review state, conflict handling, and save/apply operations.
+- Preserved legacy imports from `talos.codex_bridge` by importing the helper functions there.
+
+### Validation
+
+- Helper tests cover add/delete/equal fast paths, update hunks, rejected hunks, partial apply, and large-file timing.
+- Existing bridge tests continue to cover selected-hunk apply, apply-all, reject flows, conflict handling, and save-after-apply.
+
+Conclusion: diff/hunk behavior is now target-neutral while the visible Codex review workflow remains unchanged.
+
+## Stage 5 - Task Orchestration Cleanup
+
+Status: complete.
+
+Stage 5 centralizes long-running verify and Codex operation state behind `talos.task_orchestrator`.
+
+### Implementation
+
+- Added in-process task lifecycle tracking for verify, cache clear, cancellation, Codex turn, and Codex reconnect operations.
+- Runtime core owns task start/finish boundaries and exposes the task snapshot through `/api/state`.
+- Codex runtime-blocked, retry, and exception paths record `manual_send_required` replay guards so Talos does not replay a user turn automatically.
+- Normal task tracking contains no PowerShell/CMD spawning.
+
+### Validation
+
+- `python -B -m py_compile talos\task_orchestrator.py talos\runtime_core.py talos\state_service.py tests\test_desktop_app.py`: passed.
+- `python -B -m unittest -q tests.test_desktop_app`: passed, 154 tests.
+
+Conclusion: task orchestration is centralized and does not leak transient process behavior into the user experience.
