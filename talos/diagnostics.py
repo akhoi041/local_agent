@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import hashlib
 import platform
 import uuid
 from typing import Any
 
+from talos.cache_keys import workspace_identity_hash
 from talos.codex_runtime import runtime_status, support_bundle_runtime_evidence
 from talos.core import APP_DATA_ROOT, now, read_json_file, write_json_file
 
@@ -68,12 +68,6 @@ def normalize_event_name(name: str) -> str:
 def _safe_string(value: Any, limit: int = 240) -> str:
     return str(value or "").strip()[:limit]
 
-def _workspace_hash(path_text: str) -> str:
-    value = str(path_text or "").strip().lower()
-    if not value:
-        return ""
-    return hashlib.sha256(value.encode("utf-8", errors="ignore")).hexdigest()[:16]
-
 def sanitize_payload(payload: dict[str, Any] | None = None) -> dict[str, Any]:
     source = payload if isinstance(payload, dict) else {}
     sanitized: dict[str, Any] = {}
@@ -85,7 +79,7 @@ def sanitize_payload(payload: dict[str, Any] | None = None) -> dict[str, Any]:
         if lowered in SENSITIVE_KEYS:
             continue
         if lowered in {"workspace", "path", "sketch_path"}:
-            sanitized["workspace_hash"] = _workspace_hash(str(value))
+            sanitized["workspace_hash"] = workspace_identity_hash(str(value))
             continue
         if lowered in {"main_sketch", "sketch", "project"}:
             sanitized["sketch_ext"] = "." + str(value).rsplit(".", 1)[-1].lower() if "." in str(value) else ""

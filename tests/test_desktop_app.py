@@ -59,6 +59,7 @@ from talos.arduino import (
     workspace_summary,
     write_workspace_file,
 )
+from talos.cache_keys import compile_cache_payload, workspace_identity_hash
 from talos.native_bridge import (
     extract_board_name,
     extract_fqbn,
@@ -78,6 +79,11 @@ from talos.codex_bridge import (
     normalize_codex_thread,
     snapshot_workspace,
     staged_patch_files,
+)
+from talos.diff_hunks import (
+    content_with_applied_hunks,
+    measure_hunk_timing,
+    review_summary_for_file,
 )
 from talos.checkpoints import (
     create_before_save_checkpoint,
@@ -487,6 +493,36 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertEqual(added[0]["new_lines"], ["one", "two"])
         self.assertEqual(deleted[0]["kind"], "delete")
         self.assertEqual(deleted[0]["old_lines"], ["one", "two"])
+
+    def test_diff_hunk_helper_preserves_partial_apply_and_reject_semantics(self) -> None:
+        before = "first\nkeep-a\nkeep-b\nsecond\n"
+        after = "FIRST\nkeep-a\nkeep-b\n"
+        hunks = build_patch_hunks(before, after)
+        self.assertEqual(len(hunks), 2)
+
+        hunks[0]["review_status"] = "applied-to-editor"
+        hunks[1]["review_status"] = "rejected"
+
+        merged = content_with_applied_hunks(before, hunks)
+        summary = review_summary_for_file({"hunks": hunks})
+
+        self.assertEqual(merged, "FIRST\nkeep-a\nkeep-b\nsecond\n")
+        self.assertEqual(summary["applied_to_editor"], 1)
+        self.assertEqual(summary["rejected"], 1)
+        self.assertEqual(summary["total"], 2)
+
+    def test_diff_hunk_helper_records_large_file_timing(self) -> None:
+        before_lines = [f"line {index}" for index in range(1600)]
+        after_lines = before_lines[:]
+        after_lines[30] = "line 30 changed"
+        after_lines[900] = "line 900 changed"
+
+        timing = measure_hunk_timing("\n".join(before_lines) + "\n", "\n".join(after_lines) + "\n")
+
+        self.assertGreaterEqual(timing["elapsed_ms"], 0)
+        self.assertEqual(timing["hunks"], 2)
+        self.assertGreater(timing["before_bytes"], 1000)
+        self.assertGreater(timing["after_bytes"], 1000)
 
     def test_codex_unfinished_reviews_persist_until_restored_or_discarded(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -3329,6 +3365,73 @@ class TalosArduinoTests(unittest.TestCase):
 
             self.assertEqual(len({base, changed_board, changed_profile, changed_cli, changed_override}), 5)
 
+    def test_stage_065_cache_key_payload_includes_compile_inputs(self) -> None:
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "Blink"
+            workspace.mkdir()
+            sketch = workspace / "Blink.ino"
+            sketch.write_text("void setup() {}\nvoid loop() {}\n", encoding="utf-8")
+            header = workspace / "Pins.h"
+            header.write_text("#pragma once\n#define LED_PIN 13\n", encoding="utf-8")
+            summary = workspace_summary({"arduino_workspace_path": str(workspace), "arduino_fqbn": "arduino:avr:uno"})
+            summary["board_name"] = "Arduino Uno"
+            profile = {
+                "build_flags": ["-DDEBUG"],
+                "build_properties": ["compiler.cpp.extra_flags=-DDEBUG"],
+                "serial_port": "COM3",
+                "baud_rate": 115200,
+                "libraries": ["Wire"],
+            }
+
+            payload = compile_cache_payload(
+                workspace,
+                summary,
+                profile,
+                "arduino-cli",
+                {"Blink.ino": "void setup() {}\n", "Pins.h": None},
+            )
+
+            self.assertEqual(payload["board"]["fqbn"], "arduino:avr:uno")
+            self.assertEqual(payload["board"]["board_name"], "Arduino Uno")
+            self.assertEqual(payload["profile"]["build_flags"], ["-DDEBUG"])
+            self.assertEqual(payload["profile"]["build_properties"], ["compiler.cpp.extra_flags=-DDEBUG"])
+            self.assertEqual(payload["profile"]["serial_port"], "COM3")
+            self.assertEqual(payload["workspace"]["main_sketch"], "Blink.ino")
+            self.assertEqual([source["path"] for source in payload["sources"]], ["Blink.ino", "Pins.h"])
+            self.assertTrue(payload["sources"][0]["sha256"])
+            self.assertTrue(payload["overrides"][1]["deleted"])
+
+    def test_stage_065_cache_key_changes_for_source_board_and_profile_state(self) -> None:
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "Blink"
+            workspace.mkdir()
+            sketch = workspace / "Blink.ino"
+            sketch.write_text("void setup() {}\nvoid loop() {}\n", encoding="utf-8")
+            summary = workspace_summary({"arduino_workspace_path": str(workspace), "arduino_fqbn": "arduino:avr:uno"})
+            profile = {"build_flags": ["-DDEBUG"], "build_properties": [], "serial_port": "COM3"}
+
+            base = compile_cache_key(workspace, summary, profile, "arduino-cli", None)
+            changed_board = compile_cache_key(workspace, {**summary, "fqbn": "esp32:esp32:esp32"}, profile, "arduino-cli", None)
+            changed_profile = compile_cache_key(workspace, summary, {**profile, "build_flags": ["-DRELEASE"]}, "arduino-cli", None)
+
+            sketch.write_text("void setup() { pinMode(13, OUTPUT); }\nvoid loop() {}\n", encoding="utf-8")
+            changed_summary = workspace_summary({"arduino_workspace_path": str(workspace), "arduino_fqbn": "arduino:avr:uno"})
+            changed_source = compile_cache_key(workspace, changed_summary, profile, "arduino-cli", None)
+
+            self.assertEqual(len({base, changed_board, changed_profile, changed_source}), 4)
+
+    def test_stage_065_workspace_identity_hash_is_stable_and_sanitized(self) -> None:
+        path_text = r"C:\Users\Admin\Desktop\SecretSketch"
+
+        first = workspace_identity_hash(path_text)
+        second = workspace_identity_hash(path_text)
+        other = workspace_identity_hash(r"C:\Users\Admin\Desktop\OtherSketch")
+
+        self.assertEqual(first, second)
+        self.assertEqual(len(first), 16)
+        self.assertNotEqual(first, other)
+        self.assertNotIn("SecretSketch", first)
+
     def test_compile_cache_clear_result_and_cached_runtime_feedback(self) -> None:
         clear_arduino_compile_cache()
         from talos.arduino import store_compile_result
@@ -3742,6 +3845,187 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("scan", summary)
         self.assertGreaterEqual(summary["scan"]["timing_ms"], 0)
         self.assertEqual(workspace_payload["source_tab_count"], 3)
+
+    def test_stage_065_runtime_core_tracks_verify_cancel_and_cache_tasks(self) -> None:
+        from talos.runtime_core import TalosRuntimeCore
+        from talos.task_orchestrator import TaskOrchestrator
+
+        class FakeArduinoTarget:
+            target_id = "arduino"
+            target_name = "Arduino"
+            capabilities = ("workspace",)
+            actions = ()
+            implemented = True
+
+            def workspace_summary(self, config: dict[str, object]) -> dict[str, object]:
+                return {
+                    "valid": True,
+                    "path": str(config.get("arduino_workspace_path") or "C:/Sketch"),
+                    "fqbn": str(config.get("arduino_fqbn") or "esp32:esp32:esp32"),
+                    "main_sketch": "Sketch.ino",
+                }
+
+            def verify(self, config: dict[str, object], overrides: dict[str, str] | None = None) -> dict[str, object]:
+                return {
+                    "ok": True,
+                    "status": "passed",
+                    "issues": [],
+                    "timings": {"total": 1},
+                    "cache": {"hit": False},
+                    "profile_readiness": {"ready": True},
+                }
+
+            def cancel_verify(self) -> dict[str, object]:
+                return {"ok": True, "status": "cancel_requested"}
+
+            def clear_verify_cache(self) -> dict[str, object]:
+                return {"ok": True, "cleared": 2}
+
+        config = {"arduino_workspace_path": "C:/Sketch", "arduino_fqbn": "esp32:esp32:esp32"}
+        core = TalosRuntimeCore(arduino_target=FakeArduinoTarget(), task_orchestrator=TaskOrchestrator())
+
+        with patch("talos.runtime_core.load_config", return_value=dict(config)), \
+            patch("talos.runtime_core.save_config"), \
+            patch("talos.runtime_core.record_verify"), \
+            patch("talos.runtime_core.record_diagnostic"), \
+            patch("talos.runtime_core.log_event"):
+            verify = core.verify_arduino({"source": "manual"})
+            cancel = core.cancel_verify()
+            cleared = core.clear_verify_cache()
+
+        snapshot = core.task_snapshot()
+        recent = snapshot["recent"]
+        self.assertTrue(verify["ok"])
+        self.assertTrue(cancel["ok"])
+        self.assertEqual(cleared["cleared"], 2)
+        self.assertEqual(snapshot["counts"]["recent"], 3)
+        self.assertEqual([task["kind"] for task in recent], [
+            "arduino.verify.cache_clear",
+            "arduino.verify",
+            "arduino.verify",
+        ])
+        self.assertEqual(recent[0]["status"], "cleared")
+        self.assertEqual(recent[1]["status"], "cancel_requested")
+        self.assertEqual(recent[2]["status"], "passed")
+
+        orchestrator_source = (Path(__file__).parents[1] / "talos" / "task_orchestrator.py").read_text(encoding="utf-8")
+        self.assertNotIn("Start-Process", orchestrator_source)
+        self.assertNotIn("cmd.exe", orchestrator_source.lower())
+        self.assertNotIn("powershell", orchestrator_source.lower())
+        self.assertNotIn("import subprocess", orchestrator_source)
+
+    def test_stage_065_codex_retry_status_is_tracked_without_replay(self) -> None:
+        from talos.runtime_core import TalosRuntimeCore
+        from talos.task_orchestrator import TaskOrchestrator
+
+        class FakeArduinoTarget:
+            target_id = "arduino"
+            target_name = "Arduino"
+            capabilities = ("workspace",)
+            actions = ()
+            implemented = True
+
+            def workspace_summary(self, config: dict[str, object]) -> dict[str, object]:
+                return {"valid": True, "path": "C:/Sketch", "fqbn": "esp32:esp32:esp32", "main_sketch": "Sketch.ino"}
+
+            def workspace_map(self, config: dict[str, object], latest_verify: dict[str, object] | None = None) -> dict[str, object]:
+                return {"files": [], "source_tab_count": 0}
+
+            def context_package(
+                self,
+                config: dict[str, object],
+                active_file: dict[str, object],
+                verify_context: str,
+                allow_edits: bool,
+                message: str,
+                latest_verify: dict[str, object] | None,
+            ) -> dict[str, object]:
+                return {"active_file": {"path": "Sketch.ino", "included": True}}
+
+        class FakeRetryCodexProvider:
+            runtime_id = "codex"
+            runtime_name = "Codex"
+            implemented = True
+
+            def metadata(self) -> dict[str, object]:
+                return {"runtime_id": "codex", "runtime_name": "Codex", "implemented": True}
+
+            def selected_payload(self, config: dict[str, object], *, force: bool = False) -> tuple[dict[str, object], dict[str, object], dict[str, object]]:
+                return {}, {"health": {"status": "ready"}}, {"blocked": False}
+
+            def send_message(self, *args: object, **kwargs: object) -> dict[str, object]:
+                return {"ok": False, "status": "retryable", "error": "transient disconnect"}
+
+        core = TalosRuntimeCore(
+            arduino_target=FakeArduinoTarget(),
+            codex_provider=FakeRetryCodexProvider(),
+            task_orchestrator=TaskOrchestrator(),
+        )
+
+        with patch("talos.runtime_core.load_config", return_value={}), \
+            patch("talos.runtime_core.record_codex_turn"), \
+            patch("talos.runtime_core.latest_verify_for_workspace", return_value=None):
+            result, ok = core.codex_message({"message": "Review", "allow_edits": True})
+
+        latest = core.task_snapshot()["recent"][0]
+        self.assertFalse(ok)
+        self.assertEqual(result["status"], "retryable")
+        self.assertEqual(latest["kind"], "codex.turn")
+        self.assertEqual(latest["status"], "blocked")
+        self.assertEqual(latest["metadata"]["replay_guard"], "manual_send_required")
+
+    def test_stage_065_codex_reconnect_blocked_is_tracked_without_replay(self) -> None:
+        from talos.runtime_core import TalosRuntimeCore
+        from talos.task_orchestrator import TaskOrchestrator
+
+        class FakeArduinoTarget:
+            target_id = "arduino"
+            target_name = "Arduino"
+            capabilities = ("workspace",)
+            actions = ()
+            implemented = True
+
+            def workspace_summary(self, config: dict[str, object]) -> dict[str, object]:
+                return {"valid": True, "path": "C:/Sketch", "fqbn": "esp32:esp32:esp32", "main_sketch": "Sketch.ino"}
+
+        class FakeBlockedCodexProvider:
+            runtime_id = "codex"
+            runtime_name = "Codex"
+            implemented = True
+
+            def metadata(self) -> dict[str, object]:
+                return {"runtime_id": "codex", "runtime_name": "Codex", "implemented": True}
+
+            def selected_payload(self, config: dict[str, object], *, force: bool = False) -> tuple[dict[str, object], dict[str, object], dict[str, object]]:
+                return {}, {"health": {"status": "missing"}}, {
+                    "blocked": True,
+                    "code": "missing_runtime",
+                    "detail": "No Codex runtime selected.",
+                }
+
+        core = TalosRuntimeCore(
+            arduino_target=FakeArduinoTarget(),
+            codex_provider=FakeBlockedCodexProvider(),
+            task_orchestrator=TaskOrchestrator(),
+        )
+
+        with patch("talos.runtime_core.load_config", return_value={}), \
+            patch("talos.runtime_core.record_codex_turn"):
+            result, ok = core.codex_reconnect()
+
+        latest = core.task_snapshot()["recent"][0]
+        self.assertFalse(ok)
+        self.assertTrue(result["runtime_blocked"])
+        self.assertEqual(latest["kind"], "codex.reconnect")
+        self.assertEqual(latest["status"], "runtime_blocked")
+        self.assertEqual(latest["metadata"]["replay_guard"], "manual_send_required")
+
+    def test_stage_065_state_payload_exposes_task_snapshot(self) -> None:
+        source = (Path(__file__).parents[1] / "talos" / "state_service.py").read_text(encoding="utf-8")
+
+        self.assertIn('"tasks":', source)
+        self.assertIn("runtime.task_snapshot()", source)
+        self.assertIn("TASK_ORCHESTRATOR.snapshot()", source)
 
 if __name__ == "__main__":
     unittest.main()
