@@ -22,13 +22,25 @@ Arduino IDE is the first reference target. Talos must not become an Arduino-only
 
 ## Current Branch And Version
 
-- Current branch: `develop/0.6.5`
-- Current completed version in progress: `0.6.5 Beta`
-- Next version prepared: `0.7.0 Beta`
+- Current branch: `develop/0.7.0`
+- Last closed version: `0.6.5 Beta`
+- Active version to continue: `0.7.0 Beta`
 - Active roadmap: `dev_notes/roadmap/TALOS_ROADMAP.md`
 - Active completed pipeline: `dev_notes/pipelines/TALOS_PIPELINE_065.md`
-- Next pipeline: `dev_notes/pipelines/TALOS_PIPELINE_070.md`
+- Active pipeline: `dev_notes/pipelines/TALOS_PIPELINE_070.md`
 - Current evidence: `dev_notes/evidence/TALOS_065_EVIDENCE.md`
+- Next evidence file to create/update: `dev_notes/evidence/TALOS_070_EVIDENCE.md`
+
+## Git Handoff State
+
+0.6.5 has been closed on GitHub:
+
+- Commit: `c983ffc` (`Complete Talos 0.6.5 handoff`)
+- Develop branch pushed: `origin/develop/0.6.5`
+- Release branch pushed: `origin/release/0.6.5-beta`
+- Tag pushed: `origin/v0.6.5-beta`
+
+0.7.0 has been opened locally as `develop/0.7.0`. If this note is being read after the branch handoff commit, `origin/develop/0.7.0` should also exist.
 
 ## Important Working Rules
 
@@ -62,7 +74,7 @@ Latest validation:
 
 ## Current Uncommitted Work
 
-At the handoff point, these paths had uncommitted changes or new files:
+At the 0.6.5 handoff point, these paths were committed into `c983ffc`:
 
 ```text
 M  config/default_config.json
@@ -77,7 +89,7 @@ M  tests/test_desktop_app.py
 ?? talos/runtime_discovery.py
 ```
 
-Before continuing, run:
+Before continuing 0.7.0, run:
 
 ```powershell
 git status --short
@@ -151,7 +163,7 @@ Do not silently mark a stage complete if the work was only planned. A stage may 
 
 ## First Recommended Next Step
 
-If the user asks ChatGPT to continue implementation, start with `dev_notes/pipelines/TALOS_PIPELINE_070.md` Stage 0, unless the user explicitly asks to finish 0.6.5 repository hygiene first.
+If the user asks ChatGPT to continue implementation, start with `dev_notes/pipelines/TALOS_PIPELINE_070.md` Stage 0.
 
 Use lightweight checks first:
 
