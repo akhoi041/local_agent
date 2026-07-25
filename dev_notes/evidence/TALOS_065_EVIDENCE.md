@@ -167,3 +167,83 @@ Stage 5 centralizes long-running verify and Codex operation state behind `talos.
 - `python -B -m unittest -q tests.test_desktop_app`: passed, 154 tests.
 
 Conclusion: task orchestration is centralized and does not leak transient process behavior into the user experience.
+
+## Stage 6 - Runtime Provider Cleanup
+
+Status: complete.
+
+Stage 6 moves Codex runtime candidate discovery behind an explicit provider configuration boundary so future runtime independence work is not hard-wired to Python-only assumptions or a single discovery path.
+
+### Implementation
+
+- Added `talos/runtime_discovery.py` as the provider-configured runtime discovery boundary.
+- Runtime candidates now come from explicit providers:
+  - `standalone_path`: searches configured PATH commands such as `codex`.
+  - `user_selected_path`: uses the path selected in Talos Settings.
+  - `vscode_extension_adjacent`: remains a configurable fallback only, not the primary ownership model.
+- Added `candidate_providers` to default and normalized runtime configuration.
+- Kept manual pin behavior unchanged: pinned path/hash/version still select the expected runtime and report change warnings when the runtime changes.
+- Missing runtime remains informational for Codex readiness and does not imply Arduino workspace failure.
+- Runtime configuration normalization drops credential-like fields; Talos persists only non-secret metadata such as paths, hashes, versions, fallback policy, timeout, and provider switches.
+
+### Validation
+
+- Provider enable/disable discovery test: passed.
+- Missing runtime metadata and runtime gate test: passed.
+- Invalid runtime health metadata test: passed.
+- Healthy pinned runtime metadata test: passed.
+- Credential-like runtime config field rejection test: passed.
+
+Conclusion: runtime provider behavior is clean enough for later runtime-independence work while preserving current Arduino and manual pin behavior.
+
+## Stage 7 - Regression And Performance Gate
+
+Status: complete.
+
+Stage 7 adds a repeatable synthetic regression/performance gate for 0.6.5 so the Python hot-path split is validated without launching GUI apps, requiring network access, or capturing Codex credentials.
+
+### Gate coverage
+
+- Automated regression: baseline operations are all measured and the Python/native boundary contract remains intact.
+- Source/debug launch: `desktop_app.py` remains the source/debug launcher.
+- Arduino detection/select/file inspect smoke: the synthetic Arduino workspace exposes one `.ino` main sketch plus companion `.h`/`.cpp` tabs.
+- Sandbox verify smoke: the verify plan contains sandbox copy intent and a cache key.
+- Codex context package smoke: the context package includes workspace, active file, profile, verify, and review data.
+- Performance containment: synthetic hot-path measurements remain below conservative local budgets.
+
+### Validation
+
+- `python -B -m py_compile talos\stage_baseline.py tests\test_desktop_app.py`: passed.
+- Targeted Stage 7 regression gate test: passed.
+- Full `tests.test_desktop_app` regression: passed, 158 tests.
+- `git diff --check`: passed with expected CRLF normalization warnings only.
+
+Conclusion: 0.6.5 preserves the Arduino workflow while containing Python hot paths behind measured boundaries.
+
+## Stage 8 - 0.7.0 Handoff
+
+Status: complete.
+
+Stage 8 closes 0.6.5 as an architecture-decomposition release and hands the work to 0.7.0, where Arduino becomes the first product target ported onto the adapter/core contracts.
+
+### Handoff updates
+
+- Updated `dev_notes/roadmap/TALOS_ROADMAP.md`: 0.6.5 is complete, and 0.7.0 is ready to start.
+- Created `dev_notes/pipelines/TALOS_PIPELINE_070.md` as the Arduino adapter-port pipeline.
+- Kept 0.7.0 scoped to Arduino only; MATLAB, STM32CubeIDE, KiCad, SolidWorks, and other targets remain out of scope.
+
+### Python-only paths accepted during 0.7.0
+
+- `desktop_app.py`: source/debug launcher and WebView host.
+- `talos/server.py`: local HTTP compatibility bridge for the current frontend.
+- `talos/arduino.py`: legacy Arduino workflow owner until adapter parity lands in 0.7.0.
+- `talos/codex_bridge.py`: Codex workflow bridge until adapter-owned context payloads land.
+- `talos/native_bridge.py` and `talos/runtime_discovery.py`: native/runtime compatibility glue while the long-term split matures.
+- Tests, scripts, and `dev_notes`: development tooling, not product runtime ownership.
+
+### Validation
+
+- Stage 7 full regression already passed before this handoff: 158 tests.
+- Stage 8 only changed roadmap, pipeline, and evidence documents; no full regression rerun was required.
+
+Conclusion: 0.7.0 can focus on Arduino adapter/product behavior rather than another architecture cleanup pass.

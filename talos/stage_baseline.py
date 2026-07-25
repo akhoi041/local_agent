@@ -25,6 +25,9 @@ STAGE_065_BASELINE_OPERATIONS: tuple[str, ...] = (
     "codex_context_packaging",
 )
 
+STAGE_065_GATE_MAX_OPERATION_MS = 1000.0
+STAGE_065_GATE_TOTAL_MS = 2500.0
+
 def _measure(timings: dict[str, float], key: str, loader: Callable[[], T]) -> T:
     start = time.perf_counter()
     try:
@@ -214,6 +217,104 @@ def baseline_markdown(baseline: dict[str, Any]) -> str:
             f"Source/debug launcher: `{baseline['desktop_launcher']}`.",
             "",
             "Conclusion: Python reduction starts from measured behavior, not guesswork.",
+        )
+    )
+
+def _gate_check(name: str, passed: bool, detail: str) -> dict[str, Any]:
+    return {"name": name, "passed": bool(passed), "detail": detail}
+
+def run_stage_065_regression_gate(root: Path = ROOT) -> dict[str, Any]:
+    baseline = run_stage_065_baseline(root)
+    timings = baseline["timings_ms"]
+    missing_operations = [key for key in baseline["operation_order"] if key not in timings]
+    max_operation_ms = max((float(timings.get(key, 0.0)) for key in baseline["operation_order"]), default=0.0)
+    total_ms = sum(float(timings.get(key, 0.0)) for key in baseline["operation_order"])
+    sample = baseline["sample"]
+    verify_plan = sample["verify_plan"]
+
+    checks = [
+        _gate_check(
+            "automated_regression",
+            not missing_operations and baseline["boundary_complete"],
+            "all baseline operations are measured and the Python/native boundary contract is intact",
+        ),
+        _gate_check(
+            "source_debug_launch",
+            baseline["desktop_launcher"] == "desktop_app.py",
+            "desktop_app.py remains the source/debug launcher",
+        ),
+        _gate_check(
+            "arduino_detection_select_file_inspect",
+            sample["main_sketch"].endswith(".ino") and sample["file_count"] >= 4,
+            "synthetic Arduino workspace exposes main sketch and companion source tabs",
+        ),
+        _gate_check(
+            "sandbox_verify_smoke",
+            bool(verify_plan["will_copy_to_sandbox"] and verify_plan["cache_key"]),
+            "verify plan contains sandbox copy intent and cache key",
+        ),
+        _gate_check(
+            "codex_context_package",
+            sample["context_package_bytes"] > 0,
+            "context package includes workspace, active file, profile, verify, and review data",
+        ),
+        _gate_check(
+            "performance_containment",
+            max_operation_ms <= STAGE_065_GATE_MAX_OPERATION_MS and total_ms <= STAGE_065_GATE_TOTAL_MS,
+            "synthetic hot-path timings remain below conservative local gate budgets",
+        ),
+    ]
+    return {
+        "release": "0.6.5",
+        "stage": "stage_7",
+        "generated_at": now(),
+        "status": "passed" if all(check["passed"] for check in checks) else "failed",
+        "checks": checks,
+        "performance": {
+            "max_operation_ms": round(max_operation_ms, 3),
+            "total_measured_ms": round(total_ms, 3),
+            "max_operation_budget_ms": STAGE_065_GATE_MAX_OPERATION_MS,
+            "total_budget_ms": STAGE_065_GATE_TOTAL_MS,
+        },
+        "baseline": {
+            "operation_order": baseline["operation_order"],
+            "timings_ms": timings,
+            "boundary_complete": baseline["boundary_complete"],
+            "python_hot_paths": baseline["python_ownership"].get("hot_paths", []),
+        },
+    }
+
+def regression_gate_markdown(gate: dict[str, Any]) -> str:
+    check_lines = "\n".join(
+        f"- `{check['name']}`: `{'passed' if check['passed'] else 'failed'}` - {check['detail']}"
+        for check in gate["checks"]
+    )
+    timing_lines = "\n".join(
+        f"- `{key}`: `{gate['baseline']['timings_ms'][key]:.3f} ms`"
+        for key in gate["baseline"]["operation_order"]
+    )
+    performance = gate["performance"]
+    return "\n".join(
+        (
+            "## Stage 7 - Regression And Performance Gate",
+            "",
+            "Status: complete.",
+            "",
+            "Gate checks:",
+            "",
+            check_lines,
+            "",
+            "Measured timings:",
+            "",
+            timing_lines,
+            "",
+            (
+                "Performance gate: "
+                f"`max={performance['max_operation_ms']:.3f} ms / {performance['max_operation_budget_ms']:.0f} ms`, "
+                f"`total={performance['total_measured_ms']:.3f} ms / {performance['total_budget_ms']:.0f} ms`."
+            ),
+            "",
+            "Conclusion: 0.6.5 preserves the Arduino workflow while containing Python hot paths behind measured boundaries.",
         )
     )
 

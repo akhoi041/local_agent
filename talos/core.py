@@ -51,6 +51,18 @@ CODEX_RUNTIME_DEFAULTS: dict[str, Any] = {
     "fallback_policy": "extension_adjacent",
     "extension_adjacent_path": "",
     "health_timeout_sec": 2.0,
+    "candidate_providers": {
+        "standalone_path": {
+            "enabled": True,
+            "commands": ["codex"],
+        },
+        "user_selected_path": {
+            "enabled": True,
+        },
+        "vscode_extension_adjacent": {
+            "enabled": True,
+        },
+    },
 }
 
 DEFAULT_APP_IDENTITY: dict[str, str] = {
@@ -153,6 +165,30 @@ def migrate_state_document(
             pass
     return migrated
 
+def _config_bool(value: Any, default: bool = True) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() not in {"0", "false", "no", "off"}
+    return default
+
+def _runtime_provider_config(runtime: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    defaults = CODEX_RUNTIME_DEFAULTS["candidate_providers"]
+    raw = runtime.get("candidate_providers") if isinstance(runtime.get("candidate_providers"), dict) else {}
+    providers: dict[str, dict[str, Any]] = {}
+    for provider, fallback in defaults.items():
+        source = raw.get(provider) if isinstance(raw.get(provider), dict) else {}
+        provider_config: dict[str, Any] = {
+            "enabled": _config_bool(source.get("enabled"), bool(fallback.get("enabled", True))),
+        }
+        if provider == "standalone_path":
+            commands = source.get("commands", fallback.get("commands", ["codex"]))
+            values = commands if isinstance(commands, list) else fallback.get("commands", ["codex"])
+            safe_commands = [str(item).strip()[:80] for item in values[:8] if str(item).strip()]
+            provider_config["commands"] = safe_commands or ["codex"]
+        providers[provider] = provider_config
+    return providers
+
 def _normalize_config(data: Any) -> dict[str, Any]:
     source = dict(data) if isinstance(data, dict) else {}
     config = DEFAULT_CONFIG | source
@@ -184,6 +220,7 @@ def _normalize_config(data: Any) -> dict[str, Any]:
         "fallback_policy": str(runtime.get("fallback_policy") or CODEX_RUNTIME_DEFAULTS["fallback_policy"]).strip(),
         "extension_adjacent_path": str(runtime.get("extension_adjacent_path") or "").strip(),
         "health_timeout_sec": max(0.2, min(10.0, timeout_value)),
+        "candidate_providers": _runtime_provider_config(runtime),
     }
     if config["codex_runtime"]["fallback_policy"] not in {"extension_adjacent", "none"}:
         config["codex_runtime"]["fallback_policy"] = CODEX_RUNTIME_DEFAULTS["fallback_policy"]

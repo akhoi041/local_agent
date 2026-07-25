@@ -11,7 +11,21 @@
     "pinned_version": "",
     "fallback_policy": "extension_adjacent",
     "extension_adjacent_path": "",
-    "health_timeout_sec": 2.0
+    "health_timeout_sec": 2.0,
+    "candidate_providers": {
+      "standalone_path": {
+        "enabled": true,
+        "commands": [
+          "codex"
+        ]
+      },
+      "user_selected_path": {
+        "enabled": true
+      },
+      "vscode_extension_adjacent": {
+        "enabled": true
+      }
+    }
   },
   "diagnostics": {
     "enabled": false,

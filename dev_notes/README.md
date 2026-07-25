@@ -5,6 +5,7 @@ Internal planning records for Talos. These files are not packaged user documenta
 - `roadmap/TALOS_ROADMAP.md`: source of truth for version-level product direction.
 - `pipelines/`: source of truth for version-specific implementation stages and exit conditions.
 - `evidence/`: one version-level evidence file per release track. Stage details stay in the matching pipeline.
+- `CHATGPT_HANDOFF.md`: temporary handoff note for continuing work with ChatGPT and later Codex audit.
 - `archive/`: inactive planning notes that are no longer referenced by runtime, packaging, tests, or active pipelines.
 
 User, release, legal, support, and trust documentation stays in `../docs`.
