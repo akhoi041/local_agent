@@ -106,7 +106,11 @@ from talos.diagnostics import diagnostics_export, diagnostics_settings, record_d
 from talos.detection import arduino_detection_snapshot, detection_state_from_report
 from talos.performance import performance_guardrails
 from talos.python_ownership import HOT_PATH_MIGRATION_TARGETS, boundary_check, ownership_by_module, ownership_report
-from talos.stage_baseline import STAGE_065_BASELINE_OPERATIONS, run_stage_065_baseline
+from talos.stage_baseline import (
+    STAGE_065_BASELINE_OPERATIONS,
+    run_stage_065_baseline,
+    run_stage_065_regression_gate,
+)
 from talos.runtime_service import codex_status_payload, runtime_event_detail, runtime_gate, runtime_outcomes
 from talos.state_service import state_payload
 from talos.targets import TargetRegistry
@@ -1650,6 +1654,11 @@ class TalosArduinoTests(unittest.TestCase):
                 "fallback_policy": "extension_adjacent",
                 "extension_adjacent_path": "",
                 "health_timeout_sec": 2.0,
+                "candidate_providers": {
+                    "standalone_path": {"enabled": True, "commands": ["codex"]},
+                    "user_selected_path": {"enabled": True},
+                    "vscode_extension_adjacent": {"enabled": True},
+                },
             },
         )
         self.assertEqual(default_config["diagnostics"], {"enabled": False, "allow_remote_upload": False})
@@ -2145,6 +2154,117 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertTrue(ready["ready"])
         self.assertIn("auth_readiness_unverified", ready["warnings"])
 
+    def test_stage_065_runtime_discovery_respects_provider_configuration(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            path_runtime = root / "path-codex.exe"
+            user_runtime = root / "user-codex.exe"
+            extension_runtime = root / "extension-codex.exe"
+            for item in (path_runtime, user_runtime, extension_runtime):
+                item.write_text("runtime", encoding="utf-8")
+
+            candidates = codex_runtime.discover_runtime_candidates(
+                {
+                    "codex_runtime": {
+                        "selected_path": str(user_runtime),
+                        "extension_adjacent_path": str(extension_runtime),
+                        "fallback_policy": "extension_adjacent",
+                        "candidate_providers": {
+                            "standalone_path": {"enabled": False, "commands": ["codex"]},
+                            "user_selected_path": {"enabled": True},
+                            "vscode_extension_adjacent": {"enabled": False},
+                        },
+                    }
+                },
+                which_func=lambda name: str(path_runtime) if name == "codex" else None,
+            )
+            self.assertEqual(
+                [candidate["provider"] for candidate in candidates],
+                [codex_runtime.PROVIDER_USER_SELECTED_PATH],
+            )
+
+            disabled = codex_runtime.discover_runtime_candidates(
+                {
+                    "codex_runtime": {
+                        "selected_path": str(user_runtime),
+                        "candidate_providers": {
+                            "standalone_path": {"enabled": False},
+                            "user_selected_path": {"enabled": False},
+                            "vscode_extension_adjacent": {"enabled": False},
+                        },
+                    }
+                },
+                which_func=lambda name: str(path_runtime),
+            )
+            self.assertEqual(disabled, [])
+
+    def test_stage_065_runtime_metadata_covers_missing_invalid_pinned_and_healthy(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            missing = codex_runtime.runtime_status(
+                {"codex_runtime": {"selected_path": str(root / "missing.exe"), "fallback_policy": "none"}},
+                force=True,
+                which_func=lambda name: None,
+            )
+            self.assertEqual(missing["active"]["provider"], codex_runtime.PROVIDER_NONE)
+            self.assertEqual(missing["health"]["status"], "missing")
+            self.assertIn("missing_runtime", missing["warnings"])
+            missing_gate = runtime_gate(codex_runtime.runtime_state_summary(missing))
+            self.assertTrue(missing_gate["blocked"])
+            self.assertEqual(missing_gate["code"], "runtime_missing")
+
+            runtime = root / "codex.exe"
+            runtime.write_text("runtime-a", encoding="utf-8")
+            invalid = codex_runtime.runtime_status(
+                {"codex_runtime": {"selected_path": str(runtime), "fallback_policy": "none"}},
+                force=True,
+                which_func=lambda name: None,
+                runner=lambda path, timeout: (_ for _ in ()).throw(OSError("bad runtime")),
+            )
+            self.assertEqual(invalid["health"]["status"], "failed")
+            self.assertIn("codex_runtime_health_failed", invalid["warnings"])
+
+            runtime.write_text("runtime-b", encoding="utf-8")
+            digest = codex_runtime.file_sha256(str(runtime))
+            healthy = codex_runtime.runtime_status(
+                {
+                    "codex_runtime": {
+                        "selected_path": str(runtime),
+                        "fallback_policy": "none",
+                        "pinned_path": str(runtime),
+                        "pinned_hash": digest,
+                    }
+                },
+                force=True,
+                which_func=lambda name: None,
+                runner=lambda path, timeout: {"returncode": 0, "stdout": "codex 0.6.5\n", "stderr": ""},
+            )
+            self.assertTrue(healthy["active"]["pinned"])
+            self.assertFalse(healthy["active"]["changed"])
+            self.assertEqual(healthy["health"]["status"], "ready")
+            self.assertEqual(healthy["active"]["version"], "codex 0.6.5")
+
+    def test_stage_065_runtime_config_drops_credential_like_fields(self) -> None:
+        normalized = codex_runtime.runtime_config({
+            "codex_runtime": {
+                "selected_path": "C:\\Tools\\codex.exe",
+                "token": "secret-token",
+                "api_key": "secret-key",
+                "candidate_providers": {
+                    "standalone_path": {
+                        "enabled": True,
+                        "commands": ["codex"],
+                        "token": "secret-token",
+                    }
+                },
+            }
+        })
+        dumped = json.dumps(normalized)
+        self.assertNotIn("secret-token", dumped)
+        self.assertNotIn("secret-key", dumped)
+        self.assertNotIn('"token"', dumped)
+        self.assertNotIn('"api_key"', dumped)
+
     def test_stage_050_codex_status_uses_runtime_gate_without_starting_bridge(self) -> None:
         runtime_probe = {
             "active": {"provider": "none", "display_path": "", "warnings": ["missing_runtime"], "limitations": []},
@@ -2350,6 +2470,27 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertTrue(
             any(entry["module"] == "talos.arduino" for entry in baseline["python_ownership"]["hot_paths"])
         )
+
+    def test_stage_065_regression_gate_preserves_arduino_workflow(self) -> None:
+        gate = run_stage_065_regression_gate(Path(__file__).parents[1])
+
+        self.assertEqual(gate["release"], "0.6.5")
+        self.assertEqual(gate["stage"], "stage_7")
+        self.assertEqual(gate["status"], "passed", gate)
+        self.assertTrue(all(check["passed"] for check in gate["checks"]), gate["checks"])
+        check_names = {check["name"] for check in gate["checks"]}
+        self.assertIn("automated_regression", check_names)
+        self.assertIn("source_debug_launch", check_names)
+        self.assertIn("arduino_detection_select_file_inspect", check_names)
+        self.assertIn("sandbox_verify_smoke", check_names)
+        self.assertIn("codex_context_package", check_names)
+        self.assertIn("performance_containment", check_names)
+        self.assertLessEqual(
+            gate["performance"]["max_operation_ms"],
+            gate["performance"]["max_operation_budget_ms"],
+        )
+        for operation in STAGE_065_BASELINE_OPERATIONS:
+            self.assertIn(operation, gate["baseline"]["timings_ms"])
 
     def test_stage_065_detection_snapshot_uses_native_boundary_when_available(self) -> None:
         class FakeBoundary:

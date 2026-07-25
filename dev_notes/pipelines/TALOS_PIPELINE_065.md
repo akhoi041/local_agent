@@ -129,24 +129,31 @@ Stage 5 implementation note:
 
 Purpose: make runtime integration independent from Python-only discovery assumptions.
 
-- [ ] Move runtime discovery candidates behind provider configuration.
-- [ ] Keep manually pinned runtime path behavior.
-- [ ] Keep missing-runtime state informational, not a broken Arduino state.
-- [ ] Confirm no credentials or token material are persisted.
-- [ ] Add tests for missing, pinned, invalid, and healthy runtime metadata.
+- [x] Move runtime discovery candidates behind provider configuration.
+- [x] Keep manually pinned runtime path behavior.
+- [x] Keep missing-runtime state informational, not a broken Arduino state.
+- [x] Confirm no credentials or token material are persisted.
+- [x] Add tests for missing, pinned, invalid, and healthy runtime metadata.
 
 Exit condition: runtime provider behavior is clean enough for later independence work.
+
+Stage 6 implementation note:
+
+- Added `talos.runtime_discovery` as the provider-configured runtime candidate boundary.
+- Runtime discovery now supports standalone PATH commands, user-selected paths, and extension-adjacent fallback as explicit providers.
+- Missing runtime remains a Codex-runtime readiness state and does not downgrade Arduino workspace readiness.
+- Runtime config normalization drops credential-like fields and persists only paths, hashes, versions, health timeout, fallback policy, and provider switches.
 
 ## Stage 7 - Regression And Performance Gate
 
 Purpose: prove the decomposition did not damage product behavior.
 
-- [ ] Run automated regression.
-- [ ] Run source/debug launch check.
-- [ ] Run Arduino detection/select/file inspect smoke.
-- [ ] Run sandbox verify smoke.
-- [ ] Run Codex context package smoke without requiring credential capture.
-- [ ] Record performance comparison in `dev_notes/evidence/TALOS_065_EVIDENCE.md`.
+- [x] Run automated regression.
+- [x] Run source/debug launch check.
+- [x] Run Arduino detection/select/file inspect smoke.
+- [x] Run sandbox verify smoke.
+- [x] Run Codex context package smoke without requiring credential capture.
+- [x] Record performance comparison in `dev_notes/evidence/TALOS_065_EVIDENCE.md`.
 
 Exit condition: 0.6.5 improves or contains Python hot paths while preserving the working app.
 
@@ -154,9 +161,11 @@ Exit condition: 0.6.5 improves or contains Python hot paths while preserving the
 
 Purpose: hand the decomposed architecture to the Arduino adapter-port release.
 
-- [ ] Update roadmap status for 0.6.5 completion.
-- [ ] Prepare or update `dev_notes/pipelines/TALOS_PIPELINE_070.md` based on actual architecture state.
-- [ ] List any remaining Python-only paths that are acceptable during 0.7.0.
-- [ ] Record final evidence in `dev_notes/evidence/TALOS_065_EVIDENCE.md`.
+- [x] Update roadmap status for 0.6.5 completion.
+- [x] Prepare or update `dev_notes/pipelines/TALOS_PIPELINE_070.md` based on actual architecture state.
+- [x] List any remaining Python-only paths that are acceptable during 0.7.0.
+- [x] Record final evidence in `dev_notes/evidence/TALOS_065_EVIDENCE.md`.
 
 Exit condition: 0.7.0 can focus on Arduino adapter/product behavior rather than architecture cleanup.
+
+Stage 8 implementation note: updated the roadmap to mark 0.6.5 complete and 0.7.0 ready to start, created the 0.7.0 Arduino adapter-port pipeline, and recorded the acceptable Python compatibility paths for the 0.7.0 handoff.

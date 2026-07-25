@@ -121,8 +121,8 @@ Migration rules:
 | 0.5.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_050.md` | Completed Codex Runtime Manager foundation. |
 | 0.5.5 Beta | `dev_notes/pipelines/TALOS_PIPELINE_055.md` | Completed architecture pivot patch. |
 | 0.6.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_060.md` | Completed core runtime rewrite foundation with real shell/core/API/runtime/target boundaries. |
-| 0.6.5 Beta | `dev_notes/pipelines/TALOS_PIPELINE_065.md` | Ready to start Python decomposition and native/core extraction from measured 0.6.0 behavior. |
-| 0.7.0 Beta | Open as `dev_notes/pipelines/TALOS_PIPELINE_070.md` when version starts. | Planned Arduino adapter port on the new architecture. |
+| 0.6.5 Beta | `dev_notes/pipelines/TALOS_PIPELINE_065.md` | Completed Python decomposition and native/core boundary containment from measured 0.6.0 behavior. |
+| 0.7.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_070.md` | Ready to start Arduino adapter port on the new architecture. |
 | 0.7.5 Beta | Open as `dev_notes/pipelines/TALOS_PIPELINE_075.md` when version starts. | Planned Arduino workflow hardening. |
 | 0.8.0 Beta | Open as `dev_notes/pipelines/TALOS_PIPELINE_080.md` when version starts. | Planned Talos Core Complete gate. |
 | 0.9.0 Beta | Open as `dev_notes/pipelines/TALOS_PIPELINE_090.md` when version starts. | Planned runtime independence and product trust hardening. |
@@ -235,7 +235,7 @@ Result:
 
 ### 0.6.5 Beta - Python Decomposition
 
-Status: ready to start.
+Status: completed.
 
 Purpose:
 
@@ -247,9 +247,16 @@ Pipeline:
 
 - `dev_notes/pipelines/TALOS_PIPELINE_065.md`
 
+Result:
+
+- Added measured Stage 0 baseline and Stage 7 regression/performance gate for Arduino detection, workspace scan, file metadata, cache key generation, verify preparation, diff/hunk parsing, and Codex context packaging.
+- Moved process/window detection, workspace scanning, cache keys, diff/hunk behavior, task orchestration, and runtime discovery behind explicit native/core/provider boundaries.
+- Preserved `desktop_app.py` as the source/debug launcher and kept Python as compatibility/debug bridge where removal is not yet justified.
+- Handed off Arduino-specific product behavior to 0.7.0.
+
 ### 0.7.0 Beta - Arduino Adapter Port
 
-Status: planned.
+Status: ready to start.
 
 Purpose:
 
@@ -259,7 +266,7 @@ Purpose:
 
 Pipeline:
 
-- Open `dev_notes/pipelines/TALOS_PIPELINE_070.md` when 0.7.0 starts.
+- `dev_notes/pipelines/TALOS_PIPELINE_070.md`
 
 ### 0.7.5 Beta - Arduino Workflow Hardening
 
