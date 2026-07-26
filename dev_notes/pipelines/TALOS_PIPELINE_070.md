@@ -20,20 +20,24 @@ Release evidence: `dev_notes/evidence/TALOS_070_EVIDENCE.md`
 
 ## Exit Condition
 
-0.7.0 is complete when Arduino behavior is adapter-owned, parity-tested against the current working workflow, and ready for 0.7.5 daily-use hardening without another architecture cleanup stage.
+0.7.0 is complete when Arduino behavior is adapter-owned, parity-tested against the current working workflow, and explicitly handed off to 0.7.5 daily-use hardening without another architecture cleanup stage.
 
 Stage completion rule: every stage must include an adapter contract, parity test, or evidence note. Do not add MATLAB, STM32CubeIDE, KiCad, SolidWorks, or unrelated target work in this release.
+
+Version handoff rule: every Talos version pipeline must end with a handoff stage for the next planned version. The handoff stage is mandatory before opening the next branch.
 
 ## Stage 0 - Adapter Baseline And Scope Lock
 
 Purpose: freeze the Arduino parity target before moving behavior.
 
-- [ ] Confirm 0.6.5 Stage 8 handoff is complete.
-- [ ] Record current Arduino behavior surfaces: detection, sketch folder mapping, board/profile, file list, active file, verify, apply/save, rollback, and Codex context.
-- [ ] Confirm no new target products start in this release.
-- [ ] Create or update `dev_notes/evidence/TALOS_070_EVIDENCE.md`.
+- [x] Confirm 0.6.5 Stage 8 handoff is complete.
+- [x] Record current Arduino behavior surfaces: detection, sketch folder mapping, board/profile, file list, active file, verify, apply/save, rollback, and Codex context.
+- [x] Confirm no new target products start in this release.
+- [x] Create or update `dev_notes/evidence/TALOS_070_EVIDENCE.md`.
 
 Exit condition: 0.7.0 starts from a known Arduino parity surface.
+
+Stage 0 implementation note: recorded the 0.6.5 handoff, accepted compatibility paths, Arduino parity surfaces, and no-new-target scope lock in `dev_notes/evidence/TALOS_070_EVIDENCE.md`. This stage is documentation-only by design to avoid unnecessary app launches, network use, and full regression before code migration begins.
 
 ## Stage 1 - Arduino Adapter Contract
 
@@ -111,4 +115,16 @@ Purpose: prove the adapter port is complete enough for hardening.
 - [ ] Run Codex context package smoke without requiring credential capture.
 - [ ] Record final evidence in `dev_notes/evidence/TALOS_070_EVIDENCE.md`.
 
-Exit condition: 0.7.5 can focus on daily-use hardening rather than adapter migration.
+Exit condition: Arduino adapter migration is validated and ready for explicit handoff.
+
+## Stage 8 - 0.7.5 Handoff
+
+Purpose: hand the Arduino adapter port to the daily-use hardening release.
+
+- [ ] Update roadmap status for 0.7.0 completion.
+- [ ] Create or update `dev_notes/pipelines/TALOS_PIPELINE_075.md` based on the real Arduino adapter state.
+- [ ] List any remaining compatibility paths, fallbacks, or blocked items that 0.7.5 is allowed to carry.
+- [ ] Record final evidence in `dev_notes/evidence/TALOS_070_EVIDENCE.md`.
+- [ ] Confirm no new target product work starts before Arduino hardening has a clear 0.7.5 plan.
+
+Exit condition: 0.7.5 can focus on daily-use Arduino hardening rather than adapter migration or architecture cleanup.
