@@ -113,7 +113,11 @@ from talos.stage_baseline import (
 )
 from talos.runtime_service import codex_status_payload, runtime_event_detail, runtime_gate, runtime_outcomes
 from talos.state_service import state_payload
-from talos.targets import TargetRegistry
+from talos.targets import (
+    TARGET_ADAPTER_REQUIRED_METHODS,
+    TargetRegistry,
+    target_adapter_contract,
+)
 
 class TalosArduinoTests(unittest.TestCase):
     def test_local_api_contract_helpers_preserve_payload_shape(self) -> None:
@@ -160,6 +164,18 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("verify", [item["id"] for item in metadata[0]["actions"]])
         self.assertIn("verify", adapter.capabilities)
         self.assertIn("workspace_map", adapter.capabilities)
+        self.assertTrue(metadata[0]["contract"]["ok"])
+
+    def test_stage_070_arduino_adapter_satisfies_contract(self) -> None:
+        adapter = ArduinoTargetAdapter()
+        report = target_adapter_contract(adapter)
+
+        self.assertTrue(report["ok"], report)
+        self.assertEqual(report["missing_methods"], [])
+        self.assertEqual(report["missing_metadata"], [])
+        self.assertIn("verify_plan", TARGET_ADAPTER_REQUIRED_METHODS)
+        self.assertIn("context_package", TARGET_ADAPTER_REQUIRED_METHODS)
+        self.assertIn("rollback_file", TARGET_ADAPTER_REQUIRED_METHODS)
 
     def test_target_registry_blocks_placeholder_targets_by_default(self) -> None:
         class PlaceholderTarget:
@@ -179,6 +195,20 @@ class TalosArduinoTests(unittest.TestCase):
 
         registry.register(PlaceholderTarget(), allow_placeholder=True)
         self.assertEqual(registry.metadata()[0]["status"], "placeholder")
+
+    def test_target_registry_rejects_incomplete_implemented_adapter(self) -> None:
+        class IncompleteTarget:
+            target_id = "broken"
+            target_name = "Broken"
+            implemented = True
+            capabilities = ()
+            actions = ()
+
+            def context(self, *_args: object, **_kwargs: object) -> object:
+                raise NotImplementedError
+
+        with self.assertRaises(ValueError):
+            TargetRegistry().register(IncompleteTarget())
 
     def test_arduino_target_adapter_represents_workspace_context(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -218,6 +248,89 @@ class TalosArduinoTests(unittest.TestCase):
             self.assertEqual(workspace.name, "Blink.ino")
             self.assertEqual([item.name for item in artifacts], ["Blink.ino", "Driver.cpp"])
             self.assertEqual(profile.fqbn, "arduino:avr:uno")
+
+    def test_stage_070_arduino_adapter_contract_payload_shape(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp) / "Blink"
+            root.mkdir()
+            (root / "Blink.ino").write_text("void setup() {}\nvoid loop() {}\n", encoding="utf-8")
+            (root / "Driver.cpp").write_text("void driver() {}\n", encoding="utf-8")
+            adapter = ArduinoTargetAdapter()
+            config = {
+                "arduino_workspace_path": str(root),
+                "arduino_fqbn": "arduino:avr:uno",
+                "arduino_profiles": {},
+            }
+
+            files = adapter.file_metadata(config)
+            active = adapter.active_file(config, "Driver.cpp")
+            plan = adapter.verify_plan(config)
+
+            self.assertEqual([item.name for item in files], ["Blink.ino", "Driver.cpp"])
+            self.assertEqual(active.name, "Driver.cpp")
+            self.assertEqual(plan["target"], "arduino")
+            self.assertEqual(plan["workspace"], str(root))
+            self.assertEqual(plan["main_file"], "Blink.ino")
+            self.assertEqual(plan["fqbn"], "arduino:avr:uno")
+            self.assertTrue(plan["ready"])
+            self.assertTrue(plan["uses_python_fallback"])
+
+    def test_stage_070_arduino_adapter_routes_open_sketch_discovery(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            alpha = root / "Alpha"
+            beta = root / "Beta"
+            missing = root / "Missing"
+            alpha.mkdir()
+            beta.mkdir()
+            (alpha / "Alpha.ino").write_text("void setup() {}\n", encoding="utf-8")
+            (beta / "Beta.ino").write_text("void setup() {}\n", encoding="utf-8")
+            projects = [
+                {"sketch": "Alpha.ino", "path": str(alpha), "valid": True, "source": "window"},
+                {"sketch": "Beta.ino", "path": str(beta), "valid": True, "source": "window"},
+                {
+                    "sketch": "Unsaved.ino",
+                    "path": str(missing),
+                    "valid": False,
+                    "message": "Folder not found",
+                    "source": "window",
+                },
+            ]
+            adapter = ArduinoTargetAdapter()
+
+            with patch("talos.arduino_adapter.arduino.discover_arduino_projects", return_value=projects) as discover:
+                sketches = adapter.open_sketches({"arduino_search_roots": [str(root)]})
+                context = adapter.context({"arduino_search_roots": [str(root)]}, projects=sketches).to_dict()
+
+            self.assertEqual([item["sketch"] for item in sketches], ["Alpha.ino", "Beta.ino", "Unsaved.ino"])
+            self.assertEqual([item["main_file"] for item in context["workspaces"]], ["Alpha.ino", "Beta.ino", "Unsaved.ino"])
+            self.assertEqual([item["valid"] for item in context["workspaces"]], [True, True, False])
+            self.assertIn("Folder not found", context["workspaces"][2]["message"])
+            discover.assert_called_once()
+
+    def test_stage_070_arduino_adapter_workspace_mapping_source_inventory(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp) / "Robot"
+            root.mkdir()
+            (root / "Robot.ino").write_text("void setup() {}\nvoid loop() {}\n", encoding="utf-8")
+            (root / "Driver.h").write_text("#pragma once\nvoid driver();\n", encoding="utf-8")
+            (root / "Driver.cpp").write_text('#include "Driver.h"\nvoid driver() {}\n', encoding="utf-8")
+            config = {
+                "arduino_workspace_path": str(root),
+                "arduino_fqbn": "arduino:avr:uno",
+                "arduino_profiles": {},
+            }
+            adapter = ArduinoTargetAdapter()
+
+            summary = adapter.resolve_workspace(config, {"path": str(root), "sketch": "Robot.ino"})
+            inventory = adapter.source_inventory(config)
+            active = adapter.active_file(config, "Driver.cpp")
+
+            self.assertTrue(summary["valid"])
+            self.assertEqual(summary["main_sketch"], "Robot.ino")
+            self.assertEqual([item.name for item in inventory], ["Driver.cpp", "Driver.h", "Robot.ino"])
+            self.assertEqual([item.kind for item in inventory], ["cpp", "h", "ino"])
+            self.assertEqual(active.name, "Driver.cpp")
 
     def test_stage_060_arduino_compatibility_smoke_exercises_product_flow(self) -> None:
         with TemporaryDirectory() as tmp:

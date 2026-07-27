@@ -43,23 +43,27 @@ Stage 0 implementation note: recorded the 0.6.5 handoff, accepted compatibility 
 
 Purpose: make Arduino a first-class target adapter rather than app-specific glue.
 
-- [ ] Define adapter methods for discovery, workspace resolution, file metadata, active file, profile, verify plan, context packaging, apply/save, and rollback.
-- [ ] Route Arduino state through the adapter without changing visible UI behavior.
-- [ ] Keep existing Python bridge paths as fallback during the port.
-- [ ] Add contract tests for required adapter methods and payload shape.
+- [x] Define adapter methods for discovery, workspace resolution, file metadata, active file, profile, verify plan, context packaging, apply/save, and rollback.
+- [x] Route Arduino state through the adapter without changing visible UI behavior.
+- [x] Keep existing Python bridge paths as fallback during the port.
+- [x] Add contract tests for required adapter methods and payload shape.
 
 Exit condition: Arduino has a documented and tested adapter contract.
+
+Stage 1 implementation note: added the required target-adapter contract in `talos/targets.py`, made registry validation reject incomplete implemented adapters, and extended `ArduinoTargetAdapter` with file metadata, active-file, and verify-plan methods while keeping the existing Python Arduino bridge as the compatibility fallback. Added focused Stage 070 tests for contract compliance and payload shape.
 
 ## Stage 2 - Discovery And Workspace Mapping Port
 
 Purpose: move Arduino IDE detection and sketch-folder mapping under the adapter.
 
-- [ ] Route open-sketch discovery through the Arduino adapter.
-- [ ] Preserve multi-window and multi-sketch selection behavior.
-- [ ] Preserve unsaved sketch and folder-not-found handling.
-- [ ] Add parity tests for `.ino`, `.h`, `.cpp`, and duplicate-folder cases.
+- [x] Route open-sketch discovery through the Arduino adapter.
+- [x] Preserve multi-window and multi-sketch selection behavior.
+- [x] Preserve unsaved sketch and folder-not-found handling.
+- [x] Add parity tests for `.ino`, `.h`, `.cpp`, and duplicate-folder cases.
 
 Exit condition: adapter discovery produces the same selectable sketches as the current workflow.
+
+Stage 2 implementation note: `ArduinoTargetAdapter` now owns `open_sketches`, `resolve_workspace`, and `source_inventory` entry points while reusing the proven Arduino compatibility scanner. Runtime project payloads route through `open_sketches`, and focused parity tests cover multi-sketch discovery, missing-folder/unsaved-style entries, and `.ino/.h/.cpp` source inventory without launching Arduino IDE or using network.
 
 ## Stage 3 - Board/Profile And Environment Port
 

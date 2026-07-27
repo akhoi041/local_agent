@@ -13,14 +13,19 @@ class ArduinoTargetAdapter:
     implemented = True
     capabilities = (
         "detect_projects",
+        "open_sketches",
+        "active_file",
         "workspace_identity",
+        "resolve_workspace",
         "workspace_map",
         "artifact_identity",
+        "file_metadata",
         "source_inventory",
         "read_file",
         "write_file",
         "rollback",
         "delete_file",
+        "verify_plan",
         "verify",
         "cancel_verify",
         "clear_verify_cache",
@@ -40,8 +45,27 @@ class ArduinoTargetAdapter:
     def discover_projects(self, config: dict[str, Any], **kwargs: Any) -> list[dict[str, Any]]:
         return arduino.discover_arduino_projects(config, **kwargs)
 
+    def open_sketches(self, config: dict[str, Any], **kwargs: Any) -> list[dict[str, Any]]:
+        return self.discover_projects(config, **kwargs)
+
     def workspace_summary(self, config: dict[str, Any]) -> dict[str, Any]:
         return arduino.workspace_summary(config)
+
+    def resolve_workspace(
+        self,
+        config: dict[str, Any],
+        project: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        if not project:
+            return self.workspace_summary(config)
+        root = str(project.get("path") or project.get("folder") or "").strip()
+        if not root:
+            return self.workspace_summary(config)
+        project_config = dict(config)
+        project_config["arduino_workspace_path"] = root
+        if project.get("fqbn"):
+            project_config["arduino_fqbn"] = str(project.get("fqbn") or "")
+        return self.workspace_summary(project_config)
 
     def workspace_context(self, config: dict[str, Any]) -> str:
         return arduino.workspace_context(config)
@@ -56,9 +80,44 @@ class ArduinoTargetAdapter:
         workspace = self.workspace_identity(config)
         return workspace.files if workspace else ()
 
+    def file_metadata(self, config: dict[str, Any]) -> tuple[TargetFile, ...]:
+        return self.artifact_identities(config)
+
+    def source_inventory(self, config: dict[str, Any]) -> tuple[TargetFile, ...]:
+        return self.file_metadata(config)
+
+    def active_file(self, config: dict[str, Any], path: str | None = None) -> TargetFile | None:
+        requested = str(path or config.get("arduino_active_file") or "").replace("\\", "/").strip()
+        workspace = self.workspace_identity(config)
+        if not workspace:
+            return None
+        if not requested:
+            requested = workspace.main_file.replace("\\", "/")
+        for item in workspace.files:
+            item_path = item.path.replace("\\", "/")
+            if requested in {item_path, item.name, Path(item_path).name}:
+                return item
+        return None
+
     def profile_identity(self, config: dict[str, Any]) -> TargetProfile:
         summary = self.workspace_summary(config)
         return self._profile_from_config(config, str(summary.get("path") or ""))
+
+    def verify_plan(self, config: dict[str, Any], overrides: dict[str, str] | None = None) -> dict[str, Any]:
+        summary = self.workspace_summary(config)
+        profile = self.profile_identity(config)
+        readiness = self.profile_readiness(config)
+        fqbn = str((overrides or {}).get("fqbn") or profile.fqbn)
+        workspace_path = str(summary.get("path") or "")
+        return {
+            "target": self.target_id,
+            "workspace": workspace_path,
+            "main_file": str(summary.get("main_sketch") or ""),
+            "fqbn": fqbn,
+            "ready": bool(summary.get("valid")) and bool(readiness.get("ready")) and bool(fqbn),
+            "readiness": dict(readiness),
+            "uses_python_fallback": True,
+        }
 
     def workspace_map(
         self,
@@ -161,7 +220,7 @@ class ArduinoTargetAdapter:
             target_name=self.target_name,
             capabilities=self.capabilities,
             actions=self.actions,
-            workspaces=tuple(self._workspace_from_project(item) for item in (projects if projects is not None else self.discover_projects(config))),
+            workspaces=tuple(self._workspace_from_project(item) for item in (projects if projects is not None else self.open_sketches(config))),
             selected_workspace=selected,
             profile=profile_data,
             diagnostics=self.diagnostics_hook(config, latest_verify),
