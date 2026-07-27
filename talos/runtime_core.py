@@ -139,7 +139,7 @@ class TalosRuntimeCore:
 
     def arduino_projects_payload(self) -> dict[str, Any]:
         config = self.load_config()
-        return {"ok": True, "projects": self.arduino_target.discover_projects(config)}
+        return {"ok": True, "projects": self.arduino_target.open_sketches(config)}
 
     def arduino_events_payload(self) -> dict[str, Any]:
         return {"ok": True, **arduino_event_status()}

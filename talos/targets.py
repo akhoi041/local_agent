@@ -3,6 +3,22 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
+TARGET_ADAPTER_REQUIRED_METHODS = (
+    "discover_projects",
+    "workspace_summary",
+    "workspace_identity",
+    "file_metadata",
+    "active_file",
+    "profile_identity",
+    "verify_plan",
+    "context_package",
+    "read_file",
+    "write_file",
+    "rollback_file",
+    "context",
+)
+
+
 @dataclass(frozen=True)
 class TargetAction:
     id: str
@@ -113,6 +129,47 @@ class TargetAdapter(Protocol):
     actions: tuple[TargetAction, ...]
     implemented: bool
 
+    def discover_projects(self, config: dict[str, Any], **kwargs: Any) -> list[dict[str, Any]]:
+        ...
+
+    def workspace_summary(self, config: dict[str, Any]) -> dict[str, Any]:
+        ...
+
+    def workspace_identity(self, config: dict[str, Any]) -> TargetWorkspace | None:
+        ...
+
+    def file_metadata(self, config: dict[str, Any]) -> tuple[TargetFile, ...]:
+        ...
+
+    def active_file(self, config: dict[str, Any], path: str | None = None) -> TargetFile | None:
+        ...
+
+    def profile_identity(self, config: dict[str, Any]) -> TargetProfile:
+        ...
+
+    def verify_plan(self, config: dict[str, Any], overrides: dict[str, str] | None = None) -> dict[str, Any]:
+        ...
+
+    def context_package(
+        self,
+        config: dict[str, Any],
+        active_file: dict[str, Any],
+        verify_context: str,
+        allow_edits: bool,
+        message: str,
+        latest_verify: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        ...
+
+    def read_file(self, config: dict[str, Any], path: str) -> dict[str, Any]:
+        ...
+
+    def write_file(self, config: dict[str, Any], path: str, content: str) -> dict[str, Any]:
+        ...
+
+    def rollback_file(self, config: dict[str, Any], path: str) -> dict[str, Any]:
+        ...
+
     def context(
         self,
         config: dict[str, Any],
@@ -125,13 +182,43 @@ class TargetAdapter(Protocol):
     ) -> TargetContext:
         ...
 
+
+def target_adapter_contract(adapter: Any) -> dict[str, Any]:
+    missing_methods = [
+        name for name in TARGET_ADAPTER_REQUIRED_METHODS
+        if not callable(getattr(adapter, name, None))
+    ]
+    missing_metadata = [
+        name for name in ("target_id", "target_name", "capabilities", "actions", "implemented")
+        if not hasattr(adapter, name)
+    ]
+    return {
+        "ok": not missing_methods and not missing_metadata,
+        "required_methods": list(TARGET_ADAPTER_REQUIRED_METHODS),
+        "missing_methods": missing_methods,
+        "missing_metadata": missing_metadata,
+    }
+
+
+def require_target_adapter_contract(adapter: Any) -> dict[str, Any]:
+    report = target_adapter_contract(adapter)
+    if not report["ok"]:
+        target_id = getattr(adapter, "target_id", adapter.__class__.__name__)
+        missing = report["missing_methods"] + report["missing_metadata"]
+        raise ValueError(f"Target adapter '{target_id}' does not satisfy contract: {', '.join(missing)}")
+    return report
+
+
 class TargetRegistry:
     def __init__(self) -> None:
         self._items: dict[str, TargetAdapter] = {}
 
     def register(self, adapter: TargetAdapter, *, allow_placeholder: bool = False) -> None:
-        if not bool(getattr(adapter, "implemented", False)) and not allow_placeholder:
+        implemented = bool(getattr(adapter, "implemented", False))
+        if not implemented and not allow_placeholder:
             raise ValueError(f"Target adapter '{adapter.target_id}' is not implemented.")
+        if implemented:
+            require_target_adapter_contract(adapter)
         self._items[adapter.target_id] = adapter
 
     def get(self, target_id: str) -> TargetAdapter | None:
@@ -149,6 +236,7 @@ class TargetRegistry:
                 "actions": [item.to_dict() for item in getattr(adapter, "actions", ())],
                 "implemented": bool(getattr(adapter, "implemented", False)),
                 "status": "supported" if bool(getattr(adapter, "implemented", False)) else "placeholder",
+                "contract": target_adapter_contract(adapter),
             }
             for adapter in self.all()
         ]
