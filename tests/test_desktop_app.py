@@ -116,11 +116,154 @@ from talos.runtime_service import codex_status_payload, runtime_event_detail, ru
 from talos.state_service import state_payload
 from talos.targets import (
     TARGET_ADAPTER_REQUIRED_METHODS,
+    TargetContext,
+    TargetFile,
+    TargetProfile,
     TargetRegistry,
+    TargetWorkspace,
     target_adapter_contract,
 )
 
 class TalosArduinoTests(unittest.TestCase):
+    class ContractCompleteArduinoTarget:
+        target_id = "arduino"
+        target_name = "Arduino"
+        capabilities = ("workspace",)
+        actions = ()
+        implemented = True
+
+        def discover_projects(self, config: dict[str, object], **_kwargs: object) -> list[dict[str, object]]:
+            summary = self.workspace_summary(config)
+            return [summary] if summary.get("valid") else []
+
+        def workspace_summary(self, config: dict[str, object]) -> dict[str, object]:
+            return {
+                "valid": True,
+                "path": str(config.get("arduino_workspace_path") or "C:/Sketch"),
+                "fqbn": str(config.get("arduino_fqbn") or "esp32:esp32:esp32"),
+                "main_sketch": "Sketch.ino",
+            }
+
+        def workspace_identity(self, config: dict[str, object]) -> TargetWorkspace | None:
+            summary = self.workspace_summary(config)
+            if not summary.get("valid"):
+                return None
+            return TargetWorkspace(
+                id=str(summary["path"]),
+                name=str(summary["main_sketch"]),
+                root=str(summary["path"]),
+                valid=True,
+                main_file=str(summary["main_sketch"]),
+                files=self.file_metadata(config),
+            )
+
+        def file_metadata(self, _config: dict[str, object]) -> tuple[TargetFile, ...]:
+            return (TargetFile(path="Sketch.ino", name="Sketch.ino", lines=1, bytes=12, role="main"),)
+
+        def active_file(self, config: dict[str, object], path: str | None = None) -> TargetFile | None:
+            requested = path or str(config.get("arduino_active_file") or "Sketch.ino")
+            for item in self.file_metadata(config):
+                if requested in {item.path, item.name}:
+                    return item
+            return None
+
+        def profile_identity(self, config: dict[str, object]) -> TargetProfile:
+            return TargetProfile(
+                display_name="ESP32 Dev Module",
+                fqbn=str(config.get("arduino_fqbn") or "esp32:esp32:esp32"),
+                readiness={"ready": True},
+            )
+
+        def profile_payload(
+            self,
+            config: dict[str, object],
+            workspace_path: str = "",
+            latest_verify: dict[str, object] | None = None,
+        ) -> dict[str, object]:
+            profile = self.profile_identity(config)
+            return {
+                "workspace_path": workspace_path or str(config.get("arduino_workspace_path") or "C:/Sketch"),
+                "profile": profile.to_dict(),
+                "profile_readiness": {"ready": True},
+                "workspace_map": self.workspace_map(config, latest_verify),
+                "ready": True,
+            }
+
+        def workspace_map(
+            self,
+            _config: dict[str, object],
+            _latest_verify: dict[str, object] | None = None,
+        ) -> dict[str, object]:
+            return {"valid": True, "files": [], "source_tab_count": 0}
+
+        def verify_plan(
+            self,
+            config: dict[str, object],
+            overrides: dict[str, str] | None = None,
+        ) -> dict[str, object]:
+            fqbn = str((overrides or {}).get("fqbn") or config.get("arduino_fqbn") or "esp32:esp32:esp32")
+            return {"target": self.target_id, "fqbn": fqbn, "ready": True}
+
+        def verify(self, _config: dict[str, object], _overrides: dict[str, str] | None = None) -> dict[str, object]:
+            return {"ok": True, "status": "passed", "issues": []}
+
+        def cancel_verify(self) -> dict[str, object]:
+            return {"ok": True, "status": "cancel_requested"}
+
+        def clear_verify_cache(self) -> dict[str, object]:
+            return {"ok": True, "cleared": 0}
+
+        def context_package(
+            self,
+            _config: dict[str, object],
+            _active_file: dict[str, object],
+            _verify_context: str,
+            _allow_edits: bool,
+            _message: str,
+            _latest_verify: dict[str, object] | None = None,
+        ) -> dict[str, object]:
+            return {"active_file": {"path": "Sketch.ino", "included": True}}
+
+        def read_file(self, _config: dict[str, object], path: str) -> dict[str, object]:
+            return {"ok": True, "path": path, "content": ""}
+
+        def write_file(self, _config: dict[str, object], path: str, content: str) -> dict[str, object]:
+            return {"ok": True, "path": path, "bytes": len(content.encode("utf-8"))}
+
+        def rollback_file(self, _config: dict[str, object], path: str) -> dict[str, object]:
+            return {"ok": True, "path": path, "status": "rolled_back"}
+
+        def context(
+            self,
+            config: dict[str, object],
+            latest_verify: dict[str, object] | None = None,
+            projects: list[dict[str, object]] | None = None,
+            summary: dict[str, object] | None = None,
+            profile: dict[str, object] | None = None,
+            profile_readiness: dict[str, object] | None = None,
+            workspace_map: dict[str, object] | None = None,
+        ) -> TargetContext:
+            return TargetContext(
+                target_id=self.target_id,
+                target_name=self.target_name,
+                capabilities=self.capabilities,
+                workspaces=tuple(
+                    workspace
+                    for workspace in (self.workspace_identity(config),)
+                    if workspace is not None
+                ),
+                selected_workspace=self.workspace_identity(config),
+                profile=self.profile_identity(config),
+                raw={
+                    "latest_verify": latest_verify or {},
+                    "projects": projects or [],
+                    "summary": summary or self.workspace_summary(config),
+                    "profile": profile or {},
+                    "profile_readiness": profile_readiness or {},
+                    "workspace_map": workspace_map or self.workspace_map(config),
+                },
+            )
+
     def test_local_api_contract_helpers_preserve_payload_shape(self) -> None:
         payload = targets_contract({"ok": True, "targets": {"active": "arduino"}})
 
@@ -4296,7 +4439,7 @@ class TalosArduinoTests(unittest.TestCase):
         from talos.runtime_core import TalosRuntimeCore
         from talos.task_orchestrator import TaskOrchestrator
 
-        class FakeArduinoTarget:
+        class FakeArduinoTarget(self.ContractCompleteArduinoTarget):
             target_id = "arduino"
             target_name = "Arduino"
             capabilities = ("workspace",)
@@ -4364,7 +4507,7 @@ class TalosArduinoTests(unittest.TestCase):
         from talos.runtime_core import TalosRuntimeCore
         from talos.task_orchestrator import TaskOrchestrator
 
-        class FakeArduinoTarget:
+        class FakeArduinoTarget(self.ContractCompleteArduinoTarget):
             target_id = "arduino"
             target_name = "Arduino"
             capabilities = ("workspace",)
@@ -4424,7 +4567,7 @@ class TalosArduinoTests(unittest.TestCase):
         from talos.runtime_core import TalosRuntimeCore
         from talos.task_orchestrator import TaskOrchestrator
 
-        class FakeArduinoTarget:
+        class FakeArduinoTarget(self.ContractCompleteArduinoTarget):
             target_id = "arduino"
             target_name = "Arduino"
             capabilities = ("workspace",)
