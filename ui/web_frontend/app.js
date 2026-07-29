@@ -1110,11 +1110,21 @@ function setLocalEditMode(enabled) {
 function renderEditorLineNumbers() {
   const editor = $("#sourceEditor");
   const lineCount = Math.max(1, editor.value.split("\n").length);
+  const lineHeight = Number.parseFloat(window.getComputedStyle(editor).lineHeight) || 20;
+  const trailingLineCount = Math.ceil(editor.clientHeight / lineHeight);
   $("#editorLineNumbers").textContent = Array.from(
     { length: lineCount },
     (_value, index) => String(index + 1),
-  ).join("\n");
+  ).concat(Array.from({ length: trailingLineCount }, () => "")).join("\n");
+  syncEditorLineNumberScroll();
   updateEditorCursorLine();
+}
+
+function syncEditorLineNumberScroll() {
+  const editor = $("#sourceEditor");
+  const gutter = $("#editorLineNumbers");
+  if (!editor || !gutter) return;
+  gutter.scrollTop = editor.scrollTop;
 }
 
 function applyEditorFileResult(result, statusText = "") {
@@ -1621,7 +1631,7 @@ function scrollEditorToPosition(position) {
   const targetLeft = Math.max(0, (columnIndex * fontSize * 0.62) - (editor.clientWidth * 0.25));
   editor.scrollTop = targetTop;
   editor.scrollLeft = targetLeft;
-  $("#editorLineNumbers").scrollTop = editor.scrollTop;
+  syncEditorLineNumberScroll();
   syncEditorFindRenderScroll();
   updateEditorCursorLine();
 }
@@ -3744,7 +3754,7 @@ function bindEvents() {
   $("#findNextBtn").addEventListener("click", () => runEditorFind(1));
   $("#closeFindBtn").addEventListener("click", hideEditorFind);
   $("#sourceEditor").addEventListener("scroll", () => {
-    $("#editorLineNumbers").scrollTop = $("#sourceEditor").scrollTop;
+    syncEditorLineNumberScroll();
     syncEditorFindRenderScroll();
     updateEditorCursorLine();
   });

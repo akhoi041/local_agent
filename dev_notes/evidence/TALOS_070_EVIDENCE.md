@@ -83,3 +83,87 @@ Stage 2 moves the selectable Arduino sketch and workspace-mapping entry points u
 - Result: 3 tests passed.
 
 Conclusion: discovery and sketch-folder mapping now enter through the Arduino adapter, preserving multi-sketch selection, folder-not-found handling, and `.ino/.h/.cpp` source inventory behavior.
+
+## Stage 3 - Board/Profile And Environment Port
+
+Status: complete.
+
+Stage 3 moves Arduino board/profile/environment readiness under the adapter while preserving the existing API shape for the UI.
+
+### Adapter-owned profile behavior
+
+- `ArduinoTargetAdapter.profile_payload(...)` now owns board display/FQBN metadata, environment profile data, profile readiness, workspace map, and verify-ready profile fields.
+- `TalosRuntimeCore.arduino_context_payload()` and `arduino_profile_payload()` consume the adapter profile payload instead of rebuilding board/profile state independently.
+- Verify plans now expose explicit `profile_ready`, serial port, baud rate, build flags, build properties, and library metadata for downstream verify/Codex context.
+- The profile endpoint keeps the legacy `profile` field as the environment profile and adds `target_profile` for board/FQBN identity.
+
+### Validation
+
+- `python -B -m unittest -q tests.test_desktop_app.TalosArduinoTests.test_stage_070_arduino_adapter_satisfies_contract tests.test_desktop_app.TalosArduinoTests.test_stage_070_arduino_adapter_contract_payload_shape tests.test_desktop_app.TalosArduinoTests.test_stage_070_adapter_profile_payload_tracks_board_and_environment_metadata tests.test_desktop_app.TalosArduinoTests.test_stage_070_adapter_profile_payload_updates_when_board_profile_changes tests.test_desktop_app.TalosArduinoTests.test_stage_070_adapter_profile_payload_reports_missing_profile_data tests.test_desktop_app.TalosArduinoTests.test_state_payload_exposes_generic_target_context`
+- Result: 6 tests passed.
+- `git diff --check`
+- Result: no patch errors; only existing LF/CRLF normalization warnings.
+
+Conclusion: board/profile behavior is adapter-owned and verify-ready state is explicit.
+
+## Stage 4 - Verify And Cache Parity
+
+Status: complete.
+
+Stage 4 routes Arduino verify behavior through the adapter without replacing the proven compile implementation.
+
+### Adapter-owned verify behavior
+
+- `TARGET_ADAPTER_REQUIRED_METHODS` now requires `verify`, `cancel_verify`, and `clear_verify_cache`.
+- `ArduinoTargetAdapter.verify(...)` attaches the adapter verify plan, profile readiness, cache/timing defaults, and a compact summary to compile results.
+- The existing 0.6.5 compile implementation remains the execution boundary, preserving cache keys, cancellation, clear-cache, timing telemetry, issue parsing, and output parsing.
+
+### Validation
+
+- `python -B -m unittest tests.test_desktop_app.TalosArduinoTests.test_stage_070_arduino_adapter_satisfies_contract tests.test_desktop_app.TalosArduinoTests.test_stage_070_adapter_verify_attaches_plan_summary_and_preserves_output tests.test_desktop_app.TalosArduinoTests.test_stage_070_compile_cache_hit_miss_and_key_boundaries tests.test_desktop_app.TalosArduinoTests.test_stage_070_adapter_verify_cancel_and_clear_cache_are_owned`
+- Result: 4 tests passed.
+
+Conclusion: verify behavior is adapter-owned at the contract/API boundary and remains cache-safe.
+
+## Stage 5 - Codex Context And Change Review Port
+
+Status: complete.
+
+Stage 5 makes the Codex payload adapter-owned while preserving the proven 0.6.5 change-review mechanics.
+
+### Adapter-owned Codex context
+
+- `ArduinoTargetAdapter.context_package(...)` now exposes `version: 0.7.0`, adapter ownership metadata, workspace map, active file, target profile, profile readiness, latest verify output, and edit permission payload.
+- Legacy-compatible fields remain present during the migration so the current UI and Codex bridge do not need to know the new adapter internals.
+- Edit permission is represented both as the existing string contract and as a structured adapter payload with `allow_edits`, `mode`, `save_required`, and sketch-folder scope.
+
+### Change-review boundary
+
+- The existing 0.6.5 `CodexBridge` hunk model remains the boundary for partial apply, reject, apply-all, save acknowledgement, and rollback.
+- Tests cover adapter context package contents and hunk review behavior without requiring network, GitHub, or a real Codex runtime.
+
+### Validation
+
+- `python -B -m unittest tests.test_desktop_app.TalosArduinoTests.test_stage_070_context_package_routes_adapter_payloads tests.test_desktop_app.TalosArduinoTests.test_stage_070_change_review_boundary_preserves_apply_reject_save_rollback`
+- Result: 2 tests passed.
+
+Conclusion: Codex can receive Arduino workspace/profile/verify/edit context through adapter payloads, and change review remains compatible with the current editor flow.
+
+## Stage 6 - UI Parity And Usability Smoke
+
+Status: complete.
+
+Stage 6 used low-resource UI contract checks rather than opening the GUI, keeping the smoke pass cheap and repeatable.
+
+### Covered
+
+- Explorer, Files, editor/review mode, verify/history, Codex column, command palette, menu bar, status bar, and settings markers are present and wired.
+- Responsive split/grid layout markers remain present for normal and maximized window behavior.
+- Missing Codex runtime remains a Codex gate (`runtime_missing`) and does not mark Arduino workspace/verify as failed.
+
+### Validation
+
+- `python -B -m unittest -q tests.test_desktop_app.TalosArduinoTests.test_stage_070_ui_parity_surfaces_stay_connected tests.test_desktop_app.TalosArduinoTests.test_stage_070_missing_runtime_remains_codex_status_not_arduino_failure`
+- Result: 2 tests passed.
+
+Conclusion: the adapter port keeps the current Arduino UI surfaces connected without requiring GUI launch, network access, or Codex credentials.
