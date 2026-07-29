@@ -53,6 +53,7 @@ from talos.arduino import (
     read_workspace_file,
     run_arduino_compile,
     save_environment_profile,
+    store_compile_result,
     verify_runtime_status,
     workspace_context,
     workspace_map,
@@ -176,6 +177,10 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("verify_plan", TARGET_ADAPTER_REQUIRED_METHODS)
         self.assertIn("context_package", TARGET_ADAPTER_REQUIRED_METHODS)
         self.assertIn("rollback_file", TARGET_ADAPTER_REQUIRED_METHODS)
+        self.assertIn("profile_payload", TARGET_ADAPTER_REQUIRED_METHODS)
+        self.assertIn("verify", TARGET_ADAPTER_REQUIRED_METHODS)
+        self.assertIn("cancel_verify", TARGET_ADAPTER_REQUIRED_METHODS)
+        self.assertIn("clear_verify_cache", TARGET_ADAPTER_REQUIRED_METHODS)
 
     def test_target_registry_blocks_placeholder_targets_by_default(self) -> None:
         class PlaceholderTarget:
@@ -272,8 +277,186 @@ class TalosArduinoTests(unittest.TestCase):
             self.assertEqual(plan["workspace"], str(root))
             self.assertEqual(plan["main_file"], "Blink.ino")
             self.assertEqual(plan["fqbn"], "arduino:avr:uno")
+            self.assertEqual(plan["board"]["base_fqbn"], "arduino:avr:uno")
+            self.assertEqual(plan["board"]["display_name"], "arduino:avr:uno")
+            self.assertEqual(plan["profile"]["fqbn"], "arduino:avr:uno")
+            self.assertTrue(plan["profile_ready"])
             self.assertTrue(plan["ready"])
             self.assertTrue(plan["uses_python_fallback"])
+
+    def test_stage_070_adapter_profile_payload_tracks_board_and_environment_metadata(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp) / "Robot"
+            root.mkdir()
+            (root / "Robot.ino").write_text("void setup() {}\nvoid loop() {}\n", encoding="utf-8")
+            adapter = ArduinoTargetAdapter()
+            config = {
+                "arduino_workspace_path": str(root),
+                "arduino_fqbn": "esp32:esp32:esp32",
+                "arduino_board_name": "ESP32 Dev Module",
+                "arduino_profiles": {},
+            }
+
+            saved = adapter.save_environment_profile(
+                config,
+                str(root),
+                {
+                    "fqbn": "esp32:esp32:esp32",
+                    "serial_port": "COM7",
+                    "baud_rate": "921600",
+                    "build_flags": ["-DDEBUG"],
+                    "build_properties": ["compiler.cpp.extra_flags=-DDEBUG"],
+                    "libraries": ["Wire"],
+                },
+            )
+            payload = adapter.profile_payload(config, str(root))
+
+            self.assertTrue(saved["ok"])
+            self.assertEqual(payload["target"], "arduino")
+            self.assertEqual(payload["board"]["display_name"], "ESP32 Dev Module")
+            self.assertEqual(payload["board"]["fqbn"], "esp32:esp32:esp32")
+            self.assertEqual(payload["verify_plan"]["serial_port"], "COM7")
+            self.assertEqual(payload["verify_plan"]["baud_rate"], 921600)
+            self.assertIn("-DDEBUG", payload["verify_plan"]["build_flags"])
+            self.assertIn("compiler.cpp.extra_flags=-DDEBUG", payload["verify_plan"]["build_properties"])
+            self.assertIn("Wire", payload["verify_plan"]["libraries"])
+            self.assertTrue(payload["profile_readiness"]["ready"])
+            self.assertTrue(payload["verify_plan"]["ready"])
+
+    def test_stage_070_adapter_profile_payload_updates_when_board_profile_changes(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp) / "Blink"
+            root.mkdir()
+            (root / "Blink.ino").write_text("void setup() {}\nvoid loop() {}\n", encoding="utf-8")
+            adapter = ArduinoTargetAdapter()
+            config = {
+                "arduino_workspace_path": str(root),
+                "arduino_fqbn": "arduino:avr:uno",
+                "arduino_board_name": "Arduino Uno",
+                "arduino_profiles": {},
+            }
+
+            adapter.save_environment_profile(config, str(root), {"fqbn": "arduino:avr:uno"})
+            first = adapter.profile_payload(config, str(root))
+            config["arduino_fqbn"] = "esp32:esp32:esp32"
+            config["arduino_board_name"] = "ESP32 Dev Module"
+            adapter.save_environment_profile(config, str(root), {"fqbn": "esp32:esp32:esp32"})
+            second = adapter.profile_payload(config, str(root))
+
+            self.assertEqual(first["board"]["display_name"], "Arduino Uno")
+            self.assertEqual(first["board"]["fqbn"], "arduino:avr:uno")
+            self.assertEqual(second["board"]["display_name"], "ESP32 Dev Module")
+            self.assertEqual(second["board"]["fqbn"], "esp32:esp32:esp32")
+
+    def test_stage_070_adapter_profile_payload_reports_missing_profile_data(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp) / "EmptyProfile"
+            root.mkdir()
+            (root / "EmptyProfile.ino").write_text("void setup() {}\nvoid loop() {}\n", encoding="utf-8")
+            adapter = ArduinoTargetAdapter()
+            config = {
+                "arduino_workspace_path": str(root),
+                "arduino_profiles": {},
+            }
+
+            payload = adapter.profile_payload(config, str(root))
+
+            self.assertFalse(payload["ready"])
+            self.assertFalse(payload["verify_plan"]["ready"])
+            self.assertFalse(payload["profile_readiness"]["ready"])
+            self.assertTrue(payload["profile_readiness"]["issues"])
+
+    def test_stage_070_adapter_verify_attaches_plan_summary_and_preserves_output(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp) / "Blink"
+            root.mkdir()
+            (root / "Blink.ino").write_text("void setup() {}\nvoid loop() {}\n", encoding="utf-8")
+            adapter = ArduinoTargetAdapter()
+            config = {
+                "arduino_workspace_path": str(root),
+                "arduino_fqbn": "esp32:esp32:esp32",
+                "arduino_board_name": "ESP32 Dev Module",
+                "arduino_profiles": {},
+            }
+            compile_result = {
+                "ok": True,
+                "status": "passed",
+                "cache": {"hit": True, "key": "stage070"},
+                "timings": {"total": 0.01, "compile": 0.0},
+                "runtime": {"status": "ready"},
+                "issues": [{"severity": "warning", "message": "note"}],
+                "program": {"used": 123, "maximum": 1000, "percent": 12},
+                "dynamic": {"used": 4, "maximum": 100, "percent": 4},
+            }
+
+            with patch("talos.arduino_adapter.arduino.run_arduino_compile", return_value=compile_result):
+                result = adapter.verify(config)
+
+            self.assertEqual(result["verify_plan"]["target"], "arduino")
+            self.assertEqual(result["verify_plan"]["fqbn"], "esp32:esp32:esp32")
+            self.assertEqual(result["profile_readiness"]["ready"], True)
+            self.assertEqual(result["cache"]["key"], "stage070")
+            self.assertEqual(result["timings"]["total"], 0.01)
+            self.assertEqual(result["issues"][0]["message"], "note")
+            self.assertEqual(result["summary"]["status"], "passed")
+            self.assertTrue(result["summary"]["cache_hit"])
+            self.assertEqual(result["summary"]["issue_count"], 1)
+            self.assertEqual(result["summary"]["program"]["used"], 123)
+
+    def test_stage_070_compile_cache_hit_miss_and_key_boundaries(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp) / "Sketch"
+            root.mkdir()
+            source = root / "Sketch.ino"
+            source.write_text("void setup() {}\nvoid loop() {}\n", encoding="utf-8")
+            cli = root / "arduino-cli.exe"
+            cli.write_text("cli", encoding="utf-8")
+            config = {
+                "arduino_workspace_path": str(root),
+                "arduino_fqbn": "esp32:esp32:esp32",
+                "arduino_profiles": {},
+            }
+
+            clear_arduino_compile_cache()
+            self.assertIsNone(cached_compile_result("stage070", 0.001))
+            store_compile_result("stage070", {"ok": True, "status": "passed", "cache": {"hit": False}})
+            hit = cached_compile_result("stage070", 0.001)
+            self.assertIsNotNone(hit)
+            self.assertTrue(hit["cache"]["hit"])
+            self.assertEqual(hit["status"], "passed")
+
+            summary = workspace_summary(config)
+            profile = environment_profile(config, str(root))
+            baseline = compile_cache_key(root, summary, profile, str(cli), None)
+            source.write_text("void setup() {}\nvoid loop() { delay(1); }\n", encoding="utf-8")
+            source_changed_summary = workspace_summary(config)
+            source_changed = compile_cache_key(root, source_changed_summary, profile, str(cli), None)
+            board_changed_summary = dict(source_changed_summary)
+            board_changed_summary["fqbn"] = "arduino:avr:uno"
+            board_changed = compile_cache_key(root, board_changed_summary, profile, str(cli), None)
+            override_changed = compile_cache_key(
+                root,
+                source_changed_summary,
+                profile,
+                str(cli),
+                {"Sketch.ino": "void setup() {}\n"},
+            )
+
+            self.assertNotEqual(baseline, source_changed)
+            self.assertNotEqual(source_changed, board_changed)
+            self.assertNotEqual(source_changed, override_changed)
+            clear_arduino_compile_cache()
+
+    def test_stage_070_adapter_verify_cancel_and_clear_cache_are_owned(self) -> None:
+        adapter = ArduinoTargetAdapter()
+
+        with patch("talos.arduino_adapter.arduino.cancel_arduino_compile", return_value={"ok": True, "status": "cancelling"}) as cancel:
+            self.assertEqual(adapter.cancel_verify()["status"], "cancelling")
+        cancel.assert_called_once_with()
+
+        with patch("talos.arduino_adapter.arduino.clear_arduino_compile_cache_result", return_value={"ok": True, "status": "cache_cleared"}) as clear:
+            self.assertEqual(adapter.clear_verify_cache()["status"], "cache_cleared")
+        clear.assert_called_once_with()
 
     def test_stage_070_arduino_adapter_routes_open_sketch_discovery(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -1089,6 +1272,11 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("scrollEditorToPosition", script)
         self.assertIn("renderEditorFindLayer", script)
         self.assertIn("syncEditorFindRenderScroll", script)
+        self.assertIn("syncEditorLineNumberScroll", script)
+        self.assertIn("trailingLineCount", script)
+        self.assertIn("editor.clientHeight / lineHeight", script)
+        self.assertIn("gutter.scrollTop = editor.scrollTop", script)
+        self.assertNotIn('$("#editorLineNumbers").scrollTop = $("#sourceEditor").scrollTop', script)
         self.assertIn("updateEditorCursorLine", script)
         self.assertIn("editorCursorLineIndex", script)
         self.assertIn("editor-find-match", script)
@@ -1183,6 +1371,10 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn(".editor-find-line.cursor-line", style)
         self.assertIn(".editor-canvas.has-cursor-line::after", style)
         self.assertIn("--cursor-line-bg", style)
+        self.assertIn(".editor-line-numbers", style)
+        self.assertIn("line-height: var(--editor-line-height);", style)
+        self.assertIn("font-family: var(--mono);", style)
+        self.assertNotIn("line-height: 1.55", style)
         self.assertNotIn(".editor-find-highlights", style)
         self.assertIn("--editor-bg", style)
         self.assertIn("--gutter-bg", style)
@@ -1272,7 +1464,7 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn(".sr-only", styles)
         self.assertIn('src="/assets/talos_icon.png"', html)
         self.assertIn('class="chrome-mark app-logo-mark"', html)
-        self.assertIn('class="rail-icon brand-icon app-logo-mark"', html)
+        self.assertNotIn('class="rail-icon brand-icon app-logo-mark"', html)
         self.assertIn(".app-logo-mark img", styles)
         self.assertIn('class="rail-icon nav-glyph"', html)
         self.assertIn('class="arduino-logo"', html)
@@ -4280,6 +4472,226 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn('"tasks":', source)
         self.assertIn("runtime.task_snapshot()", source)
         self.assertIn("TASK_ORCHESTRATOR.snapshot()", source)
+
+    def test_stage_070_context_package_routes_adapter_payloads(self) -> None:
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "Robot"
+            workspace.mkdir()
+            (workspace / "Robot.ino").write_text("void setup() {}\n", encoding="utf-8")
+            (workspace / "Motor.cpp").write_text("void motor() {}\n", encoding="utf-8")
+            adapter = ArduinoTargetAdapter()
+            config = {
+                "arduino_workspace_path": str(workspace),
+                "arduino_fqbn": "arduino:avr:uno",
+                "arduino_board_name": "Arduino Uno",
+                "arduino_profiles": {},
+            }
+            adapter.save_environment_profile(
+                config,
+                str(workspace),
+                {
+                    "fqbn": "arduino:avr:uno",
+                    "serial_port": "COM7",
+                    "baud_rate": "115200",
+                    "build_flags": ["-DDEBUG"],
+                    "libraries": ["Wire"],
+                },
+            )
+            latest = {"status": "passed", "summary": {"program_percent": 12}, "workspace": str(workspace)}
+            package = adapter.context_package(
+                config,
+                {"path": "Motor.cpp", "content": "void motor() {}\n"},
+                "Status: passed\nSketch uses 1 bytes.",
+                True,
+                "Review this sketch.",
+                latest,
+            )
+
+            self.assertEqual(package["version"], "0.7.0")
+            self.assertEqual(package["target"], "arduino")
+            self.assertEqual(package["adapter"]["id"], "arduino")
+            self.assertIn("workspace_map", package["adapter"]["owns"])
+            self.assertTrue(package["workspace_map"]["valid"])
+            self.assertEqual(package["active_file"]["path"], "Motor.cpp")
+            self.assertTrue(package["active_file"]["included"])
+            self.assertEqual(package["profile"]["fqbn"], "arduino:avr:uno")
+            self.assertEqual(package["verify_output"]["status"], "passed")
+            self.assertEqual(package["verify"]["latest"]["status"], "passed")
+            self.assertEqual(package["edit_permission"], "stage_changes_in_talos")
+            self.assertTrue(package["edit_permission_payload"]["allow_edits"])
+            self.assertTrue(package["coverage"]["adapter_payload"])
+
+    def test_stage_070_change_review_boundary_preserves_apply_reject_save_rollback(self) -> None:
+        middle = "".join(f"line {index}\n" for index in range(14))
+        before = f"alpha\nkeep\n{middle}omega\n"
+        after = f"ALPHA\nkeep\n{middle}OMEGA\n"
+        hunks = build_patch_hunks(before, after)
+        self.assertGreaterEqual(len(hunks), 2)
+
+        bridge = CodexBridge(persist_reviews=False)
+        partial_hunks = [dict(hunk) for hunk in hunks]
+        bridge._patches.append(
+            {
+                "id": "stage-070-partial",
+                "workspace": "C:/Sketch",
+                "status": "pending-review",
+                "files": [
+                    {
+                        "path": "Sketch.ino",
+                        "kind": "update",
+                        "review_status": "staged",
+                        "base_content": before,
+                        "before": before,
+                        "after": after,
+                        "content": before,
+                        "hunks": partial_hunks,
+                    }
+                ],
+            }
+        )
+        first_id = partial_hunks[0]["id"]
+        second_id = partial_hunks[1]["id"]
+
+        applied = bridge.apply_hunk("stage-070-partial", "C:/Sketch", "Sketch.ino", first_id)
+        self.assertTrue(applied["ok"])
+        self.assertEqual(
+            applied["file"]["editor_content"],
+            content_with_applied_hunks(before, applied["file"]["hunks"]),
+        )
+        rejected = bridge.reject_hunk("stage-070-partial", "C:/Sketch", "Sketch.ino", second_id)
+        self.assertTrue(rejected["ok"])
+        rejected_hunk = next(
+            hunk for hunk in rejected["file"]["hunks"] if hunk["id"] == second_id
+        )
+        self.assertEqual(rejected_hunk["review_status"], "rejected")
+
+        bridge_all = CodexBridge(persist_reviews=False)
+        all_hunks = [dict(hunk) for hunk in hunks]
+        bridge_all._patches.append(
+            {
+                "id": "stage-070-all",
+                "workspace": "C:/Sketch",
+                "status": "pending-review",
+                "files": [
+                    {
+                        "path": "Sketch.ino",
+                        "kind": "update",
+                        "review_status": "staged",
+                        "base_content": before,
+                        "before": before,
+                        "after": after,
+                        "content": before,
+                        "hunks": all_hunks,
+                    }
+                ],
+            }
+        )
+        applied_all = bridge_all.apply_all("stage-070-all", "C:/Sketch")
+        self.assertTrue(applied_all["ok"])
+        self.assertEqual(applied_all["patch"]["files"][0]["editor_content"], after)
+        saved_patch = bridge_all.mark_patch_saved("C:/Sketch", "Sketch.ino")
+        self.assertTrue(saved_patch["saved"])
+        self.assertEqual(saved_patch["file"]["review_status"], "saved")
+
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "Sketch"
+            workspace.mkdir()
+            sketch = workspace / "Sketch.ino"
+            sketch.write_text(before, encoding="utf-8")
+            config = {"arduino_workspace_path": str(workspace)}
+            checkpoint_path = Path(tmp) / "checkpoints.json"
+
+            with patch("talos.checkpoints.CHECKPOINT_PATH", checkpoint_path):
+                checkpoint = create_before_save_checkpoint(config, "Sketch.ino")
+                self.assertTrue(checkpoint["ok"])
+                self.assertTrue(write_workspace_file(config, "Sketch.ino", after)["ok"])
+                saved = mark_checkpoint_saved(checkpoint["checkpoint"]["id"], after)
+                self.assertTrue(saved["ok"])
+                rolled_back = rollback_last_checkpoint(config, "Sketch.ino")
+
+            self.assertTrue(rolled_back["ok"])
+            self.assertEqual(sketch.read_text(encoding="utf-8"), before)
+
+    def test_stage_070_ui_parity_surfaces_stay_connected(self) -> None:
+        root = Path(__file__).parents[1]
+        html = (root / "ui" / "web_frontend" / "index.html").read_text(encoding="utf-8")
+        script = (root / "ui" / "web_frontend" / "app.js").read_text(encoding="utf-8")
+        styles = (root / "ui" / "web_frontend" / "styles.css").read_text(encoding="utf-8")
+        commands = (root / "ui" / "web_frontend" / "js" / "config.js").read_text(encoding="utf-8")
+
+        def expect_marker(blob: str, marker: str, source: str) -> None:
+            if marker not in blob:
+                self.fail(f"{source} is missing Stage 6 marker: {marker}")
+
+        for marker in [
+            "app-menu-bar",
+            "ide-explorer",
+            "files-section",
+            "verifyOutputTab",
+            "runHistory",
+            "codexPanel",
+            "settings",
+            "commandPaletteOverlay",
+            "status-bar",
+        ]:
+            expect_marker(html, marker, "index.html")
+
+        for marker in [
+            "grid-template-columns",
+            "grid-template-rows",
+            "minmax(",
+            "pane-splitter",
+            "row-splitter",
+            "codex-panel",
+            "status-bar",
+            "@media (max-width: 900px)",
+        ]:
+            expect_marker(styles, marker, "styles.css")
+
+        for marker in [
+            "function commandPaletteOpen()",
+            "function renderCommandPalette()",
+            "function applyCodexPanel(open)",
+            "function renderStatusBar()",
+            "function renderVerifyOutput",
+            "function fileListText()",
+            "function renderArduinoFilesAfterCodexPatch()",
+            "sourceEditor",
+        ]:
+            expect_marker(script, marker, "app.js")
+
+        for label in [
+            "Refresh Workspace",
+            "Save File",
+            "Find In File",
+            "Go To Settings",
+            "Toggle Codex Column",
+            "Verify Sandbox",
+        ]:
+            expect_marker(commands, label, "config.js")
+
+    def test_stage_070_missing_runtime_remains_codex_status_not_arduino_failure(self) -> None:
+        root = Path(__file__).parents[1]
+        html = (root / "ui" / "web_frontend" / "index.html").read_text(encoding="utf-8")
+        script = (root / "ui" / "web_frontend" / "app.js").read_text(encoding="utf-8")
+
+        def expect_marker(blob: str, marker: str, source: str) -> None:
+            if marker not in blob:
+                self.fail(f"{source} is missing missing-runtime marker: {marker}")
+
+        missing = runtime_gate({
+            "provider": "none",
+            "health": {"status": "missing", "ready": False},
+            "warnings": ["missing_runtime"],
+        })
+
+        self.assertTrue(missing["blocked"])
+        self.assertEqual(missing["code"], "runtime_missing")
+        expect_marker(script, "runtimeBlocked", "app.js")
+        expect_marker(script, "payload.runtime_gate", "app.js")
+        expect_marker(script, "Select or pin a Codex runtime before asking for code changes.", "app.js")
+        expect_marker(html, "runtimeStatus", "index.html")
+        expect_marker(html, "runtimeRefreshBtn", "index.html")
 
 if __name__ == "__main__":
     unittest.main()

@@ -69,45 +69,53 @@ Stage 2 implementation note: `ArduinoTargetAdapter` now owns `open_sketches`, `r
 
 Purpose: move board/profile/environment readiness under the adapter.
 
-- [ ] Route board/FQBN display, profile readiness, build flags, serial metadata, and library metadata through the adapter.
-- [ ] Preserve board display-name behavior and detailed metadata only where useful.
-- [ ] Keep profile validation explicit before verify.
-- [ ] Add tests for board changes, profile changes, and missing profile data.
+- [x] Route board/FQBN display, profile readiness, build flags, serial metadata, and library metadata through the adapter.
+- [x] Preserve board display-name behavior and detailed metadata only where useful.
+- [x] Keep profile validation explicit before verify.
+- [x] Add tests for board changes, profile changes, and missing profile data.
 
 Exit condition: board/profile behavior is adapter-owned and verify-ready state is clear.
+
+Stage 3 implementation note: `ArduinoTargetAdapter.profile_payload` now owns board/FQBN display, profile readiness, build flags, serial metadata, library metadata, workspace map, and verify-plan profile data. Runtime context/profile endpoints consume that adapter-owned payload while preserving the legacy profile response for UI/API compatibility.
 
 ## Stage 4 - Verify And Cache Parity
 
 Purpose: keep sandbox verify fast and deterministic through the adapter.
 
-- [ ] Route verify plan generation through the adapter.
-- [ ] Reuse the 0.6.5 cache-key boundary.
-- [ ] Preserve cancellation, clear-cache, timing telemetry, and output parsing.
-- [ ] Add tests for cache hit/miss, source change, board change, cancel, and verify output summary.
+- [x] Route verify plan generation through the adapter.
+- [x] Reuse the 0.6.5 cache-key boundary.
+- [x] Preserve cancellation, clear-cache, timing telemetry, and output parsing.
+- [x] Add tests for cache hit/miss, source change, board change, cancel, and verify output summary.
 
 Exit condition: verify behavior is adapter-owned and remains cache-safe.
+
+Stage 4 implementation note: `ArduinoTargetAdapter.verify` now attaches the adapter-owned verify plan, profile readiness, timing/cache defaults, and compact verify summary while preserving the 0.6.5 compile/cache/output implementation. The adapter contract now requires verify, cancel, and clear-cache methods, with focused tests covering cache hit/miss, source/board/override cache-key changes, cancel, clear-cache, and parsed output summary preservation.
 
 ## Stage 5 - Codex Context And Change Review Port
 
 Purpose: make Codex receive Arduino context through adapter-owned payloads.
 
-- [ ] Route workspace map, active file, verify output, profile, and edit permission through the adapter context package.
-- [ ] Reuse the 0.6.5 diff/hunk boundary.
-- [ ] Preserve apply/reject/save/rollback semantics.
-- [ ] Add tests for context package contents, partial hunk apply, apply-all, reject, save, and rollback.
+- [x] Route workspace map, active file, verify output, profile, and edit permission through the adapter context package.
+- [x] Reuse the 0.6.5 diff/hunk boundary.
+- [x] Preserve apply/reject/save/rollback semantics.
+- [x] Add tests for context package contents, partial hunk apply, apply-all, reject, save, and rollback.
 
 Exit condition: Codex can work with Arduino through adapter payloads without knowing legacy glue details.
+
+Stage 5 implementation note: `ArduinoTargetAdapter.context_package()` now owns the Codex payload for workspace map, active file, profile, latest verify output, and edit permission while keeping legacy-compatible fields during the migration. Change review still uses the 0.6.5 `CodexBridge` hunk boundary for apply, reject, apply-all, save acknowledgement, and rollback.
 
 ## Stage 6 - UI Parity And Usability Smoke
 
 Purpose: keep the product experience stable while internals move.
 
-- [ ] Confirm Explorer, Files, editor/review mode, verify/history, Codex column, command palette, menu bar, status bar, and settings still behave as expected.
-- [ ] Confirm resize/split layout remains usable across normal and maximized windows.
-- [ ] Confirm missing runtime state remains informational, not an Arduino failure.
-- [ ] Record manual smoke notes in evidence.
+- [x] Confirm Explorer, Files, editor/review mode, verify/history, Codex column, command palette, menu bar, status bar, and settings still behave as expected.
+- [x] Confirm resize/split layout remains usable across normal and maximized windows.
+- [x] Confirm missing runtime state remains informational, not an Arduino failure.
+- [x] Record manual smoke notes in evidence.
 
 Exit condition: the adapter port does not regress the current Arduino user experience.
+
+Stage 6 implementation note: UI parity is covered with lightweight contract tests instead of launching the desktop shell. The smoke checks Explorer, Files, editor/review mode, verify/history, Codex column, command palette, menu bar, status bar, settings, responsive split/grid markers, and the missing-runtime gate remaining a Codex status rather than an Arduino failure.
 
 ## Stage 7 - Regression Gate
 

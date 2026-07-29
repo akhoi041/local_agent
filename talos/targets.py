@@ -10,14 +10,17 @@ TARGET_ADAPTER_REQUIRED_METHODS = (
     "file_metadata",
     "active_file",
     "profile_identity",
+    "profile_payload",
     "verify_plan",
+    "verify",
+    "cancel_verify",
+    "clear_verify_cache",
     "context_package",
     "read_file",
     "write_file",
     "rollback_file",
     "context",
 )
-
 
 @dataclass(frozen=True)
 class TargetAction:
@@ -147,7 +150,24 @@ class TargetAdapter(Protocol):
     def profile_identity(self, config: dict[str, Any]) -> TargetProfile:
         ...
 
+    def profile_payload(
+        self,
+        config: dict[str, Any],
+        workspace_path: str = "",
+        latest_verify: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        ...
+
     def verify_plan(self, config: dict[str, Any], overrides: dict[str, str] | None = None) -> dict[str, Any]:
+        ...
+
+    def verify(self, config: dict[str, Any], overrides: dict[str, str] | None = None) -> dict[str, Any]:
+        ...
+
+    def cancel_verify(self) -> dict[str, Any]:
+        ...
+
+    def clear_verify_cache(self) -> dict[str, Any]:
         ...
 
     def context_package(
@@ -182,7 +202,6 @@ class TargetAdapter(Protocol):
     ) -> TargetContext:
         ...
 
-
 def target_adapter_contract(adapter: Any) -> dict[str, Any]:
     missing_methods = [
         name for name in TARGET_ADAPTER_REQUIRED_METHODS
@@ -199,7 +218,6 @@ def target_adapter_contract(adapter: Any) -> dict[str, Any]:
         "missing_metadata": missing_metadata,
     }
 
-
 def require_target_adapter_contract(adapter: Any) -> dict[str, Any]:
     report = target_adapter_contract(adapter)
     if not report["ok"]:
@@ -207,7 +225,6 @@ def require_target_adapter_contract(adapter: Any) -> dict[str, Any]:
         missing = report["missing_methods"] + report["missing_metadata"]
         raise ValueError(f"Target adapter '{target_id}' does not satisfy contract: {', '.join(missing)}")
     return report
-
 
 class TargetRegistry:
     def __init__(self) -> None:

@@ -642,21 +642,6 @@ body {
   box-shadow: none;
 }
 
-.rail-head {
-  display: grid;
-  place-items: center;
-  min-height: 50px;
-}
-
-.brand-core {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 44px;
-  margin: 0;
-  padding: 0;
-}
-
 .rail-icon {
   display: grid;
   place-items: center;
@@ -666,16 +651,6 @@ body {
   color: var(--muted);
   font-size: 12px;
   font-weight: 700;
-}
-
-.brand-icon {
-  width: 40px;
-  height: 40px;
-  overflow: hidden;
-  color: var(--text);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--panel);
 }
 
 .nav,
@@ -2866,8 +2841,10 @@ textarea:focus {
   border-radius: 0;
   color: var(--muted);
   background: var(--canvas-subtle);
-  font-size: 13px;
-  line-height: 1.55;
+  font-size: var(--editor-font-size);
+  line-height: var(--editor-line-height);
+  font-family: var(--mono);
+  box-sizing: border-box;
   text-align: right;
   user-select: none;
   cursor: pointer;
@@ -3868,16 +3845,6 @@ input[type="checkbox"] {
     padding: 8px;
     overflow-x: auto;
     box-shadow: none;
-  }
-
-  .rail-head {
-    min-height: 0;
-  }
-
-  .brand-core {
-    flex: 0 0 auto;
-    min-width: 44px;
-    margin: 0 8px 0 0;
   }
 
   .nav {

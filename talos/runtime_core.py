@@ -113,9 +113,10 @@ class TalosRuntimeCore:
         summary = self.arduino_target.workspace_summary(config)
         workspace_path = str(summary.get("path") or "")
         latest_verify = self.latest_verify_for_workspace(workspace_path)
-        workspace_map = self.arduino_target.workspace_map(config, latest_verify)
-        profile = self.arduino_target.environment_profile(config, workspace_path)
-        profile_readiness = self.arduino_target.profile_readiness(config)
+        profile_payload = self.arduino_target.profile_payload(config, workspace_path, latest_verify)
+        workspace_map = dict(profile_payload.get("workspace_map") or self.arduino_target.workspace_map(config, latest_verify))
+        profile = dict(profile_payload.get("environment_profile") or {})
+        profile_readiness = dict(profile_payload.get("profile_readiness") or {})
         return target_context_contract({
             "ok": True,
             "context": self.arduino_target.workspace_context(config),
@@ -135,7 +136,15 @@ class TalosRuntimeCore:
     def arduino_profile_payload(self, workspace_path: str = "") -> dict[str, Any]:
         config = self.load_config()
         path = workspace_path or str(config.get("arduino_workspace_path") or "")
-        return {"ok": True, "profile": self.arduino_target.environment_profile(config, path)}
+        latest_verify = self.latest_verify_for_workspace(path)
+        payload = dict(self.arduino_target.profile_payload(config, path, latest_verify))
+        target_profile = dict(payload.get("profile") or {})
+        return {
+            "ok": True,
+            **payload,
+            "target_profile": target_profile,
+            "profile": dict(payload.get("environment_profile") or {}),
+        }
 
     def arduino_projects_payload(self) -> dict[str, Any]:
         config = self.load_config()
