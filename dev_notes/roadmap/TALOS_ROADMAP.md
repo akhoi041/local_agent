@@ -122,8 +122,8 @@ Migration rules:
 | 0.5.5 Beta | `dev_notes/pipelines/TALOS_PIPELINE_055.md` | Completed architecture pivot patch. |
 | 0.6.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_060.md` | Completed core runtime rewrite foundation with real shell/core/API/runtime/target boundaries. |
 | 0.6.5 Beta | `dev_notes/pipelines/TALOS_PIPELINE_065.md` | Completed Python decomposition and native/core boundary containment from measured 0.6.0 behavior. |
-| 0.7.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_070.md` | Ready to start Arduino adapter port on the new architecture. |
-| 0.7.5 Beta | Open as `dev_notes/pipelines/TALOS_PIPELINE_075.md` when version starts. | Planned Arduino workflow hardening. |
+| 0.7.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_070.md` | Completed Arduino adapter port and handed off to 0.7.5 hardening. |
+| 0.7.5 Beta | `dev_notes/pipelines/TALOS_PIPELINE_075.md` | Planned Arduino workflow hardening from the real 0.7.0 adapter state. |
 | 0.8.0 Beta | Open as `dev_notes/pipelines/TALOS_PIPELINE_080.md` when version starts. | Planned Talos Core Complete gate. |
 | 0.9.0 Beta | Open as `dev_notes/pipelines/TALOS_PIPELINE_090.md` when version starts. | Planned runtime independence and product trust hardening. |
 | 0.10.0 Beta | Open as `dev_notes/pipelines/TALOS_PIPELINE_0100.md` when version starts. | Planned MATLAB foundation release. |
@@ -256,7 +256,7 @@ Result:
 
 ### 0.7.0 Beta - Arduino Adapter Port
 
-Status: ready to start.
+Status: complete.
 
 Purpose:
 
@@ -267,6 +267,12 @@ Purpose:
 Pipeline:
 
 - `dev_notes/pipelines/TALOS_PIPELINE_070.md`
+
+Handoff:
+
+- Arduino behavior is adapter-owned and parity-tested.
+- Daily-use hardening moves to `dev_notes/pipelines/TALOS_PIPELINE_075.md`.
+- No non-Arduino target work starts until Arduino hardening is validated.
 
 ### 0.7.5 Beta - Arduino Workflow Hardening
 
@@ -279,7 +285,7 @@ Purpose:
 
 Pipeline:
 
-- Open `dev_notes/pipelines/TALOS_PIPELINE_075.md` when 0.7.5 starts.
+- `dev_notes/pipelines/TALOS_PIPELINE_075.md`
 
 ### 0.8.0 Beta - Talos Core Complete
 

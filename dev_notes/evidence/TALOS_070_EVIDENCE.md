@@ -167,3 +167,44 @@ Stage 6 used low-resource UI contract checks rather than opening the GUI, keepin
 - Result: 2 tests passed.
 
 Conclusion: the adapter port keeps the current Arduino UI surfaces connected without requiring GUI launch, network access, or Codex credentials.
+
+## Stage 7 - Regression Gate
+
+Status: complete.
+
+Stage 7 closes the Arduino adapter port with low-resource validation and no network dependency.
+
+### Validation
+
+- Focused Stage 070 adapter parity, verify, context, change-review, and UI smoke command: `python -B -m unittest -q tests.test_desktop_app.TalosArduinoTests.test_stage_070_arduino_adapter_satisfies_contract tests.test_desktop_app.TalosArduinoTests.test_stage_070_arduino_adapter_contract_payload_shape tests.test_desktop_app.TalosArduinoTests.test_stage_070_adapter_profile_payload_tracks_board_and_environment_metadata tests.test_desktop_app.TalosArduinoTests.test_stage_070_adapter_profile_payload_updates_when_board_profile_changes tests.test_desktop_app.TalosArduinoTests.test_stage_070_adapter_profile_payload_reports_missing_profile_data tests.test_desktop_app.TalosArduinoTests.test_stage_070_adapter_verify_attaches_plan_summary_and_preserves_output tests.test_desktop_app.TalosArduinoTests.test_stage_070_compile_cache_hit_miss_and_key_boundaries tests.test_desktop_app.TalosArduinoTests.test_stage_070_adapter_verify_cancel_and_clear_cache_are_owned tests.test_desktop_app.TalosArduinoTests.test_stage_070_arduino_adapter_routes_open_sketch_discovery tests.test_desktop_app.TalosArduinoTests.test_stage_070_arduino_adapter_workspace_mapping_source_inventory tests.test_desktop_app.TalosArduinoTests.test_stage_070_context_package_routes_adapter_payloads tests.test_desktop_app.TalosArduinoTests.test_stage_070_change_review_boundary_preserves_apply_reject_save_rollback tests.test_desktop_app.TalosArduinoTests.test_stage_070_ui_parity_surfaces_stay_connected tests.test_desktop_app.TalosArduinoTests.test_stage_070_missing_runtime_remains_codex_status_not_arduino_failure`
+- Focused result: 14 tests passed.
+- Automated regression command: `python -B -m unittest -q tests.test_desktop_app`
+- Regression result: 173 tests passed.
+
+### Coverage
+
+- Arduino adapter contract, discovery, workspace map, profile payload, verify plan/cache/cancel/clear-cache, context package, change-review boundary, and UI continuity were covered.
+- Sandbox verify smoke is covered through adapter verify and compile cache/timing tests without launching Arduino IDE or requiring `arduino-cli`.
+- Codex context package smoke is covered without credential capture; missing runtime remains an informational Codex gate.
+
+Conclusion: Arduino adapter migration is validated and ready for explicit 0.7.5 handoff.
+
+## Stage 8 - 0.7.5 Handoff
+
+Status: complete.
+
+0.7.0 is closed at the adapter-port level and hands daily-use Arduino hardening to `dev_notes/pipelines/TALOS_PIPELINE_075.md`.
+
+### Handoff Scope
+
+- 0.7.5 may carry compatibility/debug Python where it preserves the existing Arduino workflow.
+- 0.7.5 may harden Arduino detection, file sync, verify cache/cancel/readability, Codex runtime status, change review, recovery, and UI daily-use polish.
+- 0.7.5 must not add MATLAB, STM32CubeIDE, KiCad, SolidWorks, or runtime-independence scope.
+
+### Validation
+
+- Stage 7 focused adapter smoke: 14 tests passed.
+- Stage 7 full regression: 173 tests passed.
+- Handoff artifacts updated: roadmap, 0.7.0 pipeline, 0.7.0 evidence, and new 0.7.5 pipeline.
+
+Conclusion: 0.7.5 can focus on daily-use Arduino hardening rather than adapter migration or architecture cleanup.

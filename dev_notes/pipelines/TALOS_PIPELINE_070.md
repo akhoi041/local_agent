@@ -121,22 +121,26 @@ Stage 6 implementation note: UI parity is covered with lightweight contract test
 
 Purpose: prove the adapter port is complete enough for hardening.
 
-- [ ] Run automated regression.
-- [ ] Run Arduino adapter parity tests.
-- [ ] Run sandbox verify smoke.
-- [ ] Run Codex context package smoke without requiring credential capture.
-- [ ] Record final evidence in `dev_notes/evidence/TALOS_070_EVIDENCE.md`.
+- [x] Run automated regression.
+- [x] Run Arduino adapter parity tests.
+- [x] Run sandbox verify smoke.
+- [x] Run Codex context package smoke without requiring credential capture.
+- [x] Record final evidence in `dev_notes/evidence/TALOS_070_EVIDENCE.md`.
 
 Exit condition: Arduino adapter migration is validated and ready for explicit handoff.
+
+Stage 7 implementation note: validated with local-only focused Stage 070 adapter smokes plus full regression. No GUI launch, credential capture, downloads, or network calls were required.
 
 ## Stage 8 - 0.7.5 Handoff
 
 Purpose: hand the Arduino adapter port to the daily-use hardening release.
 
-- [ ] Update roadmap status for 0.7.0 completion.
-- [ ] Create or update `dev_notes/pipelines/TALOS_PIPELINE_075.md` based on the real Arduino adapter state.
-- [ ] List any remaining compatibility paths, fallbacks, or blocked items that 0.7.5 is allowed to carry.
-- [ ] Record final evidence in `dev_notes/evidence/TALOS_070_EVIDENCE.md`.
-- [ ] Confirm no new target product work starts before Arduino hardening has a clear 0.7.5 plan.
+- [x] Update roadmap status for 0.7.0 completion.
+- [x] Create or update `dev_notes/pipelines/TALOS_PIPELINE_075.md` based on the real Arduino adapter state.
+- [x] List any remaining compatibility paths, fallbacks, or blocked items that 0.7.5 is allowed to carry.
+- [x] Record final evidence in `dev_notes/evidence/TALOS_070_EVIDENCE.md`.
+- [x] Confirm no new target product work starts before Arduino hardening has a clear 0.7.5 plan.
 
 Exit condition: 0.7.5 can focus on daily-use Arduino hardening rather than adapter migration or architecture cleanup.
+
+Stage 8 implementation note: 0.7.0 is closed at the planning/evidence level and hands Arduino daily-use hardening to 0.7.5. The next release must harden the existing Arduino adapter instead of adding MATLAB, STM32CubeIDE, KiCad, SolidWorks, or runtime-independence work.
