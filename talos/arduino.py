@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import os
 import shutil
 import subprocess
@@ -523,6 +524,15 @@ def sketch_project_from_path(
         "message": "Open Arduino sketch found.",
     }
 
+def sketch_folder_key_from_ino_path(path_text: str) -> str:
+    path = resolve_workspace(path_text)
+    if path is None or path.suffix.lower() != ".ino":
+        return ""
+    try:
+        return str(path.parent.resolve()).lower()
+    except OSError:
+        return ""
+
 def sketch_stem(sketch_name: str) -> str:
     return Path(sketch_name).stem.lower()
 
@@ -633,6 +643,13 @@ def discover_arduino_projects(
             title_folders[(title, sketch)] = folder
             if folder is not None:
                 live_folder_keys.add(str(folder).lower())
+    if live_folder_keys and path_sources:
+        open_ino_paths = [
+            path_text
+            for path_text in open_ino_paths
+            if path_sources.get(path_text) != "process"
+            or sketch_folder_key_from_ino_path(path_text) in live_folder_keys
+        ]
     claimed_board_bases = {
         base_fqbn(str(board.get("fqbn") or ""))
         for path, board in workspace_board_map.items()
@@ -733,6 +750,14 @@ def resolve_workspace_file(config: dict[str, Any], relative_path: str, *, must_e
         return None, "File was not found in the Arduino sketch folder."
     return path, None
 
+def file_content_hash(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(65536), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def read_workspace_file(config: dict[str, Any], relative_path: str) -> dict[str, Any]:
     path, error = resolve_workspace_file(config, relative_path, must_exist=True)
     if error or path is None:
@@ -742,12 +767,14 @@ def read_workspace_file(config: dict[str, Any], relative_path: str) -> dict[str,
         return {"ok": False, "error": f"File is too large to read safely: {stat.st_size} bytes."}
     workspace = configured_workspace(config)
     assert workspace is not None
+    content = path.read_text(encoding="utf-8", errors="replace")
     return {
         "ok": True,
         "path": path.relative_to(workspace).as_posix(),
-        "content": path.read_text(encoding="utf-8", errors="replace"),
+        "content": content,
         "bytes": stat.st_size,
         "mtime_ns": stat.st_mtime_ns,
+        "hash": file_content_hash(path),
     }
 
 def atomic_write_text(path: Path, content: str) -> None:
@@ -763,26 +790,68 @@ def atomic_write_text(path: Path, content: str) -> None:
         except OSError:
             pass
 
-def write_workspace_file(config: dict[str, Any], relative_path: str, content: str) -> dict[str, Any]:
+def write_workspace_file(
+    config: dict[str, Any],
+    relative_path: str,
+    content: str,
+    expected_hash: str = "",
+    expected_mtime_ns: int | None = None,
+) -> dict[str, Any]:
     path, error = resolve_workspace_file(config, relative_path)
     if error or path is None:
         return {"ok": False, "error": error}
     workspace = configured_workspace(config)
     assert workspace is not None
+    relative = path.relative_to(workspace).as_posix()
+    clean_expected_hash = str(expected_hash or "").strip().lower()
+    try:
+        current_stat = path.stat() if path.exists() else None
+        current_hash = file_content_hash(path) if path.exists() else ""
+    except OSError as read_error:
+        return {
+            "ok": False,
+            "error": f"Could not read current file state before save: {read_error}",
+            "path": relative,
+        }
+    if clean_expected_hash and current_hash != clean_expected_hash:
+        return {
+            "ok": False,
+            "status": "external_change",
+            "error": "File changed on disk. Reload before saving so Talos does not overwrite Arduino IDE changes.",
+            "path": relative,
+            "current_hash": current_hash,
+            "expected_hash": clean_expected_hash,
+            "mtime_ns": current_stat.st_mtime_ns if current_stat else 0,
+        }
+    if expected_mtime_ns is not None and not clean_expected_hash and current_stat is not None:
+        try:
+            expected_mtime_value = int(expected_mtime_ns)
+        except (TypeError, ValueError):
+            expected_mtime_value = 0
+        if expected_mtime_value and current_stat.st_mtime_ns != expected_mtime_value:
+            return {
+                "ok": False,
+                "status": "external_change",
+                "error": "File changed on disk. Reload before saving so Talos does not overwrite Arduino IDE changes.",
+                "path": relative,
+                "mtime_ns": current_stat.st_mtime_ns,
+                "expected_mtime_ns": expected_mtime_value,
+            }
     try:
         atomic_write_text(path, content)
     except OSError as write_error:
         return {
             "ok": False,
             "error": f"Could not save file atomically. The file may be locked by another app: {write_error}",
-            "path": path.relative_to(workspace).as_posix(),
+            "path": relative,
         }
     stat = path.stat()
     return {
         "ok": True,
-        "path": path.relative_to(workspace).as_posix(),
+        "path": relative,
         "bytes": stat.st_size,
         "mtime_ns": stat.st_mtime_ns,
+        "hash": file_content_hash(path),
         "write": "atomic",
     }
 

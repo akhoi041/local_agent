@@ -188,8 +188,15 @@ class ArduinoTargetAdapter:
     def read_file(self, config: dict[str, Any], path: str) -> dict[str, Any]:
         return arduino.read_workspace_file(config, path)
 
-    def write_file(self, config: dict[str, Any], path: str, content: str) -> dict[str, Any]:
-        return arduino.write_workspace_file(config, path, content)
+    def write_file(
+        self,
+        config: dict[str, Any],
+        path: str,
+        content: str,
+        expected_hash: str = "",
+        expected_mtime_ns: int | None = None,
+    ) -> dict[str, Any]:
+        return arduino.write_workspace_file(config, path, content, expected_hash, expected_mtime_ns)
 
     def rollback_file(self, config: dict[str, Any], path: str) -> dict[str, Any]:
         return rollback_last_checkpoint(config, path)

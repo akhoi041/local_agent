@@ -202,6 +202,8 @@ class TalosWebHandler(BaseHTTPRequestHandler):
                 config,
                 str(payload.get("path", "")),
                 str(payload.get("content", "")),
+                str(payload.get("expected_hash", "")),
+                payload.get("expected_mtime_ns"),
             )
             checkpoint = checkpoint_result.get("checkpoint") if isinstance(checkpoint_result.get("checkpoint"), dict) else {}
             checkpoint_id = str(checkpoint.get("id") or "")

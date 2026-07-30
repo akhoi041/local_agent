@@ -184,7 +184,14 @@ class TargetAdapter(Protocol):
     def read_file(self, config: dict[str, Any], path: str) -> dict[str, Any]:
         ...
 
-    def write_file(self, config: dict[str, Any], path: str, content: str) -> dict[str, Any]:
+    def write_file(
+        self,
+        config: dict[str, Any],
+        path: str,
+        content: str,
+        expected_hash: str = "",
+        expected_mtime_ns: int | None = None,
+    ) -> dict[str, Any]:
         ...
 
     def rollback_file(self, config: dict[str, Any], path: str) -> dict[str, Any]:

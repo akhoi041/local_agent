@@ -25,6 +25,7 @@ export const state = {
   activeFilePath: "",
   editorOriginalContent: "",
   editorFileMtimeNs: 0,
+  editorFileHash: "",
   editorDirty: false,
   editorWriteGuard: null,
   localEditMode: false,

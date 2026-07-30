@@ -3614,6 +3614,89 @@ class TalosArduinoTests(unittest.TestCase):
             self.assertTrue(projects[0]["unsaved"])
             self.assertEqual(projects[0]["status"], "unsaved")
 
+    def test_stage_075_discovery_reopen_replaces_stale_process_path(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            old = root / "closed_sketch"
+            new = root / "active_sketch"
+            old.mkdir()
+            new.mkdir()
+            old_ino = old / "closed_sketch.ino"
+            old_ino.write_text("void setup() {}\nvoid loop() {}\n", encoding="utf-8")
+            (new / "active_sketch.ino").write_text("void setup() {}\nvoid loop() {}\n", encoding="utf-8")
+
+            projects = discover_arduino_projects(
+                {"arduino_search_roots": str(root)},
+                titles=["active_sketch | Arduino IDE 2.3.4"],
+                ide_processes=[
+                    {
+                        "title": "closed_sketch | Arduino IDE 2.3.4",
+                        "ino_paths": [str(old_ino)],
+                    }
+                ],
+            )
+
+            self.assertEqual([project["sketch"] for project in projects], ["active_sketch.ino"])
+            self.assertEqual(Path(projects[0]["path"]).name, "active_sketch")
+
+    def test_stage_075_discovery_resolves_source_tabs_from_distinct_roots(self) -> None:
+        with TemporaryDirectory() as tmp:
+            first_root = Path(tmp) / "first"
+            second_root = Path(tmp) / "second"
+            lqr = first_root / "LQR_pendulum"
+            sensor = second_root / "RemoteSensor"
+            lqr.mkdir(parents=True)
+            sensor.mkdir(parents=True)
+            (lqr / "LQR_pendulum.ino").write_text("void setup() {}\nvoid loop() {}\n", encoding="utf-8")
+            (lqr / "encoder.cpp").write_text("int ticks = 0;\n", encoding="utf-8")
+            (sensor / "RemoteSensor.ino").write_text("void setup() {}\nvoid loop() {}\n", encoding="utf-8")
+            (sensor / "sensor.h").write_text("#pragma once\n", encoding="utf-8")
+
+            projects = discover_arduino_projects(
+                {"arduino_search_roots": f"{first_root};{second_root}"},
+                titles=[
+                    "LQR_pendulum - encoder.cpp | Arduino IDE 2.3.4",
+                    "RemoteSensor - sensor.h | Arduino IDE 2.3.4",
+                ],
+            )
+
+            self.assertEqual([project["sketch"] for project in projects], ["LQR_pendulum.ino", "RemoteSensor.ino"])
+            self.assertEqual([project["source_count"] for project in projects], [2, 2])
+
+    def test_stage_075_event_watcher_keeps_debounced_event_assist(self) -> None:
+        seen: list[str] = []
+        watcher = ArduinoEventWatcher(lambda _reason: seen.append(_reason))
+
+        watcher._signal("Untitled - Notepad")
+        watcher._signal("test | Arduino IDE 2.3.4")
+        watcher._signal("test | Arduino IDE 2.3.4")
+
+        self.assertFalse(watcher.available)
+        self.assertEqual(seen, ["window"])
+
+    def test_stage_075_detection_timing_stays_within_local_refresh_budget(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name in ("one", "two", "three"):
+                folder = root / name
+                folder.mkdir()
+                (folder / f"{name}.ino").write_text("void setup() {}\nvoid loop() {}\n", encoding="utf-8")
+
+            timer = __import__("time").perf_counter
+            started = timer()
+            projects = discover_arduino_projects(
+                {"arduino_search_roots": str(root)},
+                titles=[
+                    "one | Arduino IDE 2.3.4",
+                    "two | Arduino IDE 2.3.4",
+                    "three | Arduino IDE 2.3.4",
+                ],
+            )
+            elapsed_ms = (timer() - started) * 1000
+
+            self.assertEqual(len(projects), 3)
+            self.assertLess(elapsed_ms, 250.0)
+
     def test_arduino_discovery_keeps_sketch_folder_when_active_title_is_cpp_or_header_tab(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp) / "Arduino"
@@ -4186,6 +4269,36 @@ class TalosArduinoTests(unittest.TestCase):
             self.assertEqual(result["write"], "atomic")
             self.assertEqual(target.read_text(encoding="utf-8"), "after\n")
             self.assertEqual(list(root.glob(".talos-write-*")), [])
+
+    def test_stage_075_workspace_save_returns_content_hash(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp) / "Blink"
+            root.mkdir()
+            config = {"arduino_workspace_path": str(root), "arduino_fqbn": ""}
+
+            write_result = write_workspace_file(config, "Blink.ino", "before\n")
+            read_result = read_workspace_file(config, "Blink.ino")
+
+            self.assertTrue(write_result["ok"])
+            self.assertTrue(read_result["ok"])
+            self.assertEqual(write_result["hash"], read_result["hash"])
+            self.assertRegex(read_result["hash"], r"^[0-9a-f]{64}$")
+
+    def test_stage_075_workspace_save_rejects_external_edit_with_loaded_hash(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp) / "Blink"
+            root.mkdir()
+            target = root / "Blink.ino"
+            target.write_text("before\n", encoding="utf-8")
+            config = {"arduino_workspace_path": str(root), "arduino_fqbn": ""}
+
+            loaded = read_workspace_file(config, "Blink.ino")
+            target.write_text("external\n", encoding="utf-8")
+            result = write_workspace_file(config, "Blink.ino", "talos\n", expected_hash=str(loaded["hash"]))
+
+            self.assertFalse(result["ok"])
+            self.assertEqual(result["status"], "external_change")
+            self.assertEqual(target.read_text(encoding="utf-8"), "external\n")
 
     def test_arduino_workspace_file_rejects_escape_paths(self) -> None:
         with TemporaryDirectory() as tmp:
