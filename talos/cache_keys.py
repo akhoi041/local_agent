@@ -5,21 +5,17 @@ import json
 from pathlib import Path
 from typing import Any
 
-
 CACHE_KEY_VERSION = 2
 SOURCE_SUFFIXES = {".ino", ".h", ".hpp", ".c", ".cpp", ".s", ".S"}
 IGNORED_DIRS = {".git", ".vs", ".vscode", "__pycache__", ".cache", ".pio", "build", "dist", "node_modules"}
 
-
 def _stable_json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":"), default=str)
-
 
 def _short_hash(value: str, length: int = 16) -> str:
     if not value:
         return ""
     return hashlib.sha256(value.encode("utf-8", errors="ignore")).hexdigest()[:length]
-
 
 def workspace_identity_hash(path_text: str, length: int = 16) -> str:
     value = str(path_text or "").strip()
@@ -30,7 +26,6 @@ def workspace_identity_hash(path_text: str, length: int = 16) -> str:
     except OSError:
         pass
     return _short_hash(value.lower(), length)
-
 
 def _profile_payload(profile: dict[str, Any] | None) -> dict[str, Any]:
     source = profile if isinstance(profile, dict) else {}
@@ -43,7 +38,6 @@ def _profile_payload(profile: dict[str, Any] | None) -> dict[str, Any]:
         "libraries": list(source.get("libraries") or []),
     }
 
-
 def _cli_payload(cli: str) -> dict[str, Any]:
     path_text = str(cli or "")
     payload: dict[str, Any] = {"path": path_text, "mtime_ns": None, "bytes": None}
@@ -54,7 +48,6 @@ def _cli_payload(cli: str) -> dict[str, Any]:
     payload["mtime_ns"] = stat.st_mtime_ns
     payload["bytes"] = stat.st_size
     return payload
-
 
 def _fallback_source_rows(workspace: Path) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
@@ -82,7 +75,6 @@ def _fallback_source_rows(workspace: Path) -> list[dict[str, Any]]:
         })
     return rows
 
-
 def _source_payload(workspace: Path, summary: dict[str, Any]) -> list[dict[str, Any]]:
     rows = summary.get("files") if isinstance(summary.get("files"), list) else []
     if not rows:
@@ -109,7 +101,6 @@ def _source_payload(workspace: Path, summary: dict[str, Any]) -> list[dict[str, 
         })
     return sorted(payload, key=lambda item: item["path"].lower())
 
-
 def _override_payload(overrides: dict[str, str | None] | None) -> list[dict[str, Any]]:
     payload: list[dict[str, Any]] = []
     for path, content in sorted((overrides or {}).items()):
@@ -121,7 +112,6 @@ def _override_payload(overrides: dict[str, str | None] | None) -> list[dict[str,
             "sha256": "<deleted>" if content is None else hashlib.sha256(text.encode("utf-8")).hexdigest(),
         })
     return payload
-
 
 def compile_cache_payload(
     workspace: Path,
@@ -152,7 +142,6 @@ def compile_cache_payload(
         "sources": _source_payload(workspace_path, summary),
         "overrides": _override_payload(overrides),
     }
-
 
 def compile_cache_key(
     workspace: Path,

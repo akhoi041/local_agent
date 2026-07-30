@@ -9,6 +9,16 @@ from talos.core import load_config
 from talos.diagnostics import record_diagnostic
 from talos.run_history import record_runtime_event
 
+CODEX_ONLY_RUNTIME_POLICY = {
+    "scope": "codex_only",
+    "blocks": ["codex"],
+    "blocks_arduino": False,
+    "manual_context_fallback": True,
+    "credential_capture": False,
+    "credential_policy": "external_runtime_only",
+    "replay_guard": "manual_send_required",
+}
+
 def runtime_gate(runtime_summary: dict[str, Any]) -> dict[str, Any]:
     health = runtime_summary.get("health") if isinstance(runtime_summary.get("health"), dict) else {}
     provider = str(runtime_summary.get("provider") or PROVIDER_NONE)
@@ -21,13 +31,17 @@ def runtime_gate(runtime_summary: dict[str, Any]) -> dict[str, Any]:
         "reconnect_allowed": False,
         "manual_replay_required": True,
         "warnings": list(warnings),
+        **CODEX_ONLY_RUNTIME_POLICY,
     }
     if provider == PROVIDER_NONE:
         return {
             **base,
             "code": "runtime_missing",
             "title": "Codex runtime missing",
-            "detail": "Select or pin a Codex runtime in Settings before sending a Codex turn.",
+            "detail": (
+                "Select or pin a Codex runtime in Settings before sending a Codex turn. "
+                "Arduino tools remain usable, and Copy package remains available for manual fallback."
+            ),
         }
     if runtime_summary.get("changed"):
         return {
@@ -54,6 +68,7 @@ def runtime_gate(runtime_summary: dict[str, Any]) -> dict[str, Any]:
         "retryable": False,
         "reconnect_allowed": True,
         "manual_replay_required": True,
+        **{**CODEX_ONLY_RUNTIME_POLICY, "blocks": []},
         "code": "runtime_ready",
         "title": "Codex runtime ready",
         "detail": "Runtime executable is selected. Auth and app-server readiness are verified when the runtime exposes them.",
@@ -139,12 +154,18 @@ def codex_status_payload(*, start: bool = True, force_runtime: bool = False) -> 
             "state": "runtime_blocked",
             "runtime_code": gate["code"],
             "can_retry_now": bool(gate.get("retryable")),
+            "scope": gate.get("scope", "codex_only"),
+            "blocks_arduino": bool(gate.get("blocks_arduino")),
+            "replay_guard": gate.get("replay_guard", "manual_send_required"),
+            "replayed_user_turn": False,
         }
         task_state = status.get("task_state") if isinstance(status.get("task_state"), dict) else {}
         status["task_state"] = {
             **task_state,
             "state": "runtime_blocked",
             "detail": gate["detail"],
-            "replay_guard": "manual_send_required",
+            "replay_guard": gate.get("replay_guard", "manual_send_required"),
+            "scope": gate.get("scope", "codex_only"),
+            "blocks_arduino": bool(gate.get("blocks_arduino")),
         }
     return status

@@ -10,7 +10,6 @@ from talos.codex_bridge import CodexBridge
 
 VerifyRunner = Callable[[dict[str, Any]], dict[str, Any]]
 
-
 def run_arduino_compatibility_smoke(
     root: str | Path | None = None,
     *,
@@ -28,7 +27,6 @@ def run_arduino_compatibility_smoke(
         with TemporaryDirectory() as tmp:
             return _run_smoke(Path(tmp), adapter, bridge, verify_runner)
     return _run_smoke(Path(root), adapter, bridge, verify_runner)
-
 
 def _run_smoke(
     root: Path,
@@ -118,7 +116,6 @@ def _run_smoke(
         "checks": checks,
     }
 
-
 def _synthetic_verify(config: dict[str, Any]) -> dict[str, Any]:
     return {
         "ok": True,
@@ -127,7 +124,6 @@ def _synthetic_verify(config: dict[str, Any]) -> dict[str, Any]:
         "output": "Synthetic Arduino compile passed for Stage 8 smoke.",
         "timings": {"prepare": 0.0, "sandbox_copy": 0.0, "compile": 0.0, "total": 0.0},
     }
-
 
 def _create_stage8_workspace(root: Path) -> Path:
     workspace = root / "Stage8Smoke"

@@ -8,7 +8,6 @@ from typing import Any
 
 from talos.arduino import is_source_file
 
-
 def diff_workspace_snapshots(
     before: dict[str, dict[str, Any]],
     after: dict[str, dict[str, Any]],
@@ -34,7 +33,6 @@ def diff_workspace_snapshots(
             }
         )
     return changes
-
 
 def build_patch_hunks(before: str, after: str) -> list[dict[str, Any]]:
     if before == after:
@@ -85,7 +83,6 @@ def build_patch_hunks(before: str, after: str) -> list[dict[str, Any]]:
         )
     return hunks
 
-
 def content_with_applied_hunks(base_content: str, hunks: list[dict[str, Any]]) -> str:
     trailing_newline = base_content.endswith("\n")
     original_lines = base_content.split("\n")
@@ -104,7 +101,6 @@ def content_with_applied_hunks(base_content: str, hunks: list[dict[str, Any]]) -
         cursor = end
     output.extend(original_lines[cursor:])
     return "\n".join(output) + ("\n" if trailing_newline else "")
-
 
 def staged_patch_files(
     source_workspace: str | Path,
@@ -149,7 +145,6 @@ def staged_patch_files(
         files.append(item)
     return files
 
-
 def review_summary_for_file(file: dict[str, Any]) -> dict[str, int]:
     statuses = [str(hunk.get("review_status") or "staged") for hunk in file.get("hunks") or []]
     if not statuses:
@@ -178,7 +173,6 @@ def review_summary_for_file(file: dict[str, Any]) -> dict[str, int]:
             summary["recovered"] += 1
     return summary
 
-
 def review_summary_for_patch(patch: dict[str, Any]) -> dict[str, int]:
     summary = {
         "files": 0,
@@ -196,7 +190,6 @@ def review_summary_for_patch(patch: dict[str, Any]) -> dict[str, int]:
         for key in ("pending", "applied_to_editor", "rejected", "saved", "conflict", "recovered"):
             summary[key] += int(file_summary.get(key) or 0)
     return summary
-
 
 def measure_hunk_timing(before: str, after: str) -> dict[str, Any]:
     started = time.perf_counter()

@@ -1309,6 +1309,16 @@ def verify_runtime_status(timings: dict[str, float]) -> dict[str, Any]:
         },
     }
 
+VERIFY_TIMING_KEYS = ("prepare", "sandbox_copy", "compile", "total")
+
+
+def complete_verify_timings(timings: dict[str, float]) -> dict[str, float]:
+    completed = {key: round(float(timings.get(key) or 0.0), 3) for key in VERIFY_TIMING_KEYS}
+    for key, value in timings.items():
+        completed[key] = round(float(value or 0.0), 3)
+    return completed
+
+
 def cached_compile_result(cache_key: str, lookup_seconds: float = 0.0) -> dict[str, Any] | None:
     with VERIFY_CACHE_LOCK:
         item = VERIFY_CACHE.get(cache_key)
@@ -1321,7 +1331,10 @@ def cached_compile_result(cache_key: str, lookup_seconds: float = 0.0) -> dict[s
             return None
     cached = copy.deepcopy(result)
     cached["cache"] = {"hit": True, "age_seconds": round(age, 3), "key": cache_key[:12]}
-    cached["timings"] = {"cache_lookup": round(lookup_seconds, 3), "total": round(lookup_seconds, 3)}
+    cached["timings"] = complete_verify_timings({
+        "cache_lookup": round(lookup_seconds, 3),
+        "total": round(lookup_seconds, 3),
+    })
     cached["runtime"] = verify_runtime_status(cached["timings"])
     return cached
 
@@ -1346,6 +1359,9 @@ def clear_arduino_compile_cache_result() -> dict[str, Any]:
     return {
         "ok": True,
         "cleared": count,
+        "cache": {"hit": False, "cleared": count, "status": "cleared"},
+        "timings": complete_verify_timings({}),
+        "runtime": verify_runtime_status(complete_verify_timings({})),
         "message": f"Cleared {count} Arduino verify cache entr{'y' if count == 1 else 'ies'}.",
     }
 
@@ -1385,8 +1401,8 @@ def run_arduino_compile(
 
     def with_total(payload: dict[str, Any]) -> dict[str, Any]:
         timings["total"] = round(time.perf_counter() - started_at, 3)
-        payload["timings"] = timings.copy()
-        payload["runtime"] = verify_runtime_status(timings)
+        payload["timings"] = complete_verify_timings(timings)
+        payload["runtime"] = verify_runtime_status(payload["timings"])
         return payload
 
     step_started_at = time.perf_counter()

@@ -4,7 +4,6 @@ import ast
 from dataclasses import dataclass
 from pathlib import Path
 
-
 @dataclass(frozen=True)
 class PythonModuleOwnership:
     module: str
@@ -14,7 +13,6 @@ class PythonModuleOwnership:
     hot_path: bool = False
     fallback_required: bool = False
     notes: str = ""
-
 
 PYTHON_MODULE_OWNERSHIP: tuple[PythonModuleOwnership, ...] = (
     PythonModuleOwnership(module="desktop_app", owner="shell", role="launcher", migration_target="shell", notes="Thin desktop entry point."),
@@ -77,10 +75,8 @@ SERVER_IMPORT_BASELINE: frozenset[str] = frozenset({
     "talos.targets",
 })
 
-
 def ownership_by_module() -> dict[str, PythonModuleOwnership]:
     return {entry.module: entry for entry in PYTHON_MODULE_OWNERSHIP}
-
 
 def ownership_report() -> dict[str, object]:
     entries = [entry.__dict__ for entry in PYTHON_MODULE_OWNERSHIP]
@@ -90,7 +86,6 @@ def ownership_report() -> dict[str, object]:
         "migration_targets": list(HOT_PATH_MIGRATION_TARGETS),
         "fallback_policy": FALLBACK_POLICY,
     }
-
 
 def _talos_imports(source_path: Path) -> set[str]:
     tree = ast.parse(source_path.read_text(encoding="utf-8"))
@@ -104,7 +99,6 @@ def _talos_imports(source_path: Path) -> set[str]:
             if node.module == "talos" or node.module.startswith("talos."):
                 imports.add(node.module)
     return imports
-
 
 def boundary_check(root: Path) -> dict[str, object]:
     """Return Stage 6 ownership/boundary status.
