@@ -30,34 +30,40 @@ Version handoff rule: this pipeline must end with a handoff stage for 0.8.0.
 
 Purpose: start hardening from measured 0.7.0 behavior.
 
-- [ ] Confirm current branch and version metadata.
-- [ ] Record current Arduino adapter status from 0.7.0 evidence.
-- [ ] Run focused Stage 070 adapter smoke as the baseline.
-- [ ] Record blocked items, if any, in `dev_notes/evidence/TALOS_075_EVIDENCE.md`.
+- [x] Confirm current branch and version metadata.
+- [x] Record current Arduino adapter status from 0.7.0 evidence.
+- [x] Run focused Stage 070 adapter smoke as the baseline.
+- [x] Record blocked items, if any, in `dev_notes/evidence/TALOS_075_EVIDENCE.md`.
 
 Exit condition: 0.7.5 starts from a known 0.7.0 adapter state.
+
+Stage 0 implementation note: local branch is `develop/0.7.5`, app identity is `0.7.5 Beta`, and the 0.7.0 adapter state is recorded in the 0.7.5 evidence file. No blocked items were found.
 
 ## Stage 1 - Daily Arduino Detection Hardening
 
 Purpose: make open-sketch detection reliable under normal user behavior.
 
-- [ ] Test open/close/reopen Arduino IDE windows without stale sketches.
-- [ ] Test multiple sketches and source tabs from different parent folders.
-- [ ] Keep event-assisted refresh with polling fallback.
-- [ ] Record detection timing and stale-state behavior.
+- [x] Test open/close/reopen Arduino IDE windows without stale sketches.
+- [x] Test multiple sketches and source tabs from different parent folders.
+- [x] Keep event-assisted refresh with polling fallback.
+- [x] Record detection timing and stale-state behavior.
 
 Exit condition: sketch list updates quickly and does not resurrect closed sketches.
+
+Stage 1 implementation note: Arduino discovery now drops stale process-sourced `.ino` paths when live Arduino window titles resolve to different saved sketch folders. Focused Stage 1 tests cover reopen replacement, multi-folder source-tab detection, event debounce fallback, and a local refresh timing budget. Full local regression passed.
 
 ## Stage 2 - Workspace And File Sync Hardening
 
 Purpose: keep Talos review/editor state aligned with Arduino-owned files.
 
-- [ ] Verify selected file highlight, line numbers, and active-file status after scrolling and switching files.
-- [ ] Verify save writes remain explicit and atomic.
-- [ ] Verify Arduino external edits are detected without overwriting user work.
-- [ ] Keep Talos editor in review/local-edit mode, not as an Arduino IDE replacement.
+- [x] Verify selected file highlight, line numbers, and active-file status after scrolling and switching files.
+- [x] Verify save writes remain explicit and atomic.
+- [x] Verify Arduino external edits are detected without overwriting user work.
+- [x] Keep Talos editor in review/local-edit mode, not as an Arduino IDE replacement.
 
 Exit condition: file state remains understandable and user-owned.
+
+Stage 2 focused implementation note: Arduino file reads now include a content hash, Save File sends the loaded hash and mtime back to the backend, and stale saves are rejected before the atomic replace if Arduino IDE changed the file externally. The UI marks the active file as conflicted instead of overwriting user-owned Arduino edits.
 
 ## Stage 3 - Verify Workflow Hardening
 

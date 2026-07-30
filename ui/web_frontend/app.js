@@ -1136,6 +1136,7 @@ function applyEditorFileResult(result, statusText = "") {
   state.editorOriginalContent = result.content || "";
   setCheckpoint();
   state.editorFileMtimeNs = Number(result.mtime_ns || 0);
+  state.editorFileHash = String(result.hash || "");
   state.codexPreviewPath = "";
   state.codexPreviewStreaming = false;
   state.codexPreviewCommitted = false;
@@ -1208,6 +1209,7 @@ function resetEditor(message = "No file selected.") {
   state.localEditMode = false;
   state.editorOriginalContent = "";
   state.editorFileMtimeNs = 0;
+  state.editorFileHash = "";
   state.editorWriteGuard = null;
   state.editorLoading = false;
   state.editorSaving = false;
@@ -1291,11 +1293,17 @@ async function saveWorkspaceFile(options = {}) {
     const content = $("#sourceEditor").value;
     const result = await api("/api/arduino_file", {
       method: "POST",
-      body: JSON.stringify({ path: state.activeFilePath, content }),
+      body: JSON.stringify({
+        path: state.activeFilePath,
+        content,
+        expected_hash: state.editorFileHash || "",
+        expected_mtime_ns: state.editorFileMtimeNs || 0,
+      }),
     });
     markTalosWrite(result.path || state.activeFilePath, content, result.mtime_ns);
     state.editorOriginalContent = content;
     state.editorFileMtimeNs = Number(result.mtime_ns || 0);
+    state.editorFileHash = String(result.hash || "");
     state.localEditMode = false;
     $("#editorStatus").textContent = `Saved ${result.path} (${Number(result.bytes || 0)} bytes).`;
     setEditorDirty(false);
@@ -1310,6 +1318,13 @@ async function saveWorkspaceFile(options = {}) {
     await refresh();
     return true;
   } catch (error) {
+    if (error.payload?.status === "external_change") {
+      state.conflictedFilePaths.add(state.activeFilePath);
+      $("#editorStatus").textContent = "Save blocked: Arduino IDE changed this file. Reload before saving so Talos does not overwrite it.";
+      renderActiveFileRow();
+      updateEditorAccess();
+      return false;
+    }
     $("#editorStatus").textContent = `Save failed: ${error.message}`;
     return false;
   } finally {
@@ -1802,6 +1817,7 @@ async function checkActiveFileOnDisk() {
     if (nextMtime && state.editorFileMtimeNs && nextMtime === state.editorFileMtimeNs) return;
     if ((result.content || "") === state.editorOriginalContent) {
       state.editorFileMtimeNs = nextMtime;
+      state.editorFileHash = String(result.hash || state.editorFileHash || "");
       return;
     }
     applyEditorFileResult(result, `Reloaded from disk (${Number(result.bytes || 0)} bytes).`);

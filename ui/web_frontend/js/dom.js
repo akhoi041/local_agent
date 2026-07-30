@@ -8,6 +8,10 @@ export async function api(path, options = {}) {
   });
   const text = await response.text();
   const payload = text ? JSON.parse(text) : {};
-  if (!response.ok) throw new Error(payload.error || text || response.statusText);
+  if (!response.ok) {
+    const error = new Error(payload.error || text || response.statusText);
+    error.payload = payload;
+    throw error;
+  }
   return payload;
 }
