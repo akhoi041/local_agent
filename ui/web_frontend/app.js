@@ -2807,7 +2807,7 @@ function codexTaskViewModel(payload = {}) {
     return {
       kind: "blocked",
       title: gate.title || "Codex runtime blocked",
-      detail: gate.detail || "Select or refresh the Codex runtime before sending. No user turn was replayed.",
+      detail: gate.detail || "Select or refresh the Codex runtime before sending. Arduino tools remain usable, Copy package is available as a manual fallback, and no user turn was replayed.",
     };
   }
   const task = payload.task_state || {};
@@ -2815,7 +2815,7 @@ function codexTaskViewModel(payload = {}) {
   const stateName = String(task.state || "");
   const manualReplay = task.replay_guard === "manual_send_required";
   if (!payload.available) {
-    return { kind: "unavailable", title: "Codex runtime unavailable", detail: "Install or enable Codex before starting a task." };
+    return { kind: "unavailable", title: "Codex runtime unavailable", detail: "Codex runtime is unavailable. Arduino tools remain usable, and Copy package can be used as a manual fallback." };
   }
   if (connection.state === "auth_required") {
     return { kind: "blocked", title: "Sign-in required", detail: "Sign in through the Codex extension or CLI, then reconnect." };

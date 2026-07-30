@@ -9,10 +9,8 @@ from talos.core import now
 
 MAX_RECENT_TASKS = 25
 
-
 def _copy_task(task: dict[str, Any]) -> dict[str, Any]:
     return deepcopy(task)
-
 
 @dataclass
 class TaskOrchestrator:
@@ -144,6 +142,5 @@ class TaskOrchestrator:
         if normalized in {"failed", "error", "runtime_blocked", "blocked"}:
             return "failed"
         return "completed"
-
 
 TASK_ORCHESTRATOR = TaskOrchestrator()

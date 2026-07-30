@@ -79,6 +79,9 @@ Migration rules:
 - Do not remove a working Python path until the replacement has parity tests and fallback behavior.
 - Do not call a stage complete if it only writes notes unless that stage is explicitly documentation-only.
 - Do not treat VS Code extension behavior as the product foundation. Runtime providers must be explicit and replaceable.
+- From 0.7.5 onward, every active/future pipeline must include a Python expansion guardrail: Python is allowed only as a launcher, compatibility/debug bridge, test harness, or explicitly temporary migration shim.
+- New durable product behavior must target shell, core, API, runtime provider, native helper, or target-adapter boundaries first.
+- A Python change is acceptable only when it preserves parity, reduces Python ownership, or records temporary debt with an owner and exit condition.
 
 ## Long-Term Principles
 
@@ -100,8 +103,8 @@ Migration rules:
 | 0.6.0 | Core Runtime Rewrite Foundation. Start the real shell/API/core split and land implementation artifacts, not just documents. |
 | 0.6.5 | Python Decomposition. Move hot-path and mixed ownership logic behind native/core boundaries while preserving source/debug compatibility. |
 | 0.7.0 | Arduino Adapter Port. Rebuild Arduino as the first real target on the new adapter/core contracts. |
-| 0.7.5 | Arduino Workflow Hardening. Make Arduino stable for daily use on the new architecture. |
-| 0.8.0 | Talos Core Complete. The platform itself is complete enough to support new target products without another rewrite. |
+| 0.7.5 | Arduino Workflow Hardening. Close the current Arduino workflow, prevent further UI/tool drift, and hand the measured Python/core gaps to 0.8.0. |
+| 0.8.0 | Talos Core Complete. Implement the professional shell/core/API/runtime/native/adapter structure so Python becomes compatibility/debug glue instead of the app owner. |
 | 0.9.x | Runtime Independence And Product Trust. Harden runtime providers, consent, diagnostics, recovery, and installer/update posture before broad target expansion. |
 | 0.10.x - 0.11.x | MATLAB target block: foundation, then hardening. |
 | 0.12.x - 0.13.x | STM32CubeIDE target block: foundation, then hardening. |
@@ -123,8 +126,8 @@ Migration rules:
 | 0.6.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_060.md` | Completed core runtime rewrite foundation with real shell/core/API/runtime/target boundaries. |
 | 0.6.5 Beta | `dev_notes/pipelines/TALOS_PIPELINE_065.md` | Completed Python decomposition and native/core boundary containment from measured 0.6.0 behavior. |
 | 0.7.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_070.md` | Completed Arduino adapter port and handed off to 0.7.5 hardening. |
-| 0.7.5 Beta | `dev_notes/pipelines/TALOS_PIPELINE_075.md` | Planned Arduino workflow hardening from the real 0.7.0 adapter state. |
-| 0.8.0 Beta | Open as `dev_notes/pipelines/TALOS_PIPELINE_080.md` when version starts. | Planned Talos Core Complete gate. |
+| 0.7.5 Beta | `dev_notes/pipelines/TALOS_PIPELINE_075.md` | Completed Arduino workflow hardening and handed core migration gaps to 0.8.0. |
+| 0.8.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_080.md` | Planned Talos Core Complete implementation gate. |
 | 0.9.0 Beta | Open as `dev_notes/pipelines/TALOS_PIPELINE_090.md` when version starts. | Planned runtime independence and product trust hardening. |
 | 0.10.0 Beta | Open as `dev_notes/pipelines/TALOS_PIPELINE_0100.md` when version starts. | Planned MATLAB foundation release. |
 | 0.11.0 Beta | Open as `dev_notes/pipelines/TALOS_PIPELINE_0110.md` when version starts. | Planned MATLAB hardening release. |
@@ -276,12 +279,19 @@ Handoff:
 
 ### 0.7.5 Beta - Arduino Workflow Hardening
 
-Status: planned.
+Status: complete.
 
 Purpose:
 
 - Make Arduino stable enough for daily use on the new architecture.
 - Harden verify speed, file sync, review/apply/save, runtime errors, support evidence, and UI workflow.
+- Stop expanding prototype UI/tool behavior once daily Arduino use is acceptable.
+- Produce a concrete 0.8.0 handoff that lists Python-owned hot paths, missing replacement toolchains, and core/adapter gaps.
+
+Boundary:
+
+- 0.7.5 may polish the existing workbench, but it must not become another open-ended Python/frontend patch release.
+- Any structural replacement belongs in 0.8.0 unless it is needed to prevent Arduino data loss.
 
 Pipeline:
 
@@ -296,14 +306,25 @@ Purpose:
 - Declare the Talos platform complete enough to add new target products without another app-wide rewrite.
 - Require shell/core/API/runtime/native/adapter boundaries to be implemented, tested, and documented.
 - Require Arduino to remain functional as the reference target.
+- Establish the replacement runtime/toolchain path for the long-term structure.
+- Reduce Python ownership to source/debug launcher, compatibility bridge, or temporary fallback with explicit evidence.
+- Trim and classify the existing Python code before shell/core replacement expands, so old logic cannot quietly remain the app owner.
+
+Toolchain gate:
+
+- Rust/Cargo and Node/NPM are required for the preferred Tauri + Rust + web workbench path.
+- If those tools are missing from PATH, 0.8.0 Stage 0 must ask before downloading or installing them.
+- If the preferred path blocks a required Windows behavior, record the blocker and activate the Electron + TypeScript fallback deliberately.
 
 Exit gate:
 
 - New target products can start by implementing adapters, not by rewriting the app.
+- Python no longer owns the hot path for shell lifecycle, target orchestration, runtime provider state, workspace scanning, verify scheduling, or diagnostics export.
+- Existing Python modules are classified, optimized only where still necessary, migrated, or quarantined before the architecture is considered core-complete.
 
 Pipeline:
 
-- Open `dev_notes/pipelines/TALOS_PIPELINE_080.md` when 0.8.0 starts.
+- `dev_notes/pipelines/TALOS_PIPELINE_080.md`
 
 ### 0.9.0 Beta - Runtime Independence And Product Trust
 

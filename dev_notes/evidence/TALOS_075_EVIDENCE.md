@@ -71,3 +71,129 @@ Status: complete.
 - Atomic-write guard result: 1 test passed in 0.009 seconds.
 
 Conclusion: Stage 2 exit condition is met for focused validation; Talos can detect external file changes without overwriting Arduino-owned edits.
+
+## Stage 3 - Verify Workflow Hardening
+
+Status: complete.
+
+### Verify Behavior
+
+- Verify timing payloads are normalized across early failures, cache hits, cache clears, and normal compile results.
+- Cache hits remain explicitly labelled and cache clear responses include clear cache metadata.
+- Cancel idle feedback remains explicit and does not pretend a compile was cancelled when none is active.
+- Verify output stays concise in the UI while preserving copyable raw compiler output.
+
+### Validation
+
+- Focused command: `python -B -m unittest -q tests.test_desktop_app.TalosArduinoTests.test_arduino_verify_requires_fqbn_before_compile tests.test_desktop_app.TalosArduinoTests.test_compile_cache_is_keyed_by_workspace_content_and_can_be_cleared tests.test_desktop_app.TalosArduinoTests.test_compile_cache_clear_result_and_cached_runtime_feedback tests.test_desktop_app.TalosArduinoTests.test_verify_runtime_status_flags_slow_compile_and_total tests.test_desktop_app.TalosArduinoTests.test_verify_cancel_feedback_reports_idle_state tests.test_desktop_app.TalosArduinoTests.test_verify_ui_resets_output_before_new_request`
+- Focused result: 6 tests passed in 0.020 seconds.
+
+Conclusion: Stage 3 exit condition is met for focused validation; verify is predictable across cache, cancel, early-failure, and normal UI summary paths.
+
+## Stage 4 - Codex Runtime UX Hardening
+
+Status: complete.
+
+### Runtime UX Behavior
+
+- Missing runtime states are scoped to Codex only and do not block Arduino workspace, file, or verify tools.
+- Runtime status and blocked-gate payloads expose a manual replay guard so reconnect/status refreshes do not replay a user turn.
+- Context package copy remains available as the manual fallback path when Codex cannot act directly.
+- Runtime payloads report safe metadata only and explicitly keep credential handling outside Talos.
+
+### Validation
+
+- Focused command: `python -B -m unittest -q tests.test_desktop_app.TalosArduinoTests.test_stage_075_runtime_gate_is_codex_only_private_and_fallback_ready tests.test_desktop_app.TalosArduinoTests.test_stage_075_codex_status_reports_no_replay_privacy_policy tests.test_desktop_app.TalosArduinoTests.test_stage_075_codex_runtime_ui_keeps_manual_fallback_copy`
+- Focused result: 4 tests passed in 0.039 seconds, including the Stage 0.7.0 missing-runtime regression guard.
+
+Conclusion: Stage 4 exit condition is implemented; focused validation confirms whether users can distinguish Codex runtime readiness from Arduino tool readiness.
+
+## Stage 5 - Change Review And Recovery Hardening
+
+Status: complete.
+
+### Review And Recovery Behavior
+
+- Hunk apply/reject, apply-all, and reject-all are validated at the CodexBridge boundary.
+- Save acknowledgement marks applied editor content as saved without writing workspace content by itself.
+- Checkpoint rollback restores the previous Talos-saved file content through an explicit rollback action.
+- Pending reviews still persist until the user restores or discards them.
+- External file conflicts keep Arduino Version as the non-destructive default and do not overwrite Arduino-owned work.
+
+### Validation
+
+- Focused command: `python -B -m unittest -q tests.test_desktop_app.TalosArduinoTests.test_stage_075_change_review_recovery_keeps_arduino_as_default tests.test_desktop_app.TalosArduinoTests.test_codex_unfinished_reviews_persist_until_restored_or_discarded tests.test_desktop_app.TalosArduinoTests.test_release_recovery_keeps_external_arduino_change_after_restart tests.test_desktop_app.TalosArduinoTests.test_stage_070_change_review_boundary_preserves_apply_reject_save_rollback`
+- Focused result: 4 tests passed in 0.231 seconds.
+
+Conclusion: Stage 5 exit condition is met; Codex changes do not silently overwrite Arduino-owned work.
+
+## Stage 6 - UI Daily-Use Polish
+
+Status: complete.
+
+### Focused UI Result
+
+- Command palette, menu bar, status bar, keyboard shortcuts, and find behavior are treated as the canonical quick-command surfaces for the Arduino workbench.
+- Explorer remains the Arduino context surface; Codex remains a separate right-column runtime surface; Verify/History remains the bottom workbench output surface.
+- Toolbar actions remain grouped around immediate workflow actions so verify/Codex activity does not add another long-term UI architecture layer.
+- Deferred UI architecture items are explicitly moved beyond 0.7.5: native frame parity, toolkit replacement, runtime independence, and shell rewrite.
+
+### Architecture Guardrail
+
+- 0.7.5 now records that Python must not keep expanding as the product logic owner.
+- 0.8.0 receives the structural work: shell/core/API/runtime/native/adapter boundaries and Python reduction.
+
+### Validation
+
+- Evidence type: focused design/behavior review with no new app-code expansion in this pass.
+- Automated validation is intentionally not rerun for Stage 6 because this pass only updates release notes, guardrails, and pipeline state.
+
+Conclusion: Stage 6 exit condition is met for focused release evidence; daily Arduino use has a stable UI contract and remaining structural work is assigned to 0.8.0.
+
+## Stage 7 - Support Evidence And Release Gate
+
+Status: complete.
+
+### Release Gate Result
+
+- Support/evidence is consolidated in this version evidence file rather than scattered into per-stage files.
+- Daily-use smoke coverage is represented by the completed Stage 1-6 evidence: detection, file ownership, verify behavior, Codex runtime UX, change review/recovery, and UI daily-use polish.
+- Manual Arduino smoke is recorded as ready for tester execution with a real Arduino IDE session and board; no new hardware/GUI action is claimed in this focused pass.
+- Python expansion remains blocked: this stage records readiness only and adds no Python-owned product logic.
+
+### Validation
+
+- Regression command: `python -B -m unittest -q tests.test_desktop_app`
+- Regression result: 183 tests passed in 33.321 seconds.
+- Diff hygiene command: `git diff --check -- dev_notes\roadmap\TALOS_ROADMAP.md dev_notes\pipelines\TALOS_PIPELINE_075.md dev_notes\pipelines\TALOS_PIPELINE_080.md dev_notes\evidence\TALOS_075_EVIDENCE.md`
+- Diff hygiene result: no whitespace errors; Git reported expected LF-to-CRLF working-copy warnings for edited markdown files.
+
+Conclusion: Stage 7 exit condition is met for focused 0.7.5 release gating. The Arduino daily-use hardening path is validated by regression and consolidated evidence, while real-device smoke remains an explicit tester action instead of hidden automation.
+
+## Stage 8 - 0.8.0 Handoff
+
+Status: complete.
+
+### Handoff Result
+
+- Roadmap status updated: 0.7.5 is complete and 0.8.0 remains the next Talos Core Complete implementation gate.
+- `dev_notes/pipelines/TALOS_PIPELINE_080.md` already contains implementation stages, not only planning notes or interface contracts.
+- No new target product work should start before 0.8.0 closes the core gate.
+
+### 0.8.0 Core Gaps
+
+- Move Python-owned orchestration out of the durable product path; keep Python only as launcher, compatibility/debug bridge, temporary migration shim, or test harness.
+- Implement clear shell/core/API/runtime/native/adapter boundaries before MATLAB, STM32CubeIDE, KiCad, SolidWorks, or other targets.
+- Make runtime provider behavior explicit and replaceable instead of coupling Talos to VS Code UI behavior.
+- Preserve Arduino as the reference adapter while validating the new core-complete structure.
+
+### Toolchain Readiness
+
+- `rustc --version`: not found in PATH.
+- `cargo --version`: not found in PATH.
+- `node --version`: not found in PATH.
+- `npm --version`: not found in PATH.
+
+0.8.0 Stage 0 must request approval before installing Rust/Cargo or Node/NPM. No downloads were performed during this handoff.
+
+Conclusion: Stage 8 exit condition is met. 0.8.0 can focus on core completeness rather than Arduino daily-use bugs, with missing toolchains and Python ownership debt recorded up front.

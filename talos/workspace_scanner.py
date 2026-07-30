@@ -21,12 +21,10 @@ DEFAULT_IGNORED_DIRS = frozenset({
 })
 WORKSPACE_SCAN_DEBOUNCE_SECONDS = 0.15
 
-
 @dataclass(frozen=True)
 class WorkspaceScanOptions:
     source_extensions: frozenset[str] = DEFAULT_SOURCE_EXTENSIONS
     ignored_dirs: frozenset[str] = DEFAULT_IGNORED_DIRS
-
 
 @dataclass(frozen=True)
 class WorkspaceScanCacheEntry:
@@ -34,13 +32,10 @@ class WorkspaceScanCacheEntry:
     key: tuple[Any, ...]
     result: dict[str, Any]
 
-
 _SCAN_CACHE: dict[str, WorkspaceScanCacheEntry] = {}
-
 
 def clear_workspace_scan_cache() -> None:
     _SCAN_CACHE.clear()
-
 
 def _normalized_options(
     source_extensions: Iterable[str] | None = None,
@@ -50,15 +45,12 @@ def _normalized_options(
     ignored = frozenset(str(item) for item in (ignored_dirs or DEFAULT_IGNORED_DIRS))
     return WorkspaceScanOptions(source_extensions=extensions, ignored_dirs=ignored)
 
-
 def _is_source_file(path: Path, options: WorkspaceScanOptions) -> bool:
     return path.suffix.lower() in options.source_extensions
-
 
 def _is_ignored(path: Path, workspace: Path, options: WorkspaceScanOptions) -> bool:
     relative_parts = path.relative_to(workspace).parts
     return any(part in options.ignored_dirs or part.startswith(".talos_") for part in relative_parts[:-1])
-
 
 def _main_sketch_path(workspace: Path, files: list[Path]) -> Path | None:
     ino_files = [path for path in files if path.suffix.lower() == ".ino"]
@@ -70,10 +62,8 @@ def _main_sketch_path(workspace: Path, files: list[Path]) -> Path | None:
             return path
     return ino_files[0]
 
-
 def _source_sort_key(workspace: Path, path: Path) -> str:
     return path.relative_to(workspace).as_posix().lower()
-
 
 def _read_line_count(path: Path) -> int:
     try:
@@ -81,7 +71,6 @@ def _read_line_count(path: Path) -> int:
     except OSError:
         return 0
     return content.count("\n") + (1 if content else 0)
-
 
 def _file_row(workspace: Path, path: Path, main_sketch: Path | None) -> dict[str, Any]:
     stat = path.stat()
@@ -94,7 +83,6 @@ def _file_row(workspace: Path, path: Path, main_sketch: Path | None) -> dict[str
         "extension": path.suffix.lower(),
         "main": bool(main_sketch is not None and path.resolve() == main_sketch.resolve()),
     }
-
 
 def _scan_candidates(workspace: Path, options: WorkspaceScanOptions) -> tuple[list[Path], tuple[Any, ...]]:
     files: list[Path] = []
@@ -111,7 +99,6 @@ def _scan_candidates(workspace: Path, options: WorkspaceScanOptions) -> tuple[li
         except OSError:
             signature.append((path.relative_to(workspace).as_posix(), -1, -1))
     return files, tuple(sorted(signature, key=lambda item: item[0].lower()))
-
 
 def scan_workspace(
     workspace: Path | str | None,

@@ -9,7 +9,6 @@ from talos import native_bridge
 
 T = TypeVar("T")
 
-
 @dataclass(frozen=True)
 class NativeOperation:
     key: str
@@ -17,7 +16,6 @@ class NativeOperation:
     category: str
     native_capability: str | None
     fallback_backed: bool
-
 
 OPERATIONS: tuple[NativeOperation, ...] = (
     NativeOperation("detection.window_titles", "Window title detection", "detection", "window_titles", True),
@@ -52,7 +50,6 @@ MIGRATION_GATES: tuple[dict[str, str], ...] = (
         "gate": "target-host scan worker that preserves Arduino compatibility",
     },
 )
-
 
 class NativeHelperBoundary:
     """Single reporting boundary for Talos native acceleration.
@@ -116,29 +113,22 @@ class NativeHelperBoundary:
             "migration_gates": list(MIGRATION_GATES),
         }
 
-
 NATIVE_HELPER = NativeHelperBoundary()
-
 
 def native_boundary_report() -> dict[str, Any]:
     return NATIVE_HELPER.report()
 
-
 def native_available() -> bool:
     return NATIVE_HELPER.native_capabilities()["library"]
-
 
 def list_window_rows() -> list[dict[str, object]]:
     return NATIVE_HELPER.list_window_rows()
 
-
 def list_arduino_tool_processes() -> list[dict[str, object]]:
     return NATIVE_HELPER.list_arduino_tool_processes()
 
-
 def list_arduino_open_workspaces() -> dict[str, dict[str, object]]:
     return NATIVE_HELPER.list_arduino_open_workspaces()
-
 
 def list_arduino_workspace_boards() -> dict[str, dict[str, str]]:
     return NATIVE_HELPER.list_arduino_workspace_boards()

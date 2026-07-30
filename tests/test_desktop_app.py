@@ -1,4 +1,5 @@
 ﻿import json
+import hashlib
 import re
 import importlib.util
 import time
@@ -3989,6 +3990,8 @@ class TalosArduinoTests(unittest.TestCase):
             self.assertFalse(result["ok"])
             self.assertEqual(result["status"], "missing_fqbn")
             self.assertIn("prepare", result["timings"])
+            self.assertIn("sandbox_copy", result["timings"])
+            self.assertIn("compile", result["timings"])
             self.assertIn("total", result["timings"])
 
     def test_compile_cache_is_keyed_by_workspace_content_and_can_be_cleared(self) -> None:
@@ -4008,6 +4011,8 @@ class TalosArduinoTests(unittest.TestCase):
 
             self.assertTrue(cached["cache"]["hit"])
             self.assertEqual(cached["output"], "ok")
+            self.assertEqual(cached["timings"]["compile"], 0.0)
+            self.assertIn("cache_lookup", cached["timings"])
 
             sketch.write_text("void setup() { Serial.begin(9600); }\nvoid loop() {}\n", encoding="utf-8")
             changed_key = compile_cache_key(workspace, summary, profile, "arduino-cli", None)
@@ -4113,6 +4118,8 @@ class TalosArduinoTests(unittest.TestCase):
 
         self.assertTrue(cleared["ok"])
         self.assertEqual(cleared["cleared"], 1)
+        self.assertEqual(cleared["cache"]["status"], "cleared")
+        self.assertEqual(cleared["timings"]["total"], 0.0)
         self.assertIn("Cleared 1", cleared["message"])
         self.assertIsNone(cached_compile_result("cache-key"))
 
@@ -4143,6 +4150,8 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("Compiling the current Talos editor draft", body)
         self.assertIn("Copying sketch folder to sandbox and running arduino-cli compile", body)
         self.assertIn("setArduinoVerifyRunning(true)", body)
+        self.assertIn("clearVerifyCache", script)
+        self.assertIn("verify-raw", script)
 
     def test_save_and_verify_compiles_editor_draft_before_saving(self) -> None:
         script = (Path(__file__).parents[1] / "ui" / "web_frontend" / "app.js").read_text(encoding="utf-8")
@@ -4868,6 +4877,148 @@ class TalosArduinoTests(unittest.TestCase):
             self.assertTrue(rolled_back["ok"])
             self.assertEqual(sketch.read_text(encoding="utf-8"), before)
 
+    def test_stage_075_change_review_recovery_keeps_arduino_as_default(self) -> None:
+        before = "alpha\nkeep-a\nkeep-b\nomega\n"
+        after = "ALPHA\nkeep-a\nkeep-b\nOMEGA\n"
+        hunks = build_patch_hunks(before, after)
+        self.assertGreaterEqual(len(hunks), 2)
+
+        bridge = CodexBridge(persist_reviews=False)
+        partial_hunks = [dict(hunk) for hunk in hunks]
+        bridge._patches.append(
+            {
+                "id": "stage-075-partial",
+                "workspace": "C:/Sketch",
+                "status": "pending-review",
+                "files": [
+                    {
+                        "path": "Sketch.ino",
+                        "kind": "update",
+                        "review_status": "staged",
+                        "base_content": before,
+                        "before": before,
+                        "after": after,
+                        "content": before,
+                        "hunks": partial_hunks,
+                    }
+                ],
+            }
+        )
+        first_id = partial_hunks[0]["id"]
+        second_id = partial_hunks[1]["id"]
+
+        self.assertTrue(bridge.apply_hunk("stage-075-partial", "C:/Sketch", "Sketch.ino", first_id)["ok"])
+        rejected = bridge.reject_hunk("stage-075-partial", "C:/Sketch", "Sketch.ino", second_id)
+        self.assertTrue(rejected["ok"])
+        statuses = {hunk["id"]: hunk["review_status"] for hunk in rejected["file"]["hunks"]}
+        self.assertEqual(statuses[first_id], "applied-to-editor")
+        self.assertEqual(statuses[second_id], "rejected")
+
+        bridge_reject = CodexBridge(persist_reviews=False)
+        reject_hunks = [dict(hunk) for hunk in hunks]
+        bridge_reject._patches.append(
+            {
+                "id": "stage-075-reject-all",
+                "workspace": "C:/Sketch",
+                "status": "pending-review",
+                "files": [
+                    {
+                        "path": "Sketch.ino",
+                        "kind": "update",
+                        "review_status": "staged",
+                        "base_content": before,
+                        "before": before,
+                        "after": after,
+                        "content": before,
+                        "hunks": reject_hunks,
+                    }
+                ],
+            }
+        )
+        rejected_all = bridge_reject.reject_all("stage-075-reject-all", "C:/Sketch")
+        self.assertTrue(rejected_all["ok"])
+        self.assertEqual(rejected_all["changed"], len(reject_hunks))
+        self.assertEqual(rejected_all["patch"]["files"][0]["review_status"], "rejected")
+        self.assertNotIn("editor_content", rejected_all["patch"]["files"][0])
+
+        bridge_apply = CodexBridge(persist_reviews=False)
+        apply_hunks = [dict(hunk) for hunk in hunks]
+        bridge_apply._patches.append(
+            {
+                "id": "stage-075-apply-all",
+                "workspace": "C:/Sketch",
+                "status": "pending-review",
+                "files": [
+                    {
+                        "path": "Sketch.ino",
+                        "kind": "update",
+                        "review_status": "staged",
+                        "base_content": before,
+                        "before": before,
+                        "after": after,
+                        "content": before,
+                        "hunks": apply_hunks,
+                    }
+                ],
+            }
+        )
+        applied_all = bridge_apply.apply_all("stage-075-apply-all", "C:/Sketch")
+        self.assertTrue(applied_all["ok"])
+        self.assertEqual(applied_all["patch"]["files"][0]["editor_content"], after)
+        saved = bridge_apply.mark_patch_saved("C:/Sketch", "Sketch.ino")
+        self.assertTrue(saved["saved"])
+        self.assertEqual(saved["file"]["review_status"], "saved")
+
+        with TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "Sketch"
+            workspace.mkdir()
+            sketch = workspace / "Sketch.ino"
+            sketch.write_text(before, encoding="utf-8")
+            config = {"arduino_workspace_path": str(workspace)}
+            checkpoint_path = Path(tmp) / "checkpoints.json"
+
+            with patch("talos.checkpoints.CHECKPOINT_PATH", checkpoint_path):
+                checkpoint = create_before_save_checkpoint(config, "Sketch.ino")
+                self.assertTrue(checkpoint["ok"])
+                self.assertTrue(write_workspace_file(config, "Sketch.ino", after)["ok"])
+                self.assertTrue(mark_checkpoint_saved(checkpoint["checkpoint"]["id"], after)["ok"])
+                rolled_back = rollback_last_checkpoint(config, "Sketch.ino")
+
+            self.assertTrue(rolled_back["ok"])
+            self.assertEqual(sketch.read_text(encoding="utf-8"), before)
+
+            conflict_bridge = CodexBridge(persist_reviews=False)
+            base_hash = hashlib.sha256(before.encode("utf-8")).hexdigest()
+            sketch.write_text("arduino-owned\n", encoding="utf-8")
+            conflict_bridge._patches.append(
+                {
+                    "id": "stage-075-conflict",
+                    "workspace": str(workspace),
+                    "status": "pending-review",
+                    "files": [
+                        {
+                            "path": "Sketch.ino",
+                            "kind": "update",
+                            "review_status": "staged",
+                            "base_sha256": base_hash,
+                            "base_content": before,
+                            "before": before,
+                            "after": after,
+                            "content": after,
+                            "hunks": [dict(hunk) for hunk in hunks],
+                        }
+                    ],
+                }
+            )
+            conflict_bridge._detect_external_conflicts()
+            conflicted = conflict_bridge._patches[0]["files"][0]
+            self.assertEqual(conflicted["review_status"], "conflict")
+            kept = conflict_bridge.keep_external_conflict("stage-075-conflict", str(workspace), "Sketch.ino")
+            self.assertTrue(kept["ok"])
+            self.assertEqual(kept["file"]["review_status"], "rejected")
+            self.assertEqual(kept["file"]["conflict_resolution"], "kept-external")
+            self.assertEqual(sketch.read_text(encoding="utf-8"), "arduino-owned\n")
+
     def test_stage_070_ui_parity_surfaces_stay_connected(self) -> None:
         root = Path(__file__).parents[1]
         html = (root / "ui" / "web_frontend" / "index.html").read_text(encoding="utf-8")
@@ -4948,6 +5099,46 @@ class TalosArduinoTests(unittest.TestCase):
         expect_marker(script, "Select or pin a Codex runtime before asking for code changes.", "app.js")
         expect_marker(html, "runtimeStatus", "index.html")
         expect_marker(html, "runtimeRefreshBtn", "index.html")
+
+    def test_stage_075_runtime_gate_is_codex_only_private_and_fallback_ready(self) -> None:
+        gate = runtime_gate({
+            "provider": "none",
+            "health": {"status": "missing", "ready": False},
+            "warnings": ["missing_runtime"],
+        })
+
+        self.assertTrue(gate["blocked"])
+        self.assertEqual(gate["scope"], "codex_only")
+        self.assertIn("codex", gate["blocks"])
+        self.assertFalse(gate["blocks_arduino"])
+        self.assertTrue(gate["manual_context_fallback"])
+        self.assertFalse(gate["credential_capture"])
+        self.assertEqual(gate["credential_policy"], "external_runtime_only")
+        self.assertEqual(gate["replay_guard"], "manual_send_required")
+        self.assertIn("Arduino tools remain usable", gate["detail"])
+
+    def test_stage_075_codex_status_reports_no_replay_privacy_policy(self) -> None:
+        bridge = CodexBridge(persist_reviews=False)
+
+        with patch.object(bridge, "_runtime_executable", return_value=""):
+            payload = bridge.status(start=False)
+
+        self.assertEqual(payload["scope"], "codex_only")
+        self.assertFalse(payload["blocks_arduino"])
+        self.assertTrue(payload["manual_context_fallback"])
+        self.assertFalse(payload["credential_capture"])
+        self.assertEqual(payload["credential_policy"], "external_runtime_only")
+        self.assertEqual(payload["task_state"]["replay_guard"], "manual_send_required")
+        self.assertEqual(payload["connection"]["replay_guard"], "manual_send_required")
+        self.assertFalse(payload["connection"]["replayed_user_turn"])
+
+    def test_stage_075_codex_runtime_ui_keeps_manual_fallback_copy(self) -> None:
+        script = (Path(__file__).parents[1] / "ui" / "web_frontend" / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn("Arduino tools remain usable", script)
+        self.assertIn("manual fallback", script)
+        self.assertIn("Copy package", script)
+        self.assertIn("credentials stay outside Talos", script)
 
 if __name__ == "__main__":
     unittest.main()
