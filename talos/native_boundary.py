@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any, TypeVar
 
 from talos import native_bridge
+from talos.core_bridge import native_core_available
 
 T = TypeVar("T")
 
@@ -23,7 +24,7 @@ OPERATIONS: tuple[NativeOperation, ...] = (
     NativeOperation("detection.arduino_processes", "Arduino process detection", "detection", "process_rows", True),
     NativeOperation("scan.open_workspaces", "Arduino open workspace scan", "scan", None, True),
     NativeOperation("scan.workspace_boards", "Arduino board profile scan", "scan", None, True),
-    NativeOperation("hash.cache_keys", "Cache key hashing", "hash", None, True),
+    NativeOperation("hash.cache_keys", "Cache key hashing", "hash", "core_hashing", True),
     NativeOperation("diff.hunks", "Diff and hunk parsing", "diff", None, True),
     NativeOperation("verify.preparation", "Verify preparation", "verify", None, True),
 )
@@ -31,8 +32,8 @@ OPERATIONS: tuple[NativeOperation, ...] = (
 MIGRATION_GATES: tuple[dict[str, str], ...] = (
     {
         "primitive": "hashing/cache keys",
-        "status": "fallback",
-        "gate": "native hash primitive plus cache invalidation parity tests",
+        "status": "rust-core",
+        "gate": "Rust core cache identity/source scan primitive plus Python fallback parity tests",
     },
     {
         "primitive": "diff/hunk parsing",
@@ -63,8 +64,11 @@ class NativeHelperBoundary:
 
     def native_capabilities(self) -> dict[str, bool]:
         available = native_bridge.native_available()
+        core_available = native_core_available()
         return {
             "library": available,
+            "core": core_available,
+            "core_hashing": core_available,
             "window_titles": available,
             "window_rows": available and bool(getattr(native_bridge, "_HAS_NATIVE_WINDOW_ROWS", False)),
             "process_rows": available and bool(getattr(native_bridge, "_HAS_NATIVE_PROCESS_ROWS", False)),
@@ -101,6 +105,7 @@ class NativeHelperBoundary:
             operations[operation.key] = {
                 "label": operation.label,
                 "category": operation.category,
+                "native_capability": operation.native_capability,
                 "native_backed": native_backed,
                 "fallback_backed": operation.fallback_backed,
                 "backend": "native" if native_backed else "fallback",

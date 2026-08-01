@@ -1,8 +1,19 @@
 from __future__ import annotations
 
+"""Python compatibility view of the Rust-owned Talos module boundary.
+
+The ownership manifest lives in `core/talos_core`. This module is intentionally
+thin: it adapts Rust JSONL output for Python tests and diagnostics while the
+0.8.x rewrite removes Python product logic from hot paths.
+"""
+
 import ast
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+from functools import lru_cache
 from pathlib import Path
+from typing import Any
+
+from talos.core_bridge import core_python_manifest
 
 @dataclass(frozen=True)
 class PythonModuleOwnership:
@@ -14,33 +25,6 @@ class PythonModuleOwnership:
     fallback_required: bool = False
     notes: str = ""
 
-PYTHON_MODULE_OWNERSHIP: tuple[PythonModuleOwnership, ...] = (
-    PythonModuleOwnership(module="desktop_app", owner="shell", role="launcher", migration_target="shell", notes="Thin desktop entry point."),
-    PythonModuleOwnership(module="talos.shell.profile", owner="shell", role="shell_provider", migration_target="webview/native shell"),
-    PythonModuleOwnership(module="talos.shell.pywebview_provider", owner="shell", role="shell_provider", migration_target="webview/native shell"),
-    PythonModuleOwnership(module="talos.core", owner="core", role="core_implementation", migration_target="native core"),
-    PythonModuleOwnership(module="talos.contracts", owner="core", role="local_api_contract", migration_target="native core"),
-    PythonModuleOwnership(module="talos.runtime_core", owner="core", role="orchestration_boundary", migration_target="native core", hot_path=True),
-    PythonModuleOwnership(module="talos.state_service", owner="core", role="state_projection", migration_target="native core", hot_path=True),
-    PythonModuleOwnership(module="talos.targets", owner="targets", role="target_adapter_boundary", migration_target="target host"),
-    PythonModuleOwnership(module="talos.arduino_adapter", owner="targets", role="target_adapter", migration_target="target host"),
-    PythonModuleOwnership(module="talos.arduino", owner="targets", role="migration_candidate", migration_target="target host", hot_path=True, fallback_required=True, notes="Heavy Arduino discovery, scanning, hashing, verify preparation."),
-    PythonModuleOwnership(module="talos.arduino_events", owner="targets", role="migration_candidate", migration_target="target host", hot_path=True, fallback_required=True, notes="Process/window discovery and file-change watching."),
-    PythonModuleOwnership(module="talos.runtime_provider", owner="runtime", role="runtime_provider", migration_target="runtime host"),
-    PythonModuleOwnership(module="talos.runtime_service", owner="runtime", role="runtime_projection", migration_target="runtime host"),
-    PythonModuleOwnership(module="talos.codex_runtime", owner="runtime", role="runtime_discovery", migration_target="runtime host", hot_path=True, fallback_required=True),
-    PythonModuleOwnership(module="talos.codex_bridge", owner="runtime", role="runtime_bridge", migration_target="runtime host", hot_path=True, fallback_required=True, notes="Runtime process/message/patch orchestration."),
-    PythonModuleOwnership(module="talos.native_bridge", owner="native", role="native_fallback", migration_target="native helper", hot_path=True, fallback_required=True),
-    PythonModuleOwnership(module="talos.native_boundary", owner="native", role="native_adapter", migration_target="native helper", hot_path=True, fallback_required=True),
-    PythonModuleOwnership(module="talos.checkpoints", owner="storage", role="core_implementation", migration_target="storage"),
-    PythonModuleOwnership(module="talos.run_history", owner="storage", role="core_implementation", migration_target="storage", hot_path=True),
-    PythonModuleOwnership(module="talos.diagnostics", owner="diagnostics", role="diagnostics", migration_target="diagnostics"),
-    PythonModuleOwnership(module="talos.event_bus", owner="diagnostics", role="event_bus", migration_target="event bus", hot_path=True),
-    PythonModuleOwnership(module="talos.performance", owner="diagnostics", role="performance", migration_target="diagnostics"),
-    PythonModuleOwnership(module="talos.server", owner="api", role="python_bridge", migration_target="api host", notes="Compatibility HTTP layer until native API host exists."),
-    PythonModuleOwnership(module="talos.client", owner="api", role="python_bridge", migration_target="api host"),
-)
-
 HOT_PATH_MIGRATION_TARGETS: tuple[str, ...] = (
     "process/window discovery",
     "file watching",
@@ -51,38 +35,62 @@ HOT_PATH_MIGRATION_TARGETS: tuple[str, ...] = (
 )
 
 FALLBACK_POLICY = (
-    "Python remains available as a bridge/fallback while native/core boundaries are introduced. "
-    "Missing native helper support must be non-fatal."
+    "Python remains only as a bridge/debug/fallback surface while Rust owns "
+    "core logic, scans, hashes, orchestration boundaries, and hot-path gates."
 )
 
-SERVER_IMPORT_BASELINE: frozenset[str] = frozenset({
-    "talos.arduino_adapter",
-    "talos.checkpoints",
-    "talos.codex_bridge",
-    "talos.codex_runtime",
-    "talos.contracts",
-    "talos.core",
-    "talos.diagnostics",
-    "talos.event_bus",
-    "talos.native_bridge",
-    "talos.native_boundary",
-    "talos.performance",
-    "talos.run_history",
-    "talos.runtime_core",
-    "talos.runtime_service",
-    "talos.shell.profile",
-    "talos.state_service",
-    "talos.targets",
-})
+SERVER_IMPORT_BASELINE: frozenset[str] = frozenset(
+    {
+        "talos.arduino_adapter",
+        "talos.checkpoints",
+        "talos.codex_bridge",
+        "talos.codex_runtime",
+        "talos.contracts",
+        "talos.core",
+        "talos.diagnostics",
+        "talos.event_bus",
+        "talos.native_bridge",
+        "talos.native_boundary",
+        "talos.performance",
+        "talos.run_history",
+        "talos.runtime_core",
+        "talos.runtime_provider",
+        "talos.runtime_service",
+        "talos.shell.profile",
+        "talos.state_service",
+        "talos.targets",
+        "talos.task_orchestrator",
+        "talos.workspace_scanner",
+    }
+)
+
+def _entry_from_row(row: dict[str, Any]) -> PythonModuleOwnership:
+    return PythonModuleOwnership(
+        module=str(row.get("module", "")),
+        owner=str(row.get("owner", "")),
+        role=str(row.get("role", "")),
+        migration_target=str(row.get("migration_target", "")),
+        hot_path=bool(row.get("hot_path")),
+        fallback_required=bool(row.get("fallback_required")),
+        notes=str(row.get("notes", "")),
+    )
+
+@lru_cache(maxsize=1)
+def _ownership_entries() -> tuple[PythonModuleOwnership, ...]:
+    return tuple(
+        entry
+        for row in core_python_manifest()
+        if (entry := _entry_from_row(row)).module
+    )
 
 def ownership_by_module() -> dict[str, PythonModuleOwnership]:
-    return {entry.module: entry for entry in PYTHON_MODULE_OWNERSHIP}
+    return {entry.module: entry for entry in _ownership_entries()}
 
 def ownership_report() -> dict[str, object]:
-    entries = [entry.__dict__ for entry in PYTHON_MODULE_OWNERSHIP]
+    entries = [asdict(entry) for entry in _ownership_entries()]
     return {
         "entries": entries,
-        "hot_paths": [entry.__dict__ for entry in PYTHON_MODULE_OWNERSHIP if entry.hot_path],
+        "hot_paths": [entry for entry in entries if entry["hot_path"]],
         "migration_targets": list(HOT_PATH_MIGRATION_TARGETS),
         "fallback_policy": FALLBACK_POLICY,
     }
@@ -96,24 +104,23 @@ def _talos_imports(source_path: Path) -> set[str]:
                 if alias.name == "talos" or alias.name.startswith("talos."):
                     imports.add(alias.name)
         elif isinstance(node, ast.ImportFrom) and node.module:
-            if node.module == "talos" or node.module.startswith("talos."):
+            if node.module == "talos":
+                for alias in node.names:
+                    imports.add(f"talos.{alias.name.split('.')[0]}")
+            elif node.module.startswith("talos."):
                 imports.add(node.module)
     return imports
 
 def boundary_check(root: Path) -> dict[str, object]:
-    """Return Stage 6 ownership/boundary status.
-
-    The current compatibility server still has legacy direct imports. The check
-    freezes that baseline so new direct server access to internal helpers is
-    caught before 0.6.5 migrates the hot paths.
-    """
+    """Return native-boundary status for the compatibility Python API host."""
 
     server_path = root / "talos" / "server.py"
     imports = _talos_imports(server_path) if server_path.exists() else set()
     new_direct_imports = sorted(imports - SERVER_IMPORT_BASELINE)
+    declared_modules = ownership_by_module()
     stale_declared = sorted(
-        entry.module
-        for entry in PYTHON_MODULE_OWNERSHIP
+        module
+        for module, entry in declared_modules.items()
         if entry.role == "stale"
     )
     return {
