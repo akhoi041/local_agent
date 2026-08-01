@@ -5,7 +5,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
-DEFAULT_SOURCE_EXTENSIONS = frozenset({".ino", ".h", ".hpp", ".c", ".cpp", ".s", ".txt", ".md"})
+from talos.core_bridge import core_scan_sources
+
+DEFAULT_SOURCE_EXTENSIONS = frozenset({".ino", ".h", ".hpp", ".c", ".cpp", ".s"})
 DEFAULT_IGNORED_DIRS = frozenset({
     ".git",
     ".vs",
@@ -72,19 +74,50 @@ def _read_line_count(path: Path) -> int:
         return 0
     return content.count("\n") + (1 if content else 0)
 
-def _file_row(workspace: Path, path: Path, main_sketch: Path | None) -> dict[str, Any]:
+def _file_row(
+    workspace: Path,
+    path: Path,
+    main_sketch: Path | None,
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     stat = path.stat()
     relative = path.relative_to(workspace).as_posix()
     return {
         "path": relative,
-        "bytes": stat.st_size,
-        "lines": _read_line_count(path),
-        "mtime_ns": stat.st_mtime_ns,
+        "bytes": int(metadata.get("bytes", stat.st_size)) if metadata else stat.st_size,
+        "lines": int(metadata.get("lines", _read_line_count(path))) if metadata else _read_line_count(path),
+        "mtime_ns": int(metadata.get("mtime_ns", stat.st_mtime_ns)) if metadata else stat.st_mtime_ns,
         "extension": path.suffix.lower(),
         "main": bool(main_sketch is not None and path.resolve() == main_sketch.resolve()),
     }
 
-def _scan_candidates(workspace: Path, options: WorkspaceScanOptions) -> tuple[list[Path], tuple[Any, ...]]:
+def _rust_scan_candidates(
+    workspace: Path,
+    options: WorkspaceScanOptions,
+) -> tuple[list[Path], tuple[Any, ...], dict[str, dict[str, Any]], bool]:
+    if options.source_extensions != DEFAULT_SOURCE_EXTENSIONS or options.ignored_dirs != DEFAULT_IGNORED_DIRS:
+        return [], tuple(), {}, False
+    rows = core_scan_sources(workspace)
+    files: list[Path] = []
+    signature: list[tuple[str, int, int, int]] = []
+    metadata: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        relative = str(row.get("path", "")).replace("\\", "/")
+        if not relative:
+            continue
+        path = workspace / relative
+        if not path.exists() or not path.is_file() or not _is_source_file(path, options):
+            continue
+        files.append(path)
+        bytes_value = int(row.get("bytes", -1))
+        mtime_value = int(row.get("mtime_ns", -1))
+        lines_value = int(row.get("lines", -1))
+        signature.append((relative, mtime_value, bytes_value, lines_value))
+        metadata[relative] = dict(row)
+    return files, tuple(sorted(signature, key=lambda item: item[0].lower())), metadata, bool(rows)
+
+
+def _python_scan_candidates(workspace: Path, options: WorkspaceScanOptions) -> tuple[list[Path], tuple[Any, ...]]:
     files: list[Path] = []
     signature: list[tuple[str, int, int]] = []
     if not workspace.exists() or not workspace.is_dir():
@@ -99,6 +132,17 @@ def _scan_candidates(workspace: Path, options: WorkspaceScanOptions) -> tuple[li
         except OSError:
             signature.append((path.relative_to(workspace).as_posix(), -1, -1))
     return files, tuple(sorted(signature, key=lambda item: item[0].lower()))
+
+
+def _scan_candidates(
+    workspace: Path,
+    options: WorkspaceScanOptions,
+) -> tuple[list[Path], tuple[Any, ...], dict[str, dict[str, Any]], str]:
+    files, signature, metadata, used_rust = _rust_scan_candidates(workspace, options)
+    if used_rust:
+        return files, signature, metadata, "rust"
+    files, signature = _python_scan_candidates(workspace, options)
+    return files, signature, {}, "python_fallback"
 
 def scan_workspace(
     workspace: Path | str | None,
@@ -121,7 +165,7 @@ def scan_workspace(
         }
 
     options = _normalized_options(source_extensions, ignored_dirs)
-    files, signature = _scan_candidates(path, options)
+    files, signature, metadata, engine = _scan_candidates(path, options)
     cache_key = (str(path).lower(), options.source_extensions, options.ignored_dirs, signature)
     cache_id = str(path).lower()
     entry = _SCAN_CACHE.get(cache_id)
@@ -142,8 +186,12 @@ def scan_workspace(
         "exists": path.exists() and path.is_dir(),
         "path": str(path),
         "main_sketch": main_sketch.relative_to(path).as_posix() if main_sketch else "",
-        "files": [_file_row(path, item, main_sketch) for item in ordered],
+        "files": [
+            _file_row(path, item, main_sketch, metadata.get(item.relative_to(path).as_posix()))
+            for item in ordered
+        ],
         "source_count": len(ordered),
+        "engine": engine,
         "timing_ms": round((time.perf_counter() - start) * 1000, 3),
         "cache": {"hit": False, "debounced": False},
     }

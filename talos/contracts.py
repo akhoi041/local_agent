@@ -1,4 +1,4 @@
-"""Versioned local API/IPC contracts for Talos.
+"""Python compatibility shim for Rust-owned local API/IPC contracts.
 
 Rules for this boundary:
 - Every UI-facing and runtime-facing payload carries a top-level ``contract``.
@@ -6,12 +6,18 @@ Rules for this boundary:
 - Removing or renaming fields must introduce a new local API version.
 - Internal helper dictionaries should pass through one of these serializers
   before crossing the HTTP/local IPC boundary.
+
+The schema source of truth is ``core/talos_core/src/contracts.rs``. This module
+keeps existing Python handlers compatible while the API host migrates.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
+from functools import lru_cache
 from typing import Any
+
+from .core_bridge import core_api_contract_manifest
 
 LOCAL_API_VERSION = "talos.local-api.v1"
 LOCAL_API_COMPATIBILITY = "additive-v1"
@@ -28,6 +34,20 @@ DIAGNOSTICS_CONTRACT = "talos.diagnostics"
 COMMAND_PALETTE_CONTRACT = "talos.command-palette"
 SETTINGS_CONTRACT = "talos.settings"
 EVIDENCE_CONTRACT = "talos.evidence"
+SUPPORT_BUNDLE_CONTRACT = "talos.support-bundle"
+RUST_CONTRACT_SOURCE = "core/talos_core/src/contracts.rs"
+
+@lru_cache(maxsize=1)
+def rust_contract_manifest() -> str:
+    return core_api_contract_manifest()
+
+def contract_source_status() -> dict[str, str]:
+    manifest = rust_contract_manifest()
+    return {
+        "source": "rust" if manifest else "python_compatibility_shim",
+        "schema": RUST_CONTRACT_SOURCE,
+        "manifest": manifest,
+    }
 
 def contract_metadata(name: str, version: str = LOCAL_API_VERSION) -> dict[str, str]:
     return {"name": name, "version": version}

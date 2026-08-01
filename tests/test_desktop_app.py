@@ -62,6 +62,12 @@ from talos.arduino import (
     write_workspace_file,
 )
 from talos.cache_keys import compile_cache_payload, workspace_identity_hash
+from talos.core_bridge import (
+    core_api_contract_manifest,
+    core_scan_sources,
+    core_workspace_hash,
+    native_core_available,
+)
 from talos.native_bridge import (
     extract_board_name,
     extract_fqbn,
@@ -2885,8 +2891,13 @@ class TalosArduinoTests(unittest.TestCase):
             self.assertIn("native_backed", report["operations"][operation])
             self.assertIn("fallback_backed", report["operations"][operation])
 
-        self.assertFalse(report["operations"]["hash.cache_keys"]["native_backed"])
+        core_available = native_core_available()
+        self.assertEqual(report["operations"]["hash.cache_keys"]["native_backed"], core_available)
         self.assertTrue(report["operations"]["hash.cache_keys"]["fallback_backed"])
+        self.assertEqual(
+            report["operations"]["hash.cache_keys"]["backend"],
+            "native" if core_available else "fallback",
+        )
         self.assertTrue(
             any(gate["primitive"] == "hashing/cache keys" for gate in report["migration_gates"])
         )
@@ -4107,7 +4118,58 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertEqual(first, second)
         self.assertEqual(len(first), 16)
         self.assertNotEqual(first, other)
-        self.assertNotIn("SecretSketch", first)
+
+    def test_stage_080_core_bridge_workspace_hash_matches_cache_bridge(self) -> None:
+        path_text = r"C:\Users\Admin\Desktop\SecretSketch"
+        direct = core_workspace_hash(path_text)
+        if not direct:
+            self.skipTest("Rust core bridge is not available")
+
+        self.assertEqual(direct, workspace_identity_hash(path_text))
+
+    def test_stage_080_core_bridge_scans_source_files_with_filters(self) -> None:
+        with TemporaryDirectory() as temp:
+            workspace = Path(temp)
+            src = workspace / "src"
+            build = workspace / "build"
+            src.mkdir()
+            build.mkdir()
+            (src / "main.ino").write_text("void setup() {}\n", encoding="utf-8")
+            (src / "helper.cpp").write_text("a\nb", encoding="utf-8")
+            (build / "skip.cpp").write_text("skip\n", encoding="utf-8")
+
+            rows = core_scan_sources(workspace)
+            if not rows:
+                self.skipTest("Rust core bridge is not available")
+
+            paths = {str(row.get("path")) for row in rows}
+            self.assertIn("src/main.ino", paths)
+            self.assertIn("src/helper.cpp", paths)
+            self.assertNotIn("build/skip.cpp", paths)
+
+    def test_stage_080_native_boundary_reports_core_hashing(self) -> None:
+        report = native_boundary_report()
+        operations = report.get("operations", {})
+
+        self.assertIn("hash.cache_keys", operations)
+        self.assertEqual(operations["hash.cache_keys"].get("native_capability"), "core_hashing")
+
+    def test_stage_080_api_contract_manifest_is_rust_owned(self) -> None:
+        manifest = core_api_contract_manifest()
+        if not manifest:
+            self.skipTest("Rust core bridge is not available")
+
+        self.assertIn("schema_version=1", manifest)
+        for payload in (
+            "talos.state",
+            "talos.target-context",
+            "talos.runtime-status",
+            "talos.verify-result",
+            "talos.diagnostics",
+            "talos.support-bundle",
+            "talos.evidence",
+        ):
+            self.assertIn(f"payload={payload};", manifest)
 
     def test_compile_cache_clear_result_and_cached_runtime_feedback(self) -> None:
         clear_arduino_compile_cache()

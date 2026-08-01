@@ -1,0 +1,12 @@
+[package]
+name = "talos_core"
+version = "0.8.0"
+edition = "2021"
+
+[lib]
+name = "talos_core"
+path = "src/lib.rs"
+
+[[bin]]
+name = "talos-core-audit"
+path = "src/main.rs"
