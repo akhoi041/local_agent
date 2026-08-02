@@ -64,6 +64,7 @@ from talos.arduino import (
 from talos.cache_keys import compile_cache_payload, workspace_identity_hash
 from talos.core_bridge import (
     core_api_contract_manifest,
+    core_backend_services,
     core_scan_sources,
     core_workspace_hash,
     native_core_available,
@@ -4170,6 +4171,35 @@ class TalosArduinoTests(unittest.TestCase):
             "talos.evidence",
         ):
             self.assertIn(f"payload={payload};", manifest)
+
+    def test_stage_080_backend_services_are_rust_owned(self) -> None:
+        services = core_backend_services()
+        if not services:
+            self.skipTest("Rust core bridge is not available")
+
+        by_name = {service["service"]: service for service in services}
+        for name in (
+            "workspace_state",
+            "task_queue",
+            "policy_permissions",
+            "diagnostics",
+            "adapter_orchestration",
+            "cancellation",
+            "cache_invalidation",
+            "support_evidence",
+        ):
+            self.assertIn(name, by_name)
+            self.assertEqual(by_name[name]["owner"], "rust_core")
+            self.assertEqual(by_name[name]["python_role"], "bridge_only")
+
+        preserved = {
+            item
+            for service in services
+            for item in service.get("preserves", [])
+        }
+        self.assertIn("cancellation", preserved)
+        self.assertIn("cache_invalidation", preserved)
+        self.assertIn("support_evidence", preserved)
 
     def test_compile_cache_clear_result_and_cached_runtime_feedback(self) -> None:
         clear_arduino_compile_cache()

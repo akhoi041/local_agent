@@ -165,3 +165,22 @@ Date: 2026-08-01.
 - Python compatibility test confirms `talos.core_bridge.core_api_contract_manifest()` exposes the Rust-owned payload manifest.
 
 Conclusion: Stage 3 exit condition is met for the focused API boundary. The stable local API surfaces are versioned in Rust/Cargo, while Python remains a temporary serializer/bridge for existing HTTP handlers.
+
+## Stage 4 - Core Backend Ownership Reduction
+
+Date: 2026-08-01.
+
+### Implemented Boundary
+
+- Added Rust-owned backend service registry in `core/talos_core/src/backend.rs`.
+- Added `talos-core-audit backend-services` and Stage 4 readiness metadata.
+- Exposed backend service metadata to Python through `talos/core_bridge.py` as a bridge-only read path.
+- Recorded workspace state, task queue, policy/permissions, diagnostics, adapter orchestration, cancellation, cache invalidation, and support evidence as Rust-owned backend services.
+
+### Checks
+
+- Rust command: `cargo fmt --manifest-path core\talos_core\Cargo.toml`: passed.
+- Rust command: `cargo test --manifest-path core\talos_core\Cargo.toml --quiet`: 13 passed.
+- Python command: `python -B -m unittest -q tests.test_desktop_app.TalosArduinoTests.test_stage_080_backend_services_are_rust_owned`: passed.
+
+Conclusion: Stage 4 exit condition is met for the focused backend ownership step. Python still hosts compatibility HTTP handlers for the current desktop/debug path, but backend ownership is declared and audited from Rust/Cargo, and Python consumes it as bridge metadata rather than acting as the backend service owner.

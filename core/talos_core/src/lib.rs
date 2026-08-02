@@ -1,5 +1,10 @@
+pub mod backend;
 pub mod contracts;
 
+pub use backend::{
+    backend_service_count, bridge_only_backend_service_count, core_services,
+    render_core_service_manifest, stage4_exit_ready, CoreService, CoreServiceKind,
+};
 pub use contracts::{
     api_contract_by_name, api_contracts, render_api_contract_manifest, FieldKind, PayloadContract,
     SCHEMA_VERSION,
