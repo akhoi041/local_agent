@@ -1,9 +1,11 @@
 use std::path::Path;
 
 use talos_core::{
-    bridge_surface_count, hot_path_count, logic_owner_count, python_ownership_manifest,
-    render_api_contract_manifest, scan_source_files, stable_file_hash, stable_text_hash,
-    stage1_exit_ready, workspace_identity_hash_core, MigrationTarget, ModuleOwnership, PythonRole,
+    backend_service_count, bridge_only_backend_service_count, bridge_surface_count, hot_path_count,
+    logic_owner_count, python_ownership_manifest, render_api_contract_manifest,
+    render_core_service_manifest, scan_source_files, stable_file_hash, stable_text_hash,
+    stage1_exit_ready, stage4_exit_ready, workspace_identity_hash_core, MigrationTarget,
+    ModuleOwnership, PythonRole,
 };
 
 fn main() {
@@ -19,13 +21,18 @@ fn main() {
         "workspace-hash" => print_workspace_hash(&command_args),
         "scan-sources" => print_scan_sources(&command_args),
         "api-contracts" => print_api_contracts(),
+        "backend-services" => print_backend_services(),
         _ => {
             eprintln!(
-                "usage: talos-core-audit [summary|manifest|manifest-json|hash-text|hash-file|workspace-hash|scan-sources|api-contracts]"
+                "usage: talos-core-audit [summary|manifest|manifest-json|hash-text|hash-file|workspace-hash|scan-sources|api-contracts|backend-services]"
             );
             std::process::exit(2);
         }
     }
+}
+
+fn print_backend_services() {
+    print!("{}", render_core_service_manifest());
 }
 
 fn print_api_contracts() {
@@ -39,6 +46,12 @@ fn print_summary() {
     println!("logic_owners_to_migrate={}", logic_owner_count());
     println!("hot_paths_to_migrate={}", hot_path_count());
     println!("stage1_exit_ready={}", stage1_exit_ready());
+    println!("core_backend_services={}", backend_service_count());
+    println!(
+        "bridge_only_backend_services={}",
+        bridge_only_backend_service_count()
+    );
+    println!("stage4_exit_ready={}", stage4_exit_ready());
 }
 
 fn print_manifest() {

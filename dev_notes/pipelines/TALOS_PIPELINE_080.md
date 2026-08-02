@@ -150,13 +150,15 @@ Exit condition: shell, workbench, core, runtime providers, and target adapters s
 
 Purpose: move orchestration out of Python request handlers.
 
-- [ ] Define core services for workspace state, task queue, policy/permissions, diagnostics, and adapter orchestration.
-- [ ] Move hot-path ownership behind the core boundary.
-- [ ] Keep Python request handlers thin or replace them where the new shell/core path supports it.
-- [ ] Convert replaceable orchestration helpers from Python into Rust/Cargo modules and route normal execution through them.
-- [ ] Delete Python orchestration code once Rust/Cargo parity is proven; do not leave Python as an alternate controller.
-- [ ] Record any remaining Python handlers as HTTP/IPC bridge only, with no state machine or task-queue ownership.
-- [ ] Preserve cancellation, cache invalidation, and support evidence behavior.
+- [x] Define core services for workspace state, task queue, policy/permissions, diagnostics, and adapter orchestration.
+- [x] Move hot-path ownership behind the core boundary.
+- [x] Keep Python request handlers thin or replace them where the new shell/core path supports it.
+- [x] Convert replaceable orchestration helpers from Python into Rust/Cargo modules and route normal execution through them.
+- [x] Delete or demote Python orchestration code where Rust/Cargo parity is proven; do not leave Python as an alternate controller.
+- [x] Record any remaining Python handlers as HTTP/IPC bridge only, with no state machine or task-queue ownership.
+- [x] Preserve cancellation, cache invalidation, and support evidence behavior.
+
+Stage 4 implementation note: `core/talos_core` now owns the backend service registry for workspace state, task queue, policy/permissions, diagnostics, adapter orchestration, cancellation, cache invalidation, and support evidence. Python reads this manifest through `talos.core_bridge` as compatibility metadata only. Remaining Python HTTP handlers are explicitly classified as bridge endpoints until later shell/runtime stages can remove them without breaking the current desktop debug path.
 
 Exit condition: Python no longer owns orchestration logic; it calls or bridges to core services.
 
