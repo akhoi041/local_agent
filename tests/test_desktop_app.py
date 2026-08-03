@@ -65,6 +65,8 @@ from talos.cache_keys import compile_cache_payload, workspace_identity_hash
 from talos.core_bridge import (
     core_api_contract_manifest,
     core_backend_services,
+    core_native_helpers,
+    core_runtime_providers,
     core_scan_sources,
     core_workspace_hash,
     native_core_available,
@@ -4200,6 +4202,84 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertIn("cancellation", preserved)
         self.assertIn("cache_invalidation", preserved)
         self.assertIn("support_evidence", preserved)
+
+    def test_stage_080_native_helpers_are_rust_owned(self) -> None:
+        helpers = core_native_helpers()
+        if not helpers:
+            self.skipTest("Rust core bridge is not available")
+
+        by_name = {helper["helper"]: helper for helper in helpers}
+        for name in (
+            "process_window_detection",
+            "file_watching",
+            "hashing",
+            "workspace_scanning",
+            "diff_hunk_preparation",
+            "filesystem_operations",
+            "performance_telemetry",
+            "fallback_compatibility",
+        ):
+            self.assertIn(name, by_name)
+            self.assertEqual(by_name[name]["owner"], "rust_core")
+            self.assertEqual(by_name[name]["python_role"], "bridge_only")
+
+        replaced = {
+            item
+            for helper in helpers
+            for item in helper.get("replaces", [])
+        }
+        self.assertIn("talos.detection", replaced)
+        self.assertIn("talos.workspace_scanner", replaced)
+        self.assertIn("talos.diff_hunks", replaced)
+
+        checks = {
+            item
+            for helper in helpers
+            for item in helper.get("checks", [])
+        }
+        self.assertIn("unsupported_windows_fallback", checks)
+        self.assertIn("timing_probe", checks)
+
+    def test_stage_080_runtime_providers_are_rust_owned(self) -> None:
+        providers = core_runtime_providers()
+        if not providers:
+            self.skipTest("Rust core bridge is not available")
+
+        by_name = {provider["provider"]: provider for provider in providers}
+        self.assertIn("codex", by_name)
+        self.assertIn("claude", by_name)
+
+        codex = by_name["codex"]
+        self.assertEqual(codex["owner"], "rust_core")
+        self.assertEqual(codex["python_role"], "subprocess_http_bridge_only")
+        self.assertEqual(codex["credential_policy"], "external_to_talos")
+        self.assertEqual(codex["fallback"], "manual_context_package")
+        self.assertIn("talos/codex_runtime.py", codex["replaces"])
+        for capability in (
+            "discovery",
+            "health",
+            "account_metadata",
+            "runtime_version",
+            "safe_reconnect",
+            "context_package",
+            "credentials_external",
+            "retry_policy",
+        ):
+            self.assertIn(capability, codex["capabilities"])
+        for method in (
+            "discover",
+            "health",
+            "account_metadata",
+            "runtime_version",
+            "safe_reconnect",
+            "context_package",
+            "send_message",
+            "cancel_turn",
+        ):
+            self.assertIn(method, codex["methods"])
+
+        self.assertEqual(by_name["claude"]["owner"], "rust_core")
+        self.assertEqual(by_name["claude"]["fallback"], "manual_context_package")
 
     def test_compile_cache_clear_result_and_cached_runtime_feedback(self) -> None:
         clear_arduino_compile_cache()

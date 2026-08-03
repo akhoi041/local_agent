@@ -1,11 +1,13 @@
 use std::path::Path;
 
 use talos_core::{
-    backend_service_count, bridge_only_backend_service_count, bridge_surface_count, hot_path_count,
-    logic_owner_count, python_ownership_manifest, render_api_contract_manifest,
-    render_core_service_manifest, scan_source_files, stable_file_hash, stable_text_hash,
-    stage1_exit_ready, stage4_exit_ready, workspace_identity_hash_core, MigrationTarget,
-    ModuleOwnership, PythonRole,
+    backend_service_count, bridge_only_backend_service_count, bridge_only_native_helper_count,
+    bridge_only_runtime_provider_count, bridge_surface_count, hot_path_count, logic_owner_count,
+    native_helper_count, python_ownership_manifest, render_api_contract_manifest,
+    render_core_service_manifest, render_native_helper_manifest, render_runtime_provider_manifest,
+    runtime_provider_count, runtime_provider_method_count, scan_source_files, stable_file_hash,
+    stable_text_hash, stage1_exit_ready, stage4_exit_ready, stage5_exit_ready, stage6_exit_ready,
+    workspace_identity_hash_core, MigrationTarget, ModuleOwnership, PythonRole,
 };
 
 fn main() {
@@ -22,13 +24,23 @@ fn main() {
         "scan-sources" => print_scan_sources(&command_args),
         "api-contracts" => print_api_contracts(),
         "backend-services" => print_backend_services(),
+        "native-helpers" => print_native_helpers(),
+        "runtime-providers" => print_runtime_providers(),
         _ => {
             eprintln!(
-                "usage: talos-core-audit [summary|manifest|manifest-json|hash-text|hash-file|workspace-hash|scan-sources|api-contracts|backend-services]"
+                "usage: talos-core-audit [summary|manifest|manifest-json|hash-text|hash-file|workspace-hash|scan-sources|api-contracts|backend-services|native-helpers|runtime-providers]"
             );
             std::process::exit(2);
         }
     }
+}
+
+fn print_runtime_providers() {
+    print!("{}", render_runtime_provider_manifest());
+}
+
+fn print_native_helpers() {
+    print!("{}", render_native_helper_manifest());
 }
 
 fn print_backend_services() {
@@ -52,6 +64,22 @@ fn print_summary() {
         bridge_only_backend_service_count()
     );
     println!("stage4_exit_ready={}", stage4_exit_ready());
+    println!("native_helper_boundaries={}", native_helper_count());
+    println!(
+        "bridge_only_native_helpers={}",
+        bridge_only_native_helper_count()
+    );
+    println!("stage5_exit_ready={}", stage5_exit_ready());
+    println!("runtime_provider_boundaries={}", runtime_provider_count());
+    println!(
+        "runtime_provider_methods={}",
+        runtime_provider_method_count()
+    );
+    println!(
+        "bridge_only_runtime_providers={}",
+        bridge_only_runtime_provider_count()
+    );
+    println!("stage6_exit_ready={}", stage6_exit_ready());
 }
 
 fn print_manifest() {
