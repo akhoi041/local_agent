@@ -141,3 +141,44 @@ def core_backend_services() -> list[dict[str, Any]]:
 
 def core_backend_service_manifest() -> str:
     return _run_core(["backend-services"], timeout=12.0)
+
+@lru_cache(maxsize=1)
+def _core_native_helpers_cached() -> tuple[dict[str, Any], ...]:
+    output = _run_core(["native-helpers"], timeout=12.0)
+    rows: list[dict[str, Any]] = []
+    for line in output.splitlines():
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(row, dict):
+            rows.append(row)
+    return tuple(rows)
+
+def core_native_helpers() -> list[dict[str, Any]]:
+    return [dict(row) for row in _core_native_helpers_cached()]
+
+def core_native_helper_manifest() -> str:
+    return _run_core(["native-helpers"], timeout=12.0)
+
+
+@lru_cache(maxsize=1)
+def _core_runtime_providers_cached() -> tuple[dict[str, Any], ...]:
+    output = _run_core(["runtime-providers"], timeout=12.0)
+    rows: list[dict[str, Any]] = []
+    for line in output.splitlines():
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(row, dict):
+            rows.append(row)
+    return tuple(rows)
+
+
+def core_runtime_providers() -> list[dict[str, Any]]:
+    return [dict(row) for row in _core_runtime_providers_cached()]
+
+
+def core_runtime_provider_manifest() -> str:
+    return _run_core(["runtime-providers"], timeout=12.0)

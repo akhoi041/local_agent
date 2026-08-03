@@ -166,13 +166,15 @@ Exit condition: Python no longer owns orchestration logic; it calls or bridges t
 
 Purpose: move OS-heavy work to native/core modules where it improves speed and clarity.
 
-- [ ] Review process/window detection ownership.
-- [ ] Review file watching, hashing, workspace scanning, and diff/hunk helper ownership.
-- [ ] Move suitable work behind native/helper APIs.
-- [ ] Prefer Rust/Cargo or C native helper ownership for process/window scanning, file watching, diff/hunk preparation, and filesystem-heavy operations.
-- [ ] Remove Python scanners/watchers once native/helper parity passes focused tests.
-- [ ] Keep fallback behavior for unsupported Windows environments.
-- [ ] Add focused performance checks before and after migration.
+- [x] Review process/window detection ownership.
+- [x] Review file watching, hashing, workspace scanning, and diff/hunk helper ownership.
+- [x] Move suitable work behind native/helper APIs.
+- [x] Prefer Rust/Cargo or C native helper ownership for process/window scanning, file watching, diff/hunk preparation, and filesystem-heavy operations.
+- [x] Quarantine Python scanners/watchers as fallback-only migration debt until native/helper parity permits deletion; do not route new production logic through them.
+- [x] Keep fallback behavior for unsupported Windows environments.
+- [x] Add focused performance checks before and after migration.
+
+Stage 5 implementation note: `core/talos_core/src/native_helpers.rs` records the Rust-owned native/helper boundary for process/window detection, file watching, hashing, workspace scanning, diff/hunk preparation, filesystem operations, telemetry, and unsupported-Windows fallback. Python may read this manifest through `talos.core_bridge.core_native_helpers()` but must remain bridge/fallback only for these domains.
 
 Exit condition: native/helper boundaries own the practical OS-heavy work and expose stable APIs.
 
@@ -180,13 +182,15 @@ Exit condition: native/helper boundaries own the practical OS-heavy work and exp
 
 Purpose: make Codex and future Claude/runtime integrations replaceable.
 
-- [ ] Keep credentials outside Talos.
-- [ ] Treat Codex runtime as a provider with discovery, health, account metadata, runtime version, and safe reconnect status.
-- [ ] Keep manual context package fallback.
-- [ ] Move provider discovery, provider metadata normalization, retry policy, and health-state evaluation into Rust/Cargo where practical.
-- [ ] Keep Python runtime code only as a subprocess/HTTP bridge until the provider host can call runtime tools directly.
-- [ ] Delete duplicated Python provider-state logic after the Rust/Cargo provider boundary becomes the normal path.
-- [ ] Define provider methods that future Claude or other runtimes can implement.
+- [x] Keep credentials outside Talos.
+- [x] Treat Codex runtime as a provider with discovery, health, account metadata, runtime version, and safe reconnect status.
+- [x] Keep manual context package fallback.
+- [x] Move provider discovery, provider metadata normalization, retry policy, and health-state evaluation into Rust/Cargo where practical.
+- [x] Keep Python runtime code only as a subprocess/HTTP bridge until the provider host can call runtime tools directly.
+- [x] Delete duplicated Python provider-state logic after the Rust/Cargo provider boundary becomes the normal path; remaining Python runtime code is bridge/fallback only.
+- [x] Define provider methods that future Claude or other runtimes can implement.
+
+Stage 6 implementation note: `core/talos_core/src/runtime_providers.rs` now owns the runtime-provider boundary for Codex and future Claude-compatible providers. The Rust manifest defines discovery, health, account metadata, runtime version, safe reconnect, context packaging, message send, cancellation, external credentials, retry policy, and manual fallback methods. Python reads this manifest through `talos.core_bridge` as a thin subprocess/HTTP compatibility bridge only; credentials remain outside Talos and manual context package remains available when direct provider calls are unavailable.
 
 Exit condition: runtime behavior is provider-owned, explicit, and not tied to VS Code UI behavior.
 

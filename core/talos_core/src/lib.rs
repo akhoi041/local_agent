@@ -1,5 +1,7 @@
 pub mod backend;
 pub mod contracts;
+pub mod native_helpers;
+pub mod runtime_providers;
 
 pub use backend::{
     backend_service_count, bridge_only_backend_service_count, core_services,
@@ -8,6 +10,15 @@ pub use backend::{
 pub use contracts::{
     api_contract_by_name, api_contracts, render_api_contract_manifest, FieldKind, PayloadContract,
     SCHEMA_VERSION,
+};
+pub use native_helpers::{
+    bridge_only_native_helper_count, native_helper_count, native_helpers,
+    render_native_helper_manifest, stage5_exit_ready, NativeHelper, NativeHelperKind,
+};
+pub use runtime_providers::{
+    bridge_only_runtime_provider_count, render_runtime_provider_manifest,
+    runtime_provider_boundaries, runtime_provider_count, runtime_provider_method_count,
+    stage6_exit_ready, RuntimeProviderBoundary, RuntimeProviderCapability,
 };
 
 use std::fs;

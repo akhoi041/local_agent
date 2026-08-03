@@ -184,3 +184,45 @@ Date: 2026-08-01.
 - Python command: `python -B -m unittest -q tests.test_desktop_app.TalosArduinoTests.test_stage_080_backend_services_are_rust_owned`: passed.
 
 Conclusion: Stage 4 exit condition is met for the focused backend ownership step. Python still hosts compatibility HTTP handlers for the current desktop/debug path, but backend ownership is declared and audited from Rust/Cargo, and Python consumes it as bridge metadata rather than acting as the backend service owner.
+
+## Stage 5 - Native Helper Expansion
+
+Date: 2026-08-03.
+
+### Implemented Boundary
+
+- Added Rust-owned native/helper registry in `core/talos_core/src/native_helpers.rs`.
+- Added `talos-core-audit native-helpers` so compatibility bridges can inspect helper ownership without making Python the source of truth.
+- Exposed native/helper metadata through `talos/core_bridge.py` as a bridge-only read path.
+- Recorded process/window detection, file watching, hashing, workspace scanning, diff/hunk preparation, filesystem operations, performance telemetry, and fallback compatibility as Rust-owned helper boundaries.
+- Quarantined existing Python scanners/watchers as fallback-only migration debt; new production ownership belongs to Rust/Cargo.
+
+### Checks
+
+- Rust command: `cargo fmt --manifest-path core\talos_core\Cargo.toml`: passed.
+- Rust command: `cargo test --manifest-path core\talos_core\Cargo.toml --quiet`: 16 passed.
+- Python command: `python -B -m unittest -q tests.test_desktop_app.TalosArduinoTests.test_stage_080_native_helpers_are_rust_owned`: passed.
+- Git whitespace check: `git diff --check`: no whitespace errors; existing CRLF warnings only.
+
+Conclusion: Stage 5 exit condition is met for the focused native helper step. Python remains allowed only as a bridge/fallback surface for these helper domains until native parity permits safe deletion.
+
+## Stage 6 - Runtime Provider Boundary Hardening
+
+Date: 2026-08-03.
+
+### Implemented Boundary
+
+- Added Rust-owned runtime provider registry in `core/talos_core/src/runtime_providers.rs`.
+- Added `talos-core-audit runtime-providers` so provider behavior is declared by Rust/Cargo, not Python or VS Code UI assumptions.
+- Defined Codex as the current provider and Claude as a future-compatible provider contract.
+- Kept credentials outside Talos and kept manual context package as the safe fallback.
+- Exposed provider metadata through `talos/core_bridge.py` as a bridge-only read path.
+- Marked Python runtime surfaces as subprocess/HTTP compatibility bridges until the provider host can call runtime tools directly.
+
+### Checks
+
+- Rust command: `cargo test --manifest-path core\talos_core\Cargo.toml --quiet`: 19 passed.
+- Rust command: `cargo run --manifest-path core\talos_core\Cargo.toml --quiet -- runtime-providers`: passed and printed Codex/Claude provider manifests.
+- Python command: `python -B -m unittest -q tests.test_desktop_app.TalosArduinoTests.test_stage_080_runtime_providers_are_rust_owned`: passed.
+
+Conclusion: Stage 6 exit condition is met for the focused runtime-provider boundary step. Runtime behavior is provider-owned and explicit in Rust/Cargo; Python remains a bridge/fallback surface, credentials stay outside Talos, and the design is no longer tied to VS Code UI behavior.
