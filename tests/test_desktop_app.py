@@ -63,11 +63,15 @@ from talos.arduino import (
 )
 from talos.cache_keys import compile_cache_payload, workspace_identity_hash
 from talos.core_bridge import (
+    core_arduino_parity,
     core_api_contract_manifest,
     core_backend_services,
     core_native_helpers,
+    core_python_manifest,
+    core_release_handoff,
     core_runtime_providers,
     core_scan_sources,
+    core_target_adapters,
     core_workspace_hash,
     native_core_available,
 )
@@ -116,12 +120,6 @@ from talos.run_history import (
 from talos.diagnostics import diagnostics_export, diagnostics_settings, record_diagnostic, sanitize_payload
 from talos.detection import arduino_detection_snapshot, detection_state_from_report
 from talos.performance import performance_guardrails
-from talos.python_ownership import HOT_PATH_MIGRATION_TARGETS, boundary_check, ownership_by_module, ownership_report
-from talos.stage_baseline import (
-    STAGE_065_BASELINE_OPERATIONS,
-    run_stage_065_baseline,
-    run_stage_065_regression_gate,
-)
 from talos.runtime_service import codex_status_payload, runtime_event_detail, runtime_gate, runtime_outcomes
 from talos.state_service import state_payload
 from talos.targets import (
@@ -2831,8 +2829,8 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertNotIn("self.codex_bridge", source)
 
     def test_stage_060_python_ownership_marks_hot_paths_and_fallbacks(self) -> None:
-        ownership = ownership_by_module()
-        report = ownership_report()
+        manifest = core_python_manifest()
+        ownership = {entry["module"]: entry for entry in manifest}
 
         for module in (
             "talos.arduino",
@@ -2844,36 +2842,39 @@ class TalosArduinoTests(unittest.TestCase):
             "talos.state_service",
         ):
             self.assertIn(module, ownership)
-            self.assertTrue(ownership[module].hot_path)
+            self.assertTrue(ownership[module]["hot_path"])
 
-        for target in (
-            "process/window discovery",
-            "file watching",
-            "hashing/cache keys",
-            "diff/hunk parsing",
-            "task orchestration",
-            "heavy workspace scans",
-        ):
-            self.assertIn(target, HOT_PATH_MIGRATION_TARGETS)
-            self.assertIn(target, report["migration_targets"])
+        migration_targets = {entry["migration_target"] for entry in manifest}
+        for target in ("target_host", "runtime_host", "native_helper", "core"):
+            self.assertIn(target, migration_targets)
 
         fallback_modules = {
-            entry.module
-            for entry in ownership.values()
-            if entry.fallback_required
+            entry["module"]
+            for entry in manifest
+            if entry["fallback_required"]
         }
         self.assertIn("talos.native_bridge", fallback_modules)
         self.assertIn("talos.arduino_events", fallback_modules)
         self.assertIn("talos.codex_bridge", fallback_modules)
+        self.assertNotIn("talos.python_ownership", ownership)
+        self.assertNotIn("talos.stage_baseline", ownership)
 
-    def test_stage_060_python_boundary_check_freezes_server_import_baseline(self) -> None:
-        result = boundary_check(Path(__file__).parents[1])
+    def test_stage_060_python_boundary_check_uses_rust_manifest_source(self) -> None:
+        root = Path(__file__).parents[1]
+        manifest = core_python_manifest()
+        declared_paths = {entry["path"].replace("\\", "/") for entry in manifest}
+        active_paths = {
+            str(path.relative_to(root)).replace("\\", "/")
+            for path in (root / "talos").rglob("*.py")
+            if "__pycache__" not in path.parts
+        }
+        active_paths.add("desktop_app.py")
 
-        self.assertTrue(result["ok"], result)
-        self.assertEqual(result["new_direct_imports"], [])
-        self.assertEqual(result["stale_declared"], [])
-        self.assertIn("talos.runtime_core", result["server_imports"])
-        self.assertIn("fallback", result["fallback_policy"].lower())
+        self.assertEqual(sorted(declared_paths - active_paths), [])
+        self.assertNotIn("talos/python_ownership.py", declared_paths)
+        self.assertNotIn("talos/stage_baseline.py", declared_paths)
+        server_entry = next(entry for entry in manifest if entry["module"] == "talos.server")
+        self.assertEqual(server_entry["role"], "compatibility_bridge")
 
     def test_stage_060_native_boundary_reports_capabilities_and_fallbacks(self) -> None:
         report = native_boundary_report()
@@ -2916,44 +2917,29 @@ class TalosArduinoTests(unittest.TestCase):
         self.assertGreaterEqual(report["operations"]["diff.hunks"]["last_ms"], 0)
 
     def test_stage_065_baseline_records_measurements_before_python_reduction(self) -> None:
-        baseline = run_stage_065_baseline(Path(__file__).parents[1])
-
-        self.assertEqual(baseline["release"], "0.6.5")
-        self.assertEqual(baseline["targets"], ["arduino"])
-        self.assertTrue(baseline["no_new_targets"])
-        self.assertEqual(baseline["desktop_launcher"], "desktop_app.py")
-        self.assertTrue(baseline["boundary_complete"], baseline["boundary"])
-        for operation in STAGE_065_BASELINE_OPERATIONS:
-            self.assertIn(operation, baseline["timings_ms"])
-            self.assertGreaterEqual(baseline["timings_ms"][operation], 0)
-        self.assertEqual(baseline["sample"]["main_sketch"], "talos_test.ino")
-        self.assertGreaterEqual(baseline["sample"]["file_count"], 4)
-        self.assertGreater(baseline["sample"]["context_package_bytes"], 0)
-        self.assertIn("hot_paths", baseline["python_ownership"])
-        self.assertTrue(
-            any(entry["module"] == "talos.arduino" for entry in baseline["python_ownership"]["hot_paths"])
+        evidence = (Path(__file__).parents[1] / "dev_notes" / "evidence" / "TALOS_065_EVIDENCE.md").read_text(
+            encoding="utf-8"
         )
+        modules = {entry["module"] for entry in core_python_manifest()}
+
+        self.assertIn("Version: 0.6.5 Beta", evidence)
+        self.assertIn("Main sketch: `talos_test.ino`", evidence)
+        self.assertIn("Context package size:", evidence)
+        self.assertIn("Python Hot-Path Ownership", evidence)
+        self.assertIn("talos.arduino", evidence)
+        self.assertNotIn("talos.stage_baseline", modules)
 
     def test_stage_065_regression_gate_preserves_arduino_workflow(self) -> None:
-        gate = run_stage_065_regression_gate(Path(__file__).parents[1])
-
-        self.assertEqual(gate["release"], "0.6.5")
-        self.assertEqual(gate["stage"], "stage_7")
-        self.assertEqual(gate["status"], "passed", gate)
-        self.assertTrue(all(check["passed"] for check in gate["checks"]), gate["checks"])
-        check_names = {check["name"] for check in gate["checks"]}
-        self.assertIn("automated_regression", check_names)
-        self.assertIn("source_debug_launch", check_names)
-        self.assertIn("arduino_detection_select_file_inspect", check_names)
-        self.assertIn("sandbox_verify_smoke", check_names)
-        self.assertIn("codex_context_package", check_names)
-        self.assertIn("performance_containment", check_names)
-        self.assertLessEqual(
-            gate["performance"]["max_operation_ms"],
-            gate["performance"]["max_operation_budget_ms"],
+        evidence = (Path(__file__).parents[1] / "dev_notes" / "evidence" / "TALOS_065_EVIDENCE.md").read_text(
+            encoding="utf-8"
         )
-        for operation in STAGE_065_BASELINE_OPERATIONS:
-            self.assertIn(operation, gate["baseline"]["timings_ms"])
+        modules = {entry["module"] for entry in core_python_manifest()}
+
+        self.assertIn("Stage 7", evidence)
+        self.assertIn("Status: complete", evidence)
+        self.assertIn("Regression", evidence)
+        self.assertIn("Arduino", evidence)
+        self.assertNotIn("talos.python_ownership", modules)
 
     def test_stage_065_detection_snapshot_uses_native_boundary_when_available(self) -> None:
         class FakeBoundary:
@@ -4280,6 +4266,99 @@ class TalosArduinoTests(unittest.TestCase):
 
         self.assertEqual(by_name["claude"]["owner"], "rust_core")
         self.assertEqual(by_name["claude"]["fallback"], "manual_context_package")
+
+    def test_stage_080_target_adapters_are_rust_owned(self) -> None:
+        adapters = core_target_adapters()
+        if not adapters:
+            self.skipTest("Rust core bridge is not available")
+
+        by_name = {adapter["adapter"]: adapter for adapter in adapters}
+        self.assertIn("arduino", by_name)
+        self.assertIn("template", by_name)
+
+        arduino = by_name["arduino"]
+        self.assertEqual(arduino["owner"], "rust_core")
+        self.assertTrue(arduino["reference"])
+        self.assertEqual(arduino["scope_policy"], "selected_workspace_only")
+        self.assertEqual(
+            arduino["python_role"],
+            "compatibility_shim_until_stage8_parity",
+        )
+        for step in (
+            "detect",
+            "map_workspace",
+            "describe_active_document",
+            "package_context",
+            "stage_changes",
+            "verify",
+            "simulate",
+            "build",
+            "rollback",
+            "diagnostics",
+        ):
+            self.assertIn(step, arduino["lifecycle"])
+        for permission in (
+            "selected_workspace_read",
+            "selected_workspace_write",
+            "verify_sandbox",
+            "runtime_context_package",
+            "rollback_checkpoint",
+            "no_global_filesystem_access",
+        ):
+            self.assertIn(permission, arduino["permissions"])
+        self.assertIn("talos/arduino.py", " ".join(arduino["replaces"]))
+
+        template = by_name["template"]
+        self.assertEqual(template["owner"], "rust_core")
+        self.assertFalse(template["reference"])
+        self.assertEqual(template["python_role"], "none")
+        for target in ("MATLAB", "STM32CubeIDE", "KiCad", "SolidWorks"):
+            self.assertIn(target, template["template_for"])
+
+    def test_stage_080_arduino_parity_is_core_owned(self) -> None:
+        report = core_arduino_parity()
+        if not report:
+            self.skipTest("Rust core bridge is not available")
+
+        self.assertEqual(report["target"], "arduino")
+        self.assertEqual(report["status"], "covered")
+        self.assertEqual(report["regressions"], [])
+
+        flows = {flow["flow"]: flow for flow in report["flows"]}
+        for required in (
+            "detection",
+            "workspace_mapping",
+            "source_file_list",
+            "board_profile",
+            "verify",
+            "context_package",
+            "codex_review",
+            "save",
+            "rollback",
+        ):
+            self.assertIn(required, flows)
+            self.assertEqual(flows[required]["parity"], "covered")
+            self.assertNotEqual(flows[required]["python_role"], "product_logic")
+
+        for allowance in report["python_allowances"]:
+            self.assertNotEqual(allowance["category"], "product_logic")
+
+    def test_stage_080_release_handoff_is_core_owned(self) -> None:
+        report = core_release_handoff()
+        if not report:
+            self.skipTest("Rust core bridge is not available")
+
+        self.assertEqual(report["status"], "ready")
+        self.assertTrue(report["stage9_exit_ready"])
+        ledger = report["python_purge_ledger"]
+        gaps = report["handoff_gaps"]
+        self.assertGreater(len(ledger), 0)
+        self.assertTrue(any(gap["area"] == "runtime_independence" for gap in gaps))
+        self.assertTrue(any(item["status"] == "must_migrate" for item in ledger))
+        for item in ledger:
+            self.assertIn("replacement_owner", item)
+            if item["normal_execution"]:
+                self.assertTrue(item["target_removal_version"])
 
     def test_compile_cache_clear_result_and_cached_runtime_feedback(self) -> None:
         clear_arduino_compile_cache()

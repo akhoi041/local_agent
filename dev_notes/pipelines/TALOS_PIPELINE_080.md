@@ -103,7 +103,7 @@ Purpose: make the first real ownership transfer from Python to Rust/Cargo. Pytho
 - [x] Route `talos/cache_keys.py` through `talos/core_bridge.py`; Python fallback remains only for source/debug execution or missing Rust core.
 - [x] Report `hash.cache_keys` in `talos/native_boundary.py` as the Rust `core_hashing` capability.
 - [x] Keep `desktop_app.py` as the source/debug launcher, but remove any expectation that it owns app behavior beyond bootstrapping and local development.
-- [x] Mark `talos/cache_keys.py`, `talos/core_bridge.py`, and `talos/python_ownership.py` as compatibility bridge surfaces rather than product logic owners.
+- [x] Mark `talos/cache_keys.py` and `talos/core_bridge.py` as compatibility bridge surfaces rather than product logic owners; remove the obsolete `talos/python_ownership.py` mirror after Rust owns the manifest.
 - [x] Add focused tests proving Rust/Python parity for workspace hashing, source scanning, and native-boundary capability reporting.
 - [x] Record remaining Python ownership as explicit technical debt with a target replacement stage.
 - [x] Replace Stage 1 Python-owned primitives where replacement is already practical: cache identity, stable hashing, workspace hashing, source scanning, source metadata, and Python ownership manifest now route Rust-first.
@@ -112,6 +112,8 @@ Purpose: make the first real ownership transfer from Python to Rust/Cargo. Pytho
 - [x] Update the language ownership report after the first Rust/Cargo transfer.
 
 Stage 1 implementation note: `core/talos_core` is now the non-Python owner for cache identity, source scan primitives, and the Python ownership manifest. This is a forced ownership cut, not just a planning/audit note. No Arduino-parity helper was deleted in this stage because those modules still own live reference behavior until Stage 4, Stage 5, and Stage 7 provide equivalent core/native/adapter replacements. Duplicate responsibility is quarantined by routing production paths through Rust and keeping Python only as a fallback.
+
+Python purge correction: `talos/python_ownership.py` and `talos/stage_baseline.py` were removed. Ownership classification now comes from Rust through `talos/core_bridge.py`, and 0.6.5 baseline data remains as version evidence markdown rather than runtime Python.
 
 Exit condition: Rust/Cargo owns all Stage 1 replaceable primitives in production code, Python calls them through thin bridge/fallback surfaces only, and remaining Python owners are named migration debt instead of being expanded.
 
@@ -198,13 +200,15 @@ Exit condition: runtime behavior is provider-owned, explicit, and not tied to VS
 
 Purpose: make new targets possible without touching the app core.
 
-- [ ] Define adapter lifecycle: detect, map workspace, describe active document, package context, stage changes, verify/simulate/build, rollback, diagnostics.
-- [ ] Require adapter-level permissions and selected-workspace scoping.
-- [ ] Keep Arduino as the reference adapter.
-- [ ] Add a skeleton adapter template for future targets without implementing those targets.
-- [ ] Define the adapter host in Rust/Cargo so future targets do not copy Python Arduino logic.
-- [ ] Convert replaceable Arduino adapter utilities into Rust/Cargo or native helper calls before using Arduino as the template.
-- [ ] Keep Python Arduino code only as a compatibility shim until Stage 8 proves parity through the adapter host.
+- [x] Define adapter lifecycle: detect, map workspace, describe active document, package context, stage changes, verify/simulate/build, rollback, diagnostics.
+- [x] Require adapter-level permissions and selected-workspace scoping.
+- [x] Keep Arduino as the reference adapter.
+- [x] Add a skeleton adapter template for future targets without implementing those targets.
+- [x] Define the adapter host in Rust/Cargo so future targets do not copy Python Arduino logic.
+- [x] Convert replaceable Arduino adapter utilities into Rust/Cargo or native helper calls before using Arduino as the template.
+- [x] Keep Python Arduino code only as a compatibility shim until Stage 8 proves parity through the adapter host.
+
+Stage 7 implementation note: `core/talos_core/src/target_adapters.rs` owns the adapter lifecycle, permissions, selected-workspace scope, Arduino reference adapter, and future-target template contract. `talos-core-audit target-adapters` exposes the contract as JSONL for the Python compatibility bridge; Python Arduino code remains only a shim until Stage 8 proves parity through the adapter host.
 
 Exit condition: a future MATLAB/STM32CubeIDE/KiCad/SolidWorks adapter can start from a stable host contract.
 
@@ -212,12 +216,14 @@ Exit condition: a future MATLAB/STM32CubeIDE/KiCad/SolidWorks adapter can start 
 
 Purpose: prove the new structure did not break the product users already have.
 
-- [ ] Run Arduino detection, workspace mapping, source file list, board/profile, verify, context package, Codex review, save, and rollback through the new boundaries.
-- [ ] Compare results against 0.7.5 evidence.
-- [ ] Confirm every Arduino flow uses Rust/Cargo/native ownership for replaced primitives and does not silently fall back to Python product logic.
-- [ ] Delete or quarantine obsolete Python Arduino helper code after parity, leaving only bridge/debug/test surfaces.
-- [ ] Update language share numbers and explain any remaining Python by file name and allowed category.
-- [ ] Record regressions and fix or explicitly block them.
+- [x] Run Arduino detection, workspace mapping, source file list, board/profile, verify, context package, Codex review, save, and rollback through the new boundaries.
+- [x] Compare results against 0.7.5 evidence.
+- [x] Confirm every Arduino flow uses Rust/Cargo/native ownership for replaced primitives and does not silently fall back to Python product logic.
+- [x] Delete or quarantine obsolete Python Arduino helper code after parity, leaving only bridge/debug/test surfaces.
+- [x] Update language share numbers and explain any remaining Python by file name and allowed category.
+- [x] Record regressions and fix or explicitly block them.
+
+Stage 8 implementation note: `core/talos_core/src/arduino_parity.rs` is the Rust-owned Arduino parity ledger. `talos-core-audit arduino-parity` covers detection, workspace mapping, source inventory, board/profile, verify, context package, Codex review, save, and rollback against the 0.7.5 behavior surface. Remaining Arduino Python files are explicitly quarantined as compatibility shims, watcher bridge, or smoke-test harness; none are allowed to be silent product-logic fallback.
 
 Exit condition: Arduino is still usable as the reference target on the new core-complete structure.
 
@@ -225,12 +231,14 @@ Exit condition: Arduino is still usable as the reference target on the new core-
 
 Purpose: prove 0.8.0 is a real architecture release and prepare runtime/product trust hardening.
 
-- [ ] Update `dev_notes/evidence/TALOS_080_EVIDENCE.md`.
-- [ ] Update the roadmap status for 0.8.0.
-- [ ] Create or update the 0.9.0 pipeline from the real 0.8.0 state.
-- [ ] List runtime independence, consent, diagnostics, recovery, installer, and update gaps for 0.9.x.
-- [ ] Attach the final Python purge ledger: Python files deleted, Python files retained, reason retained, replacement owner, and target removal version if temporary.
-- [ ] Attach final language share numbers and confirm Rust/Cargo increased as product-logic owner.
-- [ ] Block 0.9.0 handoff if a replaced Python module still remains in normal execution without an explicit exception.
+- [x] Update `dev_notes/evidence/TALOS_080_EVIDENCE.md`.
+- [x] Update the roadmap status for 0.8.0.
+- [x] Create or update the 0.9.0 pipeline from the real 0.8.0 state.
+- [x] List runtime independence, consent, diagnostics, recovery, installer, and update gaps for 0.9.x.
+- [x] Attach the final Python purge ledger: Python files deleted, Python files retained, reason retained, replacement owner, and target removal version if temporary.
+- [x] Attach final language share numbers and confirm Rust/Cargo increased as product-logic owner.
+- [x] Block 0.9.0 handoff if a replaced Python module still remains in normal execution without an explicit exception.
+
+Stage 9 implementation note: `talos-core-audit release-handoff` is the Rust-owned release handoff command. `core_release_handoff()` exposes it to the Python compatibility bridge for tests only. The report carries the final Python purge ledger, 0.9.x runtime/trust gaps, language share summary, and `stage9_exit_ready`. Handoff target: `dev_notes/pipelines/TALOS_PIPELINE_090.md`.
 
 Exit condition: new target work can begin after 0.9.x trust/runtime gates, without another architecture rewrite.

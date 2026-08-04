@@ -182,3 +182,57 @@ def core_runtime_providers() -> list[dict[str, Any]]:
 
 def core_runtime_provider_manifest() -> str:
     return _run_core(["runtime-providers"], timeout=12.0)
+
+
+@lru_cache(maxsize=1)
+def _core_target_adapters_cached() -> tuple[dict[str, Any], ...]:
+    output = _run_core(["target-adapters"], timeout=12.0)
+    rows: list[dict[str, Any]] = []
+    for line in output.splitlines():
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(row, dict):
+            rows.append(row)
+    return tuple(rows)
+
+
+def core_target_adapters() -> list[dict[str, Any]]:
+    return [dict(row) for row in _core_target_adapters_cached()]
+
+
+def core_target_adapter_manifest() -> str:
+    return _run_core(["target-adapters"], timeout=12.0)
+
+
+@lru_cache(maxsize=1)
+def _core_arduino_parity_cached() -> dict[str, Any]:
+    output = _run_core(["arduino-parity"], timeout=12.0)
+    if not output:
+        return {}
+    try:
+        row = json.loads(output)
+    except json.JSONDecodeError:
+        return {}
+    return row if isinstance(row, dict) else {}
+
+
+def core_arduino_parity() -> dict[str, Any]:
+    return dict(_core_arduino_parity_cached())
+
+
+@lru_cache(maxsize=1)
+def _core_release_handoff_cached() -> dict[str, Any]:
+    output = _run_core(["release-handoff"], timeout=12.0)
+    if not output:
+        return {}
+    try:
+        row = json.loads(output)
+    except json.JSONDecodeError:
+        return {}
+    return row if isinstance(row, dict) else {}
+
+
+def core_release_handoff() -> dict[str, Any]:
+    return dict(_core_release_handoff_cached())

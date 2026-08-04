@@ -82,7 +82,7 @@ Date: 2026-07-31.
 - Kept Python fallback behavior only for source/debug execution or missing Rust core.
 - Reported `hash.cache_keys` in `talos/native_boundary.py` as the Rust `core_hashing` capability, including boundary metadata for UI/API audit output.
 - Added `scripts/check_core_boundary.ps1` to run the Rust boundary tests and audit in one focused step.
-- Marked `talos/python_ownership.py` as a legacy Python mirror only. It remains for compatibility handlers and Python-side tests, not as the source of future product ownership.
+- Removed the obsolete `talos/python_ownership.py` mirror after Rust became the source of truth for Python ownership classification.
 - Added `target/` and `core/**/target/` ignores so Rust build artifacts do not enter source control.
 
 ### Ownership Audit
@@ -99,7 +99,7 @@ Remaining Python ownership is explicit migration debt:
 
 - Shell/debug: `desktop_app.py`, `talos/shell/*`.
 - API bridge: `talos/server.py`, `talos/client.py`, `talos/contracts.py`.
-- Core compatibility bridge: `talos/core_bridge.py`, `talos/cache_keys.py`, `talos/python_ownership.py`.
+- Core compatibility bridge: `talos/core_bridge.py`, `talos/cache_keys.py`.
 - Core candidates still to migrate: `talos/core.py`, `talos/runtime_core.py`, `talos/state_service.py`, `talos/task_orchestrator.py`, `talos/diff_hunks.py`, `talos/event_bus.py`.
 - Native/helper candidates: `talos/arduino_events.py`, `talos/workspace_scanner.py`, `talos/detection.py`, `talos/native_bridge.py`, `talos/native_boundary.py`.
 - Runtime host candidates: `talos/codex_bridge.py`, `talos/codex_runtime.py`, `talos/runtime_discovery.py`, `talos/runtime_provider.py`, `talos/runtime_service.py`.
@@ -120,13 +120,20 @@ Remaining Python ownership is explicit migration debt:
 - Rust command: `cargo build --manifest-path core\talos_core\Cargo.toml`: passed.
 - Rust command: `cargo test --manifest-path core\talos_core\Cargo.toml`: 7 passed.
 - Rust command: `cargo run --manifest-path core\talos_core\Cargo.toml --quiet -- summary`: passed with counts above.
-- `python -B -m py_compile desktop_app.py talos\server.py talos\python_ownership.py`: passed.
+- `python -B -m py_compile desktop_app.py talos\server.py talos\core_bridge.py`: passed.
 - `python -B -m unittest -q tests.test_desktop_app.TalosArduinoTests.test_stage_080_core_bridge_workspace_hash_matches_cache_bridge tests.test_desktop_app.TalosArduinoTests.test_stage_080_core_bridge_scans_source_files_with_filters tests.test_desktop_app.TalosArduinoTests.test_stage_080_native_boundary_reports_core_hashing`: 3 passed.
-- Focused stale-binary/parity regression: `test_stage_060_python_ownership_marks_hot_paths_and_fallbacks`, `test_stage_065_baseline_records_measurements_before_python_reduction`, and `test_stage_065_workspace_scanner_cache_invalidates_on_file_change`: 3 passed.
+- Focused stale-binary/parity regression: `test_stage_060_python_ownership_marks_hot_paths_and_fallbacks`, `test_stage_065_baseline_records_measurements_before_python_reduction`, and `test_stage_065_workspace_scanner_cache_invalidates_on_file_change`: 3 passed after ownership moved to the Rust manifest.
 - Full regression: `python -B -m unittest -q tests.test_desktop_app`: 186 passed.
 - `git diff --check`: passed with existing CRLF warnings only.
 
 Conclusion: Stage 1 exit condition is met. Python has not been fully removed yet, but it no longer owns cache identity/source scanning in production paths. The first real non-Python core boundary exists, is exercised from Python through a thin bridge, keeps fallback parity, classifies remaining Python modules, blocks Python logic expansion by role, and gives later 0.8.0 stages concrete migration targets.
+
+### Python Purge Correction
+
+- Removed `talos/python_ownership.py`; the Rust `PYTHON_MODULES` manifest is now the ownership source.
+- Removed `talos/stage_baseline.py`; 0.6.5 baseline data is retained in `dev_notes/evidence/TALOS_065_EVIDENCE.md` instead of runtime Python.
+- Updated Python tests to read the Rust manifest through `talos/core_bridge.py`.
+- Remaining Python modules are active launch, bridge, compatibility shim, diagnostics, or adapter surfaces scheduled for later migration rather than Stage 1 product logic.
 
 ## Stage 2 - Desktop Shell Boundary Implementation
 
@@ -226,3 +233,71 @@ Date: 2026-08-03.
 - Python command: `python -B -m unittest -q tests.test_desktop_app.TalosArduinoTests.test_stage_080_runtime_providers_are_rust_owned`: passed.
 
 Conclusion: Stage 6 exit condition is met for the focused runtime-provider boundary step. Runtime behavior is provider-owned and explicit in Rust/Cargo; Python remains a bridge/fallback surface, credentials stay outside Talos, and the design is no longer tied to VS Code UI behavior.
+
+## Stage 7 - Target Adapter Host Contract
+
+Date: 2026-08-03.
+
+### Implemented Boundary
+
+- Added Rust-owned target adapter host contract in `core/talos_core/src/target_adapters.rs`.
+- Added `talos-core-audit target-adapters` so compatibility bridges can inspect adapter lifecycle, permissions, scope policy, and replacement targets without making Python the source of truth.
+- Kept Arduino as the reference adapter contract.
+- Added a future-target template contract for MATLAB, STM32CubeIDE, KiCad, and SolidWorks without implementing those targets.
+- Marked Python Arduino modules as compatibility shims until Stage 8 proves parity through the adapter host.
+
+### Checks
+
+- Rust command: `cargo test --manifest-path core\talos_core\Cargo.toml --quiet`.
+- Rust command: `cargo run --manifest-path core\talos_core\Cargo.toml --quiet -- target-adapters`.
+- Python command: `python -B -m unittest -q tests.test_desktop_app.TalosArduinoTests.test_stage_080_target_adapters_are_rust_owned`.
+
+Conclusion: Stage 7 exit condition is met for the focused adapter-host step. Future target adapters now have a stable Rust/Cargo contract to start from, while existing Python Arduino code is explicitly temporary compatibility debt for Stage 8 parity validation.
+
+## Stage 8 - Arduino Parity Through Core Complete Boundary
+
+Date: 2026-08-03.
+
+### Implemented Boundary
+
+- Added Rust-owned Arduino parity ledger in `core/talos_core/src/arduino_parity.rs`.
+- Added `talos-core-audit arduino-parity` as the focused parity gate for the reference Arduino target.
+- Exposed the parity report through `talos/core_bridge.py` as bridge-only metadata.
+- Covered detection, workspace mapping, source file list, board/profile, verify, context package, Codex review, save, and rollback.
+- Compared the active Arduino behavior surface against the 0.7.5 reference evidence and recorded no regressions.
+- Quarantined remaining Arduino Python files by allowed category:
+  - `talos/arduino.py`: temporary adapter shim.
+  - `talos/arduino_adapter.py`: temporary adapter shim.
+  - `talos/arduino_events.py`: native watcher bridge.
+  - `talos/arduino_smoke.py`: test harness.
+
+### Checks
+
+- Rust command: `cargo fmt --manifest-path core\talos_core\Cargo.toml`.
+- Rust command: `cargo test --manifest-path core\talos_core\Cargo.toml --quiet`.
+- Rust command: `cargo run --manifest-path core\talos_core\Cargo.toml --quiet -- arduino-parity`.
+- Python command: `python -B -m unittest -q tests.test_desktop_app.TalosArduinoTests.test_stage_080_arduino_parity_is_core_owned`.
+
+Conclusion: Stage 8 exit condition is met for the focused Arduino parity step. Arduino remains the reference usable target while the ownership boundary is now Rust/Cargo-audited; remaining Python is explicitly named compatibility, bridge, or test surface rather than product logic.
+
+## Stage 9 - Release Evidence And 0.9.0 Handoff
+
+Date: 2026-08-04.
+
+### Implemented Boundary
+
+- Added Rust-owned release handoff report through `talos-core-audit release-handoff`.
+- Exposed handoff metadata through `core_release_handoff()` as bridge-only test access.
+- Created `dev_notes/pipelines/TALOS_PIPELINE_090.md` from the measured 0.8.0 state.
+- Listed 0.9.x gates for runtime independence, consent, diagnostics, recovery, installer/update trust, Python purge closure, and next-target readiness.
+- Attached the final Python purge ledger from Rust-owned `PYTHON_MODULES`; every normal-execution Python item has a retained reason, replacement owner, and target removal version.
+- Confirmed Rust/Cargo is the product-logic owner for shell/core/API/runtime/native/adapter boundaries while Python remains launcher/debug/compatibility glue.
+
+### Checks
+
+- Rust command: `cargo fmt --manifest-path core\talos_core\Cargo.toml`.
+- Rust command: `cargo test --manifest-path core\talos_core\Cargo.toml --quiet`.
+- Python command: `python -B -m unittest -q tests.test_desktop_app.TalosArduinoTests.test_stage_080_release_handoff_is_core_owned`.
+- Git whitespace check: `git diff --check`.
+
+Conclusion: Stage 9 exit condition is met for the focused 0.8.0 release handoff. 0.9.0 can begin from a Rust-owned architecture ledger instead of another planning-only reset.

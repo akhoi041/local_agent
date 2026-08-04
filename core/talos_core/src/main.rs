@@ -4,9 +4,12 @@ use talos_core::{
     backend_service_count, bridge_only_backend_service_count, bridge_only_native_helper_count,
     bridge_only_runtime_provider_count, bridge_surface_count, hot_path_count, logic_owner_count,
     native_helper_count, python_ownership_manifest, render_api_contract_manifest,
-    render_core_service_manifest, render_native_helper_manifest, render_runtime_provider_manifest,
-    runtime_provider_count, runtime_provider_method_count, scan_source_files, stable_file_hash,
-    stable_text_hash, stage1_exit_ready, stage4_exit_ready, stage5_exit_ready, stage6_exit_ready,
+    render_arduino_parity_report, render_core_service_manifest, render_native_helper_manifest,
+    render_release_handoff_report, render_runtime_provider_manifest,
+    render_target_adapter_manifest, runtime_provider_count, runtime_provider_method_count,
+    scan_source_files, stable_file_hash, stable_text_hash, stage1_exit_ready, stage4_exit_ready,
+    stage5_exit_ready, stage6_exit_ready, stage7_exit_ready, stage9_exit_ready,
+    target_adapter_count, target_adapter_lifecycle_count, target_adapter_permission_count,
     workspace_identity_hash_core, MigrationTarget, ModuleOwnership, PythonRole,
 };
 
@@ -26,13 +29,28 @@ fn main() {
         "backend-services" => print_backend_services(),
         "native-helpers" => print_native_helpers(),
         "runtime-providers" => print_runtime_providers(),
+        "target-adapters" => print_target_adapters(),
+        "arduino-parity" => print_arduino_parity(),
+        "release-handoff" => print_release_handoff(),
         _ => {
             eprintln!(
-                "usage: talos-core-audit [summary|manifest|manifest-json|hash-text|hash-file|workspace-hash|scan-sources|api-contracts|backend-services|native-helpers|runtime-providers]"
+                "usage: talos-core-audit [summary|manifest|manifest-json|hash-text|hash-file|workspace-hash|scan-sources|api-contracts|backend-services|native-helpers|runtime-providers|target-adapters|arduino-parity|release-handoff]"
             );
             std::process::exit(2);
         }
     }
+}
+
+fn print_arduino_parity() {
+    print!("{}", render_arduino_parity_report());
+}
+
+fn print_release_handoff() {
+    print!("{}", render_release_handoff_report());
+}
+
+fn print_target_adapters() {
+    print!("{}", render_target_adapter_manifest());
 }
 
 fn print_runtime_providers() {
@@ -80,6 +98,17 @@ fn print_summary() {
         bridge_only_runtime_provider_count()
     );
     println!("stage6_exit_ready={}", stage6_exit_ready());
+    println!("target_adapter_contracts={}", target_adapter_count());
+    println!(
+        "target_adapter_lifecycle_steps={}",
+        target_adapter_lifecycle_count()
+    );
+    println!(
+        "target_adapter_permissions={}",
+        target_adapter_permission_count()
+    );
+    println!("stage7_exit_ready={}", stage7_exit_ready());
+    println!("stage9_exit_ready={}", stage9_exit_ready());
 }
 
 fn print_manifest() {
