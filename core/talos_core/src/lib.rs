@@ -1,8 +1,15 @@
+pub mod arduino_parity;
 pub mod backend;
 pub mod contracts;
 pub mod native_helpers;
+pub mod release_handoff;
 pub mod runtime_providers;
+pub mod target_adapters;
 
+pub use arduino_parity::{
+    arduino_parity_exit_ready, arduino_parity_flows, arduino_python_allowances,
+    render_arduino_parity_report, ArduinoParityFlow, ArduinoPythonAllowance,
+};
 pub use backend::{
     backend_service_count, bridge_only_backend_service_count, core_services,
     render_core_service_manifest, stage4_exit_ready, CoreService, CoreServiceKind,
@@ -15,10 +22,19 @@ pub use native_helpers::{
     bridge_only_native_helper_count, native_helper_count, native_helpers,
     render_native_helper_manifest, stage5_exit_ready, NativeHelper, NativeHelperKind,
 };
+pub use release_handoff::{
+    python_purge_ledger, release_handoff_gaps, render_release_handoff_report, stage9_exit_ready,
+    PythonPurgeLedgerEntry, ReleaseHandoffGap,
+};
 pub use runtime_providers::{
     bridge_only_runtime_provider_count, render_runtime_provider_manifest,
     runtime_provider_boundaries, runtime_provider_count, runtime_provider_method_count,
     stage6_exit_ready, RuntimeProviderBoundary, RuntimeProviderCapability,
+};
+pub use target_adapters::{
+    render_target_adapter_manifest, stage7_exit_ready, target_adapter_contracts,
+    target_adapter_count, target_adapter_lifecycle_count, target_adapter_permission_count,
+    TargetAdapterHostContract, TargetAdapterPermission, TargetAdapterStep,
 };
 
 use std::fs;
@@ -276,25 +292,11 @@ pub static PYTHON_MODULES: &[ModuleOwnership] = &[
         reason: "Regression harness is allowed during migration.",
     },
     ModuleOwnership {
-        path: "talos/stage_baseline.py",
-        role: PythonRole::TestHarness,
-        target: MigrationTarget::TestHarness,
-        hot_path: false,
-        reason: "Version evidence harness is allowed during migration.",
-    },
-    ModuleOwnership {
         path: "talos/core_bridge.py",
         role: PythonRole::CompatibilityBridge,
         target: MigrationTarget::Core,
         hot_path: false,
         reason: "Thin Cargo/Rust bridge for native core primitives; no product logic should live here.",
-    },
-    ModuleOwnership {
-        path: "talos/python_ownership.py",
-        role: PythonRole::CompatibilityBridge,
-        target: MigrationTarget::Core,
-        hot_path: false,
-        reason: "Legacy mirror only; Rust talos_core is the Stage 1 source of architectural gating.",
     },
 ];
 

@@ -127,8 +127,8 @@ Migration rules:
 | 0.6.5 Beta | `dev_notes/pipelines/TALOS_PIPELINE_065.md` | Completed Python decomposition and native/core boundary containment from measured 0.6.0 behavior. |
 | 0.7.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_070.md` | Completed Arduino adapter port and handed off to 0.7.5 hardening. |
 | 0.7.5 Beta | `dev_notes/pipelines/TALOS_PIPELINE_075.md` | Completed Arduino workflow hardening and handed core migration gaps to 0.8.0. |
-| 0.8.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_080.md` | Planned Talos Core Complete implementation gate. |
-| 0.9.0 Beta | Open as `dev_notes/pipelines/TALOS_PIPELINE_090.md` when version starts. | Planned runtime independence and product trust hardening. |
+| 0.8.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_080.md` | Completed Talos Core release handoff; Rust/Cargo owns product-logic boundaries and emits the Python purge ledger. |
+| 0.9.0 Beta | `dev_notes/pipelines/TALOS_PIPELINE_090.md` | Opened from the 0.8.0 handoff; planned runtime independence and product trust hardening. |
 | 0.10.0 Beta | Open as `dev_notes/pipelines/TALOS_PIPELINE_0100.md` when version starts. | Planned MATLAB foundation release. |
 | 0.11.0 Beta | Open as `dev_notes/pipelines/TALOS_PIPELINE_0110.md` when version starts. | Planned MATLAB hardening release. |
 | 0.12.0 Beta | Open as `dev_notes/pipelines/TALOS_PIPELINE_0120.md` when version starts. | Planned STM32CubeIDE foundation release. |
@@ -299,7 +299,7 @@ Pipeline:
 
 ### 0.8.0 Beta - Talos Core Complete
 
-Status: planned.
+Status: completed; handed off to 0.9.0 with a Rust-owned release report and Python purge ledger.
 
 Purpose:
 
@@ -328,7 +328,7 @@ Pipeline:
 
 ### 0.9.0 Beta - Runtime Independence And Product Trust
 
-Status: planned.
+Status: opened from the 0.8.0 handoff.
 
 Purpose:
 
@@ -337,7 +337,7 @@ Purpose:
 
 Pipeline:
 
-- Open `dev_notes/pipelines/TALOS_PIPELINE_090.md` when 0.9.0 starts.
+- `dev_notes/pipelines/TALOS_PIPELINE_090.md`
 
 ### 0.10.x And Later - Target Product Blocks
 
